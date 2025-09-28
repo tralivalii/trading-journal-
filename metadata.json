@@ -1,0 +1,5 @@
+{
+  "name": "Trading Journal",
+  "description": "A minimalistic yet functional trading journal to log trades, manage accounts, and analyze performance statistics for weekly, monthly, and quarterly periods.",
+  "requestFramePermissions": []
+}
