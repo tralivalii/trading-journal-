@@ -9,14 +9,20 @@ interface DataViewProps {
     setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
     pairs: string[];
     setPairs: React.Dispatch<React.SetStateAction<string[]>>;
-    setups: string[];
-    setSetups: React.Dispatch<React.SetStateAction<string[]>>;
+    entries: string[];
+    setEntries: React.Dispatch<React.SetStateAction<string[]>>;
     risks: number[];
     setRisks: React.Dispatch<React.SetStateAction<number[]>>;
     defaultSettings: DefaultSettings;
     setDefaultSettings: React.Dispatch<React.SetStateAction<DefaultSettings>>;
     accountBalances: Map<string, number>;
     setTrades: React.Dispatch<React.SetStateAction<Trade[]>>;
+    stoplosses: string[];
+    setStoplosses: React.Dispatch<React.SetStateAction<string[]>>;
+    takeprofits: string[];
+    setTakeprofits: React.Dispatch<React.SetStateAction<string[]>>;
+    closeTypes: string[];
+    setCloseTypes: React.Dispatch<React.SetStateAction<string[]>>;
     onInitiateDeleteAccount: () => void;
 }
 
@@ -28,7 +34,7 @@ const DataCard: React.FC<{ title: string, children: React.ReactNode }> = ({ titl
 );
 
 const DataView: React.FC<DataViewProps> = (props) => {
-    const { accounts, setAccounts, pairs, setPairs, setups, setSetups, risks, setRisks, defaultSettings, setDefaultSettings, accountBalances, setTrades, onInitiateDeleteAccount } = props;
+    const { accounts, setAccounts, pairs, setPairs, entries, setEntries, risks, setRisks, defaultSettings, setDefaultSettings, accountBalances, setTrades, stoplosses, setStoplosses, takeprofits, setTakeprofits, closeTypes, setCloseTypes, onInitiateDeleteAccount } = props;
     const [isAccountModalOpen, setAccountModalOpen] = useState(false);
     
     const handleAddAccount = (name: string, initialBalance: number, currency: Currency) => {
@@ -120,14 +126,23 @@ const DataView: React.FC<DataViewProps> = (props) => {
                     <DataCard title="Trading Pairs">
                         {createListManager(pairs, setPairs, 'e.g., BTC/USDT')}
                     </DataCard>
-                     <DataCard title="Setups">
-                        {createListManager(setups, setSetups, 'e.g., IDM')}
+                     <DataCard title="Entries">
+                        {createListManager(entries, setEntries, 'e.g., IDM')}
+                    </DataCard>
+                    <DataCard title="Stoploss">
+                        {createListManager(stoplosses, setStoplosses, 'e.g., fractal')}
                     </DataCard>
                 </div>
                  <div className="space-y-6">
                      <DataCard title="Risk Profiles (%)">
                         {createListManager(risks, setRisks, 'e.g., 1.5', 'number')}
-                    </Data-Card>
+                    </DataCard>
+                     <DataCard title="Take Profit">
+                        {createListManager(takeprofits, setTakeprofits, 'e.g., OB')}
+                    </DataCard>
+                    <DataCard title="Close Types">
+                        {createListManager(closeTypes, setCloseTypes, 'e.g., SL Hit')}
+                    </DataCard>
                     <DataCard title="Default New Trade Values">
                         <div className="space-y-3">
                              <div>
@@ -145,10 +160,10 @@ const DataView: React.FC<DataViewProps> = (props) => {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1 text-gray-400">Default Setup</label>
-                                <select name="setup" value={defaultSettings.setup} onChange={handleDefaultChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <label className="block text-sm font-medium mb-1 text-gray-400">Default Entry</label>
+                                <select name="entry" value={defaultSettings.entry} onChange={handleDefaultChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                                      <option value="">None</option>
-                                     {setups.map(s => <option key={s} value={s}>{s}</option>)}
+                                     {entries.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             </div>
                             <div>

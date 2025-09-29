@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+// FIX: Removed unused and non-existent 'CloseType' from imports.
 import { Trade, Account, Result, Analysis } from '../types';
 
 interface TradeDetailProps {
@@ -9,7 +10,7 @@ interface TradeDetailProps {
 const DetailItem: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({ label, value, className }) => (
     <div>
         <p className="text-sm text-gray-400">{label}</p>
-        <p className={`text-lg font-semibold text-white ${className}`}>{value}</p>
+        <p className={`text-lg font-semibold text-white ${className}`}>{value || 'N/A'}</p>
     </div>
 );
 
@@ -65,11 +66,21 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account }) => {
       </div>
       
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-        <DetailItem label="Account" value={account?.name || 'N/A'} />
-        <DetailItem label="Date" value={new Date(trade.date).toLocaleDateString()} />
+        <DetailItem label="Account" value={account?.name} />
+        <DetailItem label="Date" value={new Date(trade.date).toLocaleString()} />
         <DetailItem label="Direction" value={trade.direction} className={trade.direction === 'Long' ? 'text-cyan-400' : 'text-purple-400'}/>
-        <DetailItem label="Setup" value={trade.setup || 'N/A'} />
+        <DetailItem label="Entry Type" value={trade.entry} />
+        <DetailItem label="Stoploss Type" value={trade.stoploss} />
+        <DetailItem label="Take Profit Type" value={trade.takeprofit} />
+        <DetailItem label="Close Type" value={trade.closeType} />
       </div>
+
+       <div className="grid grid-cols-3 gap-6 text-center bg-gray-900/50 p-4 rounded-lg">
+          <DetailItem label="Entry Price" value={trade.entryPrice?.toLocaleString()} />
+          <DetailItem label="Stoploss Price" value={trade.stoplossPrice?.toLocaleString()} className="text-red-400" />
+          <DetailItem label="Take Profit Price" value={trade.takeprofitPrice?.toLocaleString()} className="text-green-400" />
+      </div>
+
 
       <div className="space-y-4">
         <AnalysisDetailSection title="D1 Analysis" analysis={trade.analysisD1} onImageClick={setFullscreenImage} />

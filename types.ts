@@ -26,10 +26,10 @@ export interface Analysis {
 
 export interface Trade {
   id: string;
-  date: string;
+  date: string; // Will store full ISO string for time analysis
   accountId: string;
   pair: string;
-  setup: string;
+  entry: string;
   direction: Direction;
   risk: number; // The % risk from dropdown
   rr: number; // The R:R ratio
@@ -37,6 +37,15 @@ export interface Trade {
   result: Result;
   pnl: number; // This will be calculated on save
   commission?: number;
+  stoploss: string;
+  takeprofit: string;
+  missedReason?: 'Fear' | 'Other';
+  
+  // New fields for deeper analysis
+  entryPrice?: number;
+  stoplossPrice?: number;
+  takeprofitPrice?: number;
+  closeType?: string;
   
   // New structured analysis
   analysisD1: Analysis;
@@ -82,7 +91,7 @@ export interface Stats {
 export interface DefaultSettings {
     accountId: string;
     pair: string;
-    setup: string;
+    entry: string;
     risk: number | string;
 }
 
@@ -90,8 +99,11 @@ export interface UserData {
     trades: Trade[];
     accounts: Account[];
     pairs: string[];
-    setups: string[];
+    entries: string[];
     risks: number[];
     defaultSettings: DefaultSettings;
     notes: Note[];
+    stoplosses: string[];
+    takeprofits: string[];
+    closeTypes: string[];
 }

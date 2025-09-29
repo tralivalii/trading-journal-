@@ -15,6 +15,18 @@ interface TradesListProps {
 
 type JournalPeriod = 'this-month' | 'last-month' | 'this-quarter' | 'all';
 
+const AlertIcon: React.FC<{ message: string }> = ({ message }) => (
+    <div className="relative flex items-center group">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.257 3.099c.636-1.22 2.85-1.22 3.486 0l5.58 10.796c.636 1.22-.474 2.605-1.743 2.605H4.42c-1.269 0-2.379-1.385-1.743-2.605l5.58-10.796zM10 14a1 1 0 100-2 1 1 0 000 2zm-1-3a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" />
+        </svg>
+        <div className="absolute bottom-full mb-2 w-max px-2 py-1 bg-gray-900 text-white text-xs rounded-md border border-gray-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            {message}
+        </div>
+    </div>
+);
+
+
 const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onView, onDelete, onUpdateResult }) => {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [period, setPeriod] = useState<JournalPeriod>('this-month');
@@ -122,7 +134,10 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                                         return (
                                       <tr key={trade.id} onClick={() => onView(trade)} className="bg-gray-800/50 border-b border-gray-700/50 hover:bg-gray-700/50 transition-colors cursor-pointer">
                                         <td className="px-6 py-4">{new Date(trade.date).toLocaleDateString()}</td>
-                                        <td className="px-6 py-4 font-medium text-white">{trade.pair}</td>
+                                        <td className="px-6 py-4 font-medium text-white flex items-center gap-2">
+                                            {trade.pair}
+                                            {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
+                                        </td>
                                         <td className={`px-6 py-4 font-semibold ${trade.direction === 'Long' ? 'text-cyan-400' : 'text-purple-400'}`}>{trade.direction}</td>
                                         <td className="px-6 py-4">{trade.rr.toFixed(2)}</td>
                                         <td className={`px-6 py-4 font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>

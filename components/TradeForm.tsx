@@ -7,23 +7,29 @@ interface TradeFormProps {
   tradeToEdit?: Trade | null;
   accounts: Account[];
   pairs: string[];
-  setups: string[];
+  entries: string[];
   risks: number[];
   defaultSettings: DefaultSettings;
+  stoplosses: string[];
+  takeprofits: string[];
+  closeTypes: string[];
 }
 
 const emptyAnalysis: Analysis = { image: '', notes: '' };
 const initialTradeState = {
-  date: new Date().toISOString().split('T')[0],
+  date: new Date().toISOString().slice(0, 16), // Format for datetime-local
   accountId: '',
   pair: '',
-  setup: '',
+  entry: '',
   direction: Direction.Long,
   risk: 1,
   rr: 1.2,
   commission: 0,
-  // riskAmount is now calculated in App.tsx
+  stoploss: '',
+  takeprofit: '',
   result: Result.InProgress,
+  missedReason: undefined,
+  closeType: undefined,
   analysisD1: { ...emptyAnalysis },
   analysis1h: { ...emptyAnalysis },
   analysis5m: { ...emptyAnalysis },
@@ -77,24 +83,43 @@ const AnalysisSection: React.FC<{
 };
 
 
-const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts, pairs, setups, risks, defaultSettings }) => {
+const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts, pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes }) => {
   const [trade, setTrade] = useState(() => {
      const defaults = {
         ...initialTradeState,
         accountId: defaultSettings.accountId || (accounts.length > 0 ? accounts[0].id : ''),
         pair: defaultSettings.pair || (pairs.length > 0 ? pairs[0] : ''),
-        setup: defaultSettings.setup || '',
+        entry: defaultSettings.entry || '',
         risk: typeof defaultSettings.risk === 'number' ? defaultSettings.risk : (risks.length > 0 ? risks[0] : 1),
+        stoploss: stoplosses.length > 0 ? stoplosses[0] : '',
+        takeprofit: takeprofits.length > 0 ? takeprofits[0] : '',
      };
-     // The tradeToEdit object will not have riskAmount, so we remove it from the state
-     const { riskAmount, ...restOfTradeToEdit } = tradeToEdit || {};
+     
+     const stateToEdit = tradeToEdit ? {
+        ...tradeToEdit,
+        date: tradeToEdit.date ? new Date(tradeToEdit.date).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
+     } : null;
+
+     const { riskAmount, ...restOfTradeToEdit } = stateToEdit || {};
      return tradeToEdit ? { ...defaults, ...restOfTradeToEdit } : defaults;
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const isNumberInput = type === 'number';
-    setTrade(prev => ({ ...prev, [name]: isNumberInput ? parseFloat(value) || 0 : value }));
+    
+    let updatedValue: any = isNumberInput ? parseFloat(value) || 0 : value;
+
+    setTrade(prev => {
+        let newState = {...prev, [name]: updatedValue};
+        
+        if (name === 'result') {
+            if (value !== Result.Missed) newState.missedReason = undefined;
+            if (value === Result.InProgress) newState.closeType = undefined;
+        }
+
+        return newState;
+    });
   };
 
   const handleAnalysisChange = (section: keyof Omit<typeof trade, 'id' | 'pnl'>, field: 'notes' | 'image', value: string) => {
@@ -126,29 +151,26 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
       return;
     }
 
-    // Pass a compliant Trade object to the parent.
-    // The parent will calculate riskAmount and PnL.
-    // FIX: The complex type assertion was causing a TypeScript error.
-    // Spreading the `trade` state and then explicitly defining the remaining properties
-    // ensures the created object correctly matches the `Trade` type.
     const tradeData: Trade = {
       ...trade,
-      id: tradeToEdit?.id || '', // Parent will handle UUID for new trades
-      riskAmount: 0, // Placeholder, will be calculated in App.tsx
-      pnl: 0, // Placeholder, will be calculated in App.tsx
+      id: tradeToEdit?.id || '', 
+      riskAmount: 0,
+      pnl: 0,
+      date: new Date(trade.date).toISOString(), // Convert local time to ISO string
     };
 
     onSave(tradeData);
   };
 
   const isFormValid = trade.accountId && trade.pair;
+  const isClosedTrade = trade.result !== Result.InProgress;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">Date</label>
-          <input type="date" name="date" value={trade.date} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9" />
+          <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9" />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">Account</label>
@@ -165,13 +187,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Setup</label>
-          <select name="setup" value={trade.setup} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            <option value="">Select Setup</option>
-            {setups.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div>
           <label className="block text-sm font-medium mb-1">Direction</label>
           <select name="direction" value={trade.direction} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
             <option value={Direction.Long}>Long</option>
@@ -179,12 +194,33 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
           </select>
         </div>
         <div>
+          <label className="block text-sm font-medium mb-1">Entry Type</label>
+          <select name="entry" value={trade.entry} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
+            <option value="">Select Entry</option>
+            {entries.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+         <div>
+          <label className="block text-sm font-medium mb-1">Stoploss Type</label>
+          <select name="stoploss" value={trade.stoploss} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
+            <option value="">Select Stoploss</option>
+            {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Take Profit Type</label>
+          <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
+            <option value="">Select Take Profit</option>
+            {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+         <div>
           <label className="block text-sm font-medium mb-1">Result</label>
           <select name="result" value={trade.result} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
             {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
           </select>
         </div>
-         <div>
+        <div>
           <label className="block text-sm font-medium mb-1">Risk (%)</label>
           <select name="risk" value={trade.risk} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
             {risks.map(r => <option key={r} value={r}>{r}</option>)}
@@ -198,6 +234,25 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
           <label className="block text-sm font-medium mb-1">Commission</label>
           <input type="number" name="commission" value={trade.commission || 0} onChange={handleChange} step="any" className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9" />
         </div>
+         {trade.result === Result.Missed && (
+          <div>
+            <label className="block text-sm font-medium mb-1">Missed Reason</label>
+            <select name="missedReason" value={trade.missedReason || ''} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
+              <option value="">Select Reason</option>
+              <option value="Fear">Fear</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        )}
+         {isClosedTrade && (
+          <div>
+            <label className="block text-sm font-medium mb-1">Close Type</label>
+            <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
+              <option value="">Select Type</option>
+              {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+            </select>
+          </div>
+        )}
       </div>
       
       <div className="space-y-4">
