@@ -10,7 +10,7 @@ import DataView from './components/DataView';
 import NotesView from './components/NotesView';
 import NoteDetail from './components/NoteDetail';
 import { calculateStats, filterTradesByPeriod } from './services/statisticsService';
-import { analyzeTradeGroups, calculateStreaks, findKeyCorrelations } from './services/analysisService';
+import { analyzeTradeGroups, calculateStreaks } from './services/analysisService';
 import Auth from './components/Auth';
 import * as db from './services/databaseService';
 
@@ -72,17 +72,48 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
         return filterTradesByPeriod(trades, periodMap[period]);
     }, [trades, period]);
 
-    const selectedGroupTrades = useMemo(() => {
-        return analysisTrades.filter(t => t.result === activeGroup);
-    }, [analysisTrades, activeGroup]);
-
-    const patterns = useMemo(() => findKeyCorrelations(selectedGroupTrades), [selectedGroupTrades]);
-    
     const analysisData = useMemo(() => analyzeTradeGroups(analysisTrades), [analysisTrades]);
     const streaks = useMemo(() => calculateStreaks(analysisTrades), [analysisTrades]);
 
     const selectedGroupStats = analysisData[activeGroup];
     
+    const patterns = useMemo(() => {
+        if (!selectedGroupStats || selectedGroupStats.count < 3) {
+            return "Not enough trades to find meaningful patterns.";
+        }
+
+        const foundPatterns: string[] = [];
+        const total = selectedGroupStats.count;
+
+        const distributions: { title: string; data?: Record<string, number> }[] = [
+            { title: 'Entry Type', data: selectedGroupStats.distributionByEntry },
+            { title: 'Direction', data: selectedGroupStats.distributionByDirection },
+            { title: 'Pair', data: selectedGroupStats.distributionByPair },
+            { title: 'Day of Week', data: selectedGroupStats.distributionByDay },
+            { title: 'R:R', data: selectedGroupStats.distributionByRR },
+            { title: 'Take Profit', data: selectedGroupStats.distributionByTakeProfit },
+            { title: 'Stoploss', data: selectedGroupStats.distributionByStoploss },
+            { title: 'Close Type', data: selectedGroupStats.distributionByCloseType },
+        ];
+
+        for (const dist of distributions) {
+            if (dist.data) {
+                for (const [key, value] of Object.entries(dist.data)) {
+                    const percentage = (value / total) * 100;
+                    if (percentage >= 70) {
+                        foundPatterns.push(`- ${percentage.toFixed(0)}% ${dist.title}: ${key}`);
+                    }
+                }
+            }
+        }
+
+        if (foundPatterns.length === 0) {
+            return "No single parameter shows a concentration of 70% or more.";
+        }
+
+        return foundPatterns.join('\n');
+    }, [selectedGroupStats]);
+
     const DistributionChart: React.FC<{ title: string; data: Record<string, number>; total: number }> = ({ title, data, total }) => {
         // FIX: Explicitly cast values to numbers for sorting. This helps TypeScript's
         // type inference in complex scenarios and prevents potential type errors.
