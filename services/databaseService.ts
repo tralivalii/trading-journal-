@@ -196,11 +196,13 @@ const getDefaultUserData = (): UserData => {
       {
         id: crypto.randomUUID(),
         date: new Date(new Date().setDate(today.getDate() - 1)).toISOString().split('T')[0],
+        title: "Market Reversal Watch",
         content: "Market is showing signs of a potential reversal. Need to be cautious with long positions and look for confirmation before entering shorts."
       },
       {
         id: crypto.randomUUID(),
         date: new Date(new Date().setDate(today.getDate() - 7)).toISOString().split('T')[0],
+        title: "Psychology Check-in",
         content: "Psychology check: I've been hesitating on entries this week. Need to trust my analysis and stick to the plan. FOMO is not a strategy."
       }
     ],

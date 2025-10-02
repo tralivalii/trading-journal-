@@ -39,7 +39,6 @@ export interface Trade {
   commission?: number;
   stoploss: string;
   takeprofit: string;
-  missedReason?: 'Fear' | 'Other';
   
   // New fields for deeper analysis
   entryPrice?: number;
@@ -71,6 +70,7 @@ export interface User {
 export interface Note {
   id: string;
   date: string;
+  title: string;
   content: string;
 }
 

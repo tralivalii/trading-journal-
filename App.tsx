@@ -13,6 +13,7 @@ import { calculateStats, filterTradesByPeriod } from './services/statisticsServi
 import { analyzeTradeGroups, calculateStreaks } from './services/analysisService';
 import Auth from './components/Auth';
 import * as db from './services/databaseService';
+import { ICONS } from './constants';
 
 declare const Chart: any;
 
@@ -21,24 +22,33 @@ type Period = 'week' | 'month' | 'quarter' | 'all';
 type AnalysisGroup = Result.Win | Result.Loss | Result.Breakeven | Result.Missed;
 
 
-const StatCard: React.FC<{ label: string, value: string | number, className?: string }> = ({ label, value, className }) => (
-    <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50 text-center flex flex-col justify-center">
-        <p className="text-xs text-gray-400 uppercase tracking-wider">{label}</p>
-        <p className={`text-xl font-bold ${className}`}>{value}</p>
+const StatCard: React.FC<{ label: string, value: string | number, className?: string }> = ({ label, value, className }) => {
+    const valueStr = String(value);
+    const fontSizeClass = valueStr.length > 8 ? 'text-xl' : 'text-2xl';
+    
+    return (
+        <div className="bg-[#232733] p-4 rounded-lg border border-gray-700/50 text-center flex flex-col justify-center">
+            <p className="text-sm font-medium text-[#8A91A8] uppercase tracking-wider">{label}</p>
+            <p className={`font-bold ${fontSizeClass} ${className}`}>{value}</p>
+        </div>
+    );
+};
+
+// Component moved from AnalysisView
+const DataCard: React.FC<{ title: string, children: React.ReactNode, className?: string, headerAction?: React.ReactNode }> = ({ title, children, className, headerAction }) => (
+    <div className={`bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col ${className}`}>
+        <div className="flex justify-between items-center p-4 border-b border-gray-700/50">
+            <h2 className="text-xl font-semibold text-white">{title}</h2>
+            {headerAction && <div>{headerAction}</div>}
+        </div>
+        <div className="p-4 flex-grow flex flex-col">{children}</div>
     </div>
 );
 
-// Component moved from AnalysisView
-const DataCard: React.FC<{ title: string, children: React.ReactNode, className?: string }> = ({ title, children, className }) => (
-    <div className={`bg-gray-800/50 rounded-lg border border-gray-700/50 ${className}`}>
-        <h2 className="text-xl font-semibold text-white p-4 border-b border-gray-700">{title}</h2>
-        <div className="p-4">{children}</div>
-    </div>
-);
 
 // Component moved from AnalysisView
 const NoData: React.FC<{ message?: string }> = ({ message }) => (
-    <div className="text-center py-8 text-gray-500">
+    <div className="text-center py-8 text-[#8A91A8] flex-grow flex items-center justify-center">
         <p>{message || "Not enough data to display."}</p>
     </div>
 );
@@ -51,13 +61,14 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
     const filteredTrades = useMemo(() => filterTradesByPeriod(trades, period), [trades, period]);
     const stats: Stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
-    const formatCurrency = (amount: number, currency: string | undefined = 'USD') => amount.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' });
+    const formatCurrency = (amount: number, currency: string | undefined = 'USD') => amount.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const formatPercent = (value: number) => `${value.toFixed(2)}%`;
     const formatRR = (value: number) => `${value.toFixed(2)}R`;
 
     const mainCurrency = accounts.length > 0 ? (accounts[0].currency || 'USD') : 'USD';
     // FIX: Explicitly type the parameters of the reduce function to prevent a type inference error.
     const totalBalance = useMemo(() => Array.from(accountBalances.values()).reduce((sum: number, balance: number) => sum + balance, 0), [accountBalances]);
+    
 
     // --- Analysis Logic (from former AnalysisView) ---
     const [activeGroup, setActiveGroup] = useState<AnalysisGroup>(Result.Loss);
@@ -82,7 +93,7 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
             return "Not enough trades to find meaningful patterns.";
         }
 
-        const foundPatterns: string[] = [];
+        const foundPatterns: { percentage: number, title: string, key: string }[] = [];
         const total = selectedGroupStats.count;
 
         const distributions: { title: string; data?: Record<string, number> }[] = [
@@ -101,7 +112,7 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                 for (const [key, value] of Object.entries(dist.data)) {
                     const percentage = (value / total) * 100;
                     if (percentage >= 70) {
-                        foundPatterns.push(`- ${percentage.toFixed(0)}% ${dist.title}: ${key}`);
+                        foundPatterns.push({ percentage: parseFloat(percentage.toFixed(0)), title: dist.title, key });
                     }
                 }
             }
@@ -111,7 +122,7 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
             return "No single parameter shows a concentration of 70% or more.";
         }
 
-        return foundPatterns.join('\n');
+        return foundPatterns;
     }, [selectedGroupStats]);
 
     const DistributionChart: React.FC<{ title: string; data: Record<string, number>; total: number }> = ({ title, data, total }) => {
@@ -121,26 +132,26 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
 
         if (sortedData.length === 0) return (
             <div>
-                 <h4 className="text-md font-semibold text-gray-200 mb-2">{title}</h4>
-                 <div className="text-sm text-gray-500">No data available.</div>
+                 <h4 className="text-sm font-semibold text-[#8A91A8] mb-3 uppercase">{title}</h4>
+                 <div className="text-sm text-[#8A91A8]">No data available.</div>
             </div>
         );
 
         return (
             <div>
-                <h4 className="text-md font-semibold text-gray-200 mb-2">{title}</h4>
-                <div className="space-y-2 text-sm">
+                <h4 className="text-sm font-semibold text-[#8A91A8] mb-3 uppercase">{title}</h4>
+                <div className="space-y-4 text-sm">
                     {sortedData.map(([key, value]) => {
                         // FIX: Explicitly cast value to a number to prevent type errors during the arithmetic operation.
                         const percentage = total > 0 ? (Number(value) / total) * 100 : 0;
                         return (
                             <div key={key}>
-                                <div className="flex justify-between items-center text-gray-300 mb-1">
-                                    <span>{key}</span>
-                                    <span>{value} <span className="text-gray-500">({percentage.toFixed(0)}%)</span></span>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[#F0F0F0] truncate">{key}</span>
+                                    <span className="text-right text-[#8A91A8] font-medium">{value} ({percentage.toFixed(0)}%)</span>
                                 </div>
-                                <div className="w-full bg-gray-700/50 rounded-full h-1.5">
-                                    <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+                                <div className="w-full bg-gray-700 rounded-full h-1.5">
+                                    <div className="bg-[#3B82F6] h-1.5 rounded-full" style={{ width: `${percentage}%` }}></div>
                                 </div>
                             </div>
                         );
@@ -161,7 +172,7 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                         <button 
                             key={p} 
                             onClick={() => setPeriod(p)}
-                            className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
+                            className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
                         >
                             {p === 'all' ? 'All Time' : `This ${p}`}
                         </button>
@@ -169,23 +180,24 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
-                 <StatCard label="Net Profit" value={formatCurrency(stats.netProfit, mainCurrency)} className={stats.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}/>
-                 <div 
-                    className="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50 text-center cursor-pointer hover:border-blue-500 transition-colors flex flex-col justify-center"
-                    onClick={() => setIsBalancesModalOpen(true)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setIsBalancesModalOpen(true)}
-                  >
-                    <p className="text-xs text-gray-400 uppercase tracking-wider">Total Balance</p>
-                    <p className="text-xl font-bold text-cyan-400">{formatCurrency(totalBalance, mainCurrency)}</p>
-                </div>
-                 <StatCard label="Total Trades" value={stats.totalTrades} className="text-white" />
-                 <StatCard label="Win Rate" value={formatPercent(stats.winRate)} className="text-cyan-400"/>
-                 <StatCard label="Avg R:R" value={formatRR(stats.averageRR)} className="text-purple-400"/>
-                 <StatCard label="Total RR" value={formatRR(stats.totalRR)} className="text-indigo-400"/>
-                 <StatCard label="W/L/B/M" value={`${stats.wins}/${stats.losses}/${stats.breakevens}/${stats.missed}`} className="text-yellow-400"/>
+            <div 
+                className="bg-[#232733] p-6 rounded-lg border border-gray-700/50 text-center cursor-pointer hover:border-[#3B82F6] transition-colors flex flex-col justify-center mb-8"
+                onClick={() => setIsBalancesModalOpen(true)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && setIsBalancesModalOpen(true)}
+              >
+                <p className="text-base font-medium text-[#8A91A8] uppercase tracking-wider">Total Balance</p>
+                <p className="font-bold text-[#F0F0F0]" style={{fontSize: 'clamp(1.75rem, 5vw, 2.5rem)'}}>{formatCurrency(totalBalance, mainCurrency)}</p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
+                 <StatCard label="Net Profit" value={formatCurrency(stats.netProfit, mainCurrency)} className={stats.netProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}/>
+                 <StatCard label="Total Trades" value={stats.totalTrades} className="text-[#F0F0F0]" />
+                 <StatCard label="Win Rate" value={formatPercent(stats.winRate)} className={stats.winRate >= 50 ? 'text-[#10B981]' : 'text-[#EF4444]' }/>
+                 <StatCard label="Avg R:R" value={formatRR(stats.averageRR)} className="text-[#F0F0F0]"/>
+                 <StatCard label="Total RR" value={formatRR(stats.totalRR)} className="text-[#F0F0F0]"/>
+                 <StatCard label="W/L/B/M" value={`${stats.wins}/${stats.losses}/${stats.breakevens}/${stats.missed}`} className="text-[#F0F0F0]"/>
             </div>
 
             {/* --- Merged Analysis Content --- */}
@@ -195,20 +207,20 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                 </div>
 
                 {trades.length === 0 ? (
-                     <div className="text-center py-16 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                        <p className="text-gray-500">
+                     <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50">
+                        <p className="text-[#8A91A8]">
                             Add some trades to see your analysis.
                         </p>
                     </div>
                 ) : (
                     <div className="space-y-8">
                         <DataCard title="Performance Group Comparison">
-                            <div className="flex flex-wrap gap-2 mb-4 border-b border-gray-700 pb-4">
+                            <div className="flex flex-wrap gap-2 mb-4 border-b border-gray-700/50 pb-4">
                                 {(Object.keys(analysisData) as AnalysisGroup[]).map(group => (
                                     <button 
                                         key={group} 
                                         onClick={() => setActiveGroup(group)}
-                                        className={`px-4 py-1.5 rounded-md text-sm transition-colors ${activeGroup === group ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                                        className={`px-4 py-1.5 rounded-md text-sm transition-colors ${activeGroup === group ? 'bg-[#3B82F6] text-white' : 'bg-[#2A2F3B] hover:bg-gray-700 text-[#8A91A8] hover:text-white'}`}>
                                         {group} ({analysisData[group]?.count || 0})
                                     </button>
                                 ))}
@@ -239,28 +251,66 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                              <DataCard title="Streak Analysis" className="lg:col-span-1">
                                 {streaks.longestWinStreak > 0 || streaks.longestLossStreak > 0 ? (
-                                    <div className="space-y-4 text-center">
+                                    <div className="space-y-6 text-center">
                                         <div>
-                                            <p className="text-gray-400 text-xs uppercase">Longest Win Streak</p>
-                                            <p className="text-2xl font-bold text-green-400">{streaks.longestWinStreak}</p>
+                                            <p className="text-[#8A91A8] text-xs uppercase">Longest Win Streak</p>
+                                            <p className="text-3xl font-bold text-[#10B981]">{streaks.longestWinStreak}</p>
                                         </div>
                                          <div>
-                                            <p className="text-gray-400 text-xs uppercase">Longest Loss Streak</p>
-                                            <p className="text-2xl font-bold text-red-400">{streaks.longestLossStreak}</p>
+                                            <p className="text-[#8A91A8] text-xs uppercase">Longest Loss Streak</p>
+                                            <p className="text-3xl font-bold text-[#EF4444]">{streaks.longestLossStreak}</p>
                                         </div>
                                         <div>
-                                            <p className="text-gray-400 text-xs uppercase">Current Streak</p>
-                                            <p className={`text-2xl font-bold ${streaks.currentStreak.type === 'win' ? 'text-green-400' : streaks.currentStreak.type === 'loss' ? 'text-red-400' : 'text-gray-400'}`}>
-                                                {streaks.currentStreak.count} {streaks.currentStreak.type !== 'none' ? (streaks.currentStreak.type === 'win' ? 'Wins' : 'Losses') : 'N/A'}
-                                            </p>
+                                            <p className="text-[#8A91A8] text-xs uppercase">Current Streak</p>
+                                            {streaks.currentStreak.type !== 'none' ? (
+                                                <>
+                                                    <p className={`text-5xl font-bold ${streaks.currentStreak.type === 'win' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                                        {streaks.currentStreak.count}
+                                                    </p>
+                                                    <p className={`text-base ${streaks.currentStreak.type === 'win' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                                        {streaks.currentStreak.type === 'win' ? 'Wins' : 'Losses'}
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                <p className="text-5xl font-bold text-[#8A91A8]">N/A</p>
+                                            )}
                                         </div>
                                     </div>
                                 ) : <NoData />}
                             </DataCard>
 
-                            <DataCard title="Patterns & Correlations" className="lg:col-span-2">
-                                <div className="text-gray-300 whitespace-pre-wrap text-sm min-h-[96px] flex items-center">
-                                    {patterns}
+                            <DataCard 
+                                title="Patterns & Correlations" 
+                                className="lg:col-span-2"
+                                headerAction={
+                                    <div className="relative group">
+                                        <button className="text-[#8A91A8] hover:text-white transition-colors">
+                                            <span className="w-5 h-5">{ICONS.eye}</span>
+                                        </button>
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 bg-gray-900 text-white text-xs rounded-md border border-gray-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                            View Details
+                                        </div>
+                                    </div>
+                                }
+                            >
+                                <div className="text-[#F0F0F0] text-sm flex-grow">
+                                    {typeof patterns === 'string' ? (
+                                        <div className="flex items-center justify-center h-full text-[#8A91A8]">{patterns}</div>
+                                    ) : Array.isArray(patterns) && patterns.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {patterns.map((p, i) => (
+                                                <div key={i}>
+                                                    <span className="text-[#8A91A8]">
+                                                        <span className="font-bold">{p.percentage}% </span>
+                                                        {p.title}: 
+                                                    </span>
+                                                    <span className="font-semibold text-[#F0F0F0] ml-2">{p.key}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-center h-full text-[#8A91A8]">No significant patterns found.</div>
+                                    )}
                                 </div>
                             </DataCard>
                         </div>
@@ -275,12 +325,12 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                              <div className="col-span-2">
                                 <span className="font-semibold text-white">{acc.name}</span>
                                 <br />
-                                <span className="text-xs text-gray-400">Initial: {formatCurrency(acc.initialBalance, acc.currency)}</span>
+                                <span className="text-xs text-[#8A91A8]">Initial: {formatCurrency(acc.initialBalance, acc.currency)}</span>
                              </div>
                              <span className="text-lg font-bold text-right text-cyan-400">{formatCurrency(accountBalances.get(acc.id) ?? 0, acc.currency)}</span>
                          </div>
                      ))}
-                     {accounts.length === 0 && <p className="text-center text-gray-500 py-4">No accounts created yet.</p>}
+                     {accounts.length === 0 && <p className="text-center text-[#8A91A8] py-4">No accounts created yet.</p>}
                  </div>
              </Modal>
         </div>
@@ -320,6 +370,26 @@ function App() {
   const [noteToViewOrEdit, setNoteToViewOrEdit] = useState<Note | null>(null);
   const [isDeleteNoteModalOpen, setDeleteNoteModalOpen] = useState(false);
   const [noteIdToDelete, setNoteIdToDelete] = useState<string | null>(null);
+  
+  // FAB State
+  const [showFab, setShowFab] = useState(true);
+  const lastScrollY = useRef(0);
+
+  const controlFabVisibility = useCallback(() => {
+      if (window.scrollY > lastScrollY.current && window.scrollY > 100) { // if scroll down
+          setShowFab(false);
+      } else { // if scroll up
+          setShowFab(true);
+      }
+      lastScrollY.current = window.scrollY;
+  }, []);
+
+  useEffect(() => {
+      window.addEventListener('scroll', controlFabVisibility);
+      return () => {
+          window.removeEventListener('scroll', controlFabVisibility);
+      };
+  }, [controlFabVisibility]);
 
   // Fetch data from DB on user login
   useEffect(() => {
@@ -418,6 +488,14 @@ function App() {
     setDetailModalOpen(true);
   }
 
+  const handleEditFromDetail = (trade: Trade) => {
+    setDetailModalOpen(false);
+    // Use a small timeout to make the modal transition smoother
+    setTimeout(() => {
+        handleEditTrade(trade);
+    }, 150); 
+  };
+
   const handleDeleteTrade = (id: string) => {
     setTradeIdToDelete(id);
     setDeleteTradeModalOpen(true);
@@ -429,23 +507,6 @@ function App() {
     }
     setDeleteTradeModalOpen(false);
     setTradeIdToDelete(null);
-  };
-
-  const handleUpdateResult = (tradeId: string, newResult: Result) => {
-    setTradesAndSave(prevTrades => {
-      const tradeIndex = prevTrades.findIndex(t => t.id === tradeId);
-      if (tradeIndex === -1) return prevTrades;
-
-      const originalTrade = prevTrades[tradeIndex];
-      let newPnl = 0;
-      if (newResult === Result.Win) newPnl = originalTrade.riskAmount * originalTrade.rr;
-      else if (newResult === Result.Loss) newPnl = -originalTrade.riskAmount;
-      
-      const updatedTrade = { ...originalTrade, result: newResult, pnl: newPnl - (originalTrade.commission || 0) };
-      const newTrades = [...prevTrades];
-      newTrades[tradeIndex] = updatedTrade;
-      return newTrades;
-    });
   };
 
   const handleSaveTrade = (tradeDataFromForm: Trade) => {
@@ -478,10 +539,11 @@ function App() {
   };
   
   // Note Handlers
-  const handleAddNote = (content: string) => {
+  const handleAddNote = (title: string, content: string) => {
       const newNote: Note = {
           id: crypto.randomUUID(),
           date: new Date().toISOString().split('T')[0],
+          title,
           content,
       };
       setNotesAndSave(prev => [newNote, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
@@ -493,8 +555,8 @@ function App() {
       setNoteModalOpen(true);
   };
   
-  const handleUpdateNote = (noteId: string, content: string) => {
-      setNotesAndSave(prev => prev.map(n => n.id === noteId ? { ...n, content } : n));
+  const handleUpdateNote = (noteId: string, title: string, content: string) => {
+      setNotesAndSave(prev => prev.map(n => n.id === noteId ? { ...n, title, content } : n));
       setNoteModalOpen(false);
       setNoteToViewOrEdit(null);
       setNoteEditMode(false);
@@ -534,8 +596,12 @@ function App() {
   };
 
   const NavItem: React.FC<{view: View, label: string}> = ({view, label}) => (
-      <button onClick={() => setActiveView(view)} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeView === view ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
+      <button 
+        onClick={() => setActiveView(view)} 
+        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors relative ${activeView === view ? 'text-[#F0F0F0]' : 'text-[#8A91A8] hover:text-[#F0F0F0]'}`}
+      >
         {label}
+        {activeView === view && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6] rounded-full"></span>}
       </button>
   );
 
@@ -545,14 +611,14 @@ function App() {
 
   if (isLoading) {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] text-white">
             <div className="text-xl animate-pulse">Loading Your Journal...</div>
         </div>
     );
   }
 
   return (
-    <div className="bg-gray-900 text-gray-100 min-h-screen font-sans">
+    <div className="bg-[#1A1D26] text-[#F0F0F0] min-h-screen font-sans">
       <div className="container mx-auto p-4 md:p-8">
         <header className="flex justify-between items-center mb-8 flex-wrap gap-4">
             <div className="flex items-center gap-4 w-full justify-center md:w-auto md:justify-start">
@@ -561,13 +627,10 @@ function App() {
                 <NavItem view="notes" label="Notes" />
                 <NavItem view="data" label="Data" />
             </div>
-            <div className="flex items-center gap-4 w-full justify-between md:w-auto mt-4 md:mt-0">
-                <button onClick={handleAddTrade} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-sm font-medium">
-                    Add New Trade
-                </button>
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400 hidden sm:inline">{currentUser.email}</span>
-                    <button onClick={handleLogout} className="px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-red-600 transition-colors text-sm font-medium">
+            <div className="flex items-center gap-4 w-full justify-center md:w-auto mt-4 md:mt-0">
+                <div className="flex items-center gap-4">
+                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{currentUser.email}</span>
+                    <button onClick={handleLogout} className="text-sm font-medium text-[#8A91A8] hover:text-[#3B82F6] transition-colors">
                         Logout
                     </button>
                 </div>
@@ -575,7 +638,7 @@ function App() {
         </header>
 
         <main>
-          {activeView === 'journal' && <TradesList trades={trades} accounts={accounts} onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onUpdateResult={handleUpdateResult} />}
+          {activeView === 'journal' && <TradesList trades={trades} accounts={accounts} onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} />}
           {activeView === 'dashboard' && <Dashboard trades={trades} accounts={accounts} accountBalances={accountBalances} />}
           {activeView === 'notes' && <NotesView notes={notes} onAddNote={handleAddNote} onViewNote={handleViewNote} />}
           {activeView === 'data' && <DataView 
@@ -595,12 +658,26 @@ function App() {
         </main>
       </div>
 
+      <button
+          onClick={handleAddTrade}
+          className={`fixed bottom-6 right-6 w-14 h-14 bg-[#3B82F6] rounded-full text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.2)] transform transition-transform duration-300 ease-in-out ${showFab ? 'scale-100' : 'scale-0'}`}
+          aria-label="Add New Trade"
+      >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+      </button>
+
       <Modal isOpen={isFormModalOpen} onClose={() => setFormModalOpen(false)} title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'}>
         <TradeForm onSave={handleSaveTrade} onCancel={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={accounts} pairs={pairs} entries={entries} risks={risks} defaultSettings={defaultSettings} stoplosses={stoplosses} takeprofits={takeprofits} closeTypes={closeTypes} />
       </Modal>
       
-      <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details">
-        {tradeToView && <TradeDetail trade={tradeToView} account={accounts.find(a => a.id === tradeToView.accountId)} />}
+      <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">
+        {tradeToView && <TradeDetail 
+            trade={tradeToView} 
+            account={accounts.find(a => a.id === tradeToView.accountId)} 
+            onEdit={handleEditFromDetail}
+        />}
       </Modal>
 
       <Modal isOpen={isDeleteConfirmModalOpen} onClose={() => setDeleteConfirmModalOpen(false)} title="Confirm Account Deletion">
@@ -633,7 +710,7 @@ function App() {
         </div>
       </Modal>
 
-      <Modal isOpen={isNoteModalOpen} onClose={() => setNoteModalOpen(false)} title={noteToViewOrEdit ? new Date(noteToViewOrEdit.date).toLocaleDateString() : 'Note'}>
+      <Modal isOpen={isNoteModalOpen} onClose={() => setNoteModalOpen(false)} title={noteToViewOrEdit ? noteToViewOrEdit.title : 'Note'}>
         {noteToViewOrEdit && <NoteDetail 
             note={noteToViewOrEdit}
             isEditMode={isNoteEditMode}

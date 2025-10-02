@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Trade, Account, Direction, Result, DefaultSettings, Analysis } from '../types';
 
 interface TradeFormProps {
@@ -28,7 +28,6 @@ const initialTradeState = {
   stoploss: '',
   takeprofit: '',
   result: Result.InProgress,
-  missedReason: undefined,
   closeType: undefined,
   analysisD1: { ...emptyAnalysis },
   analysis1h: { ...emptyAnalysis },
@@ -36,6 +35,29 @@ const initialTradeState = {
   analysisResult: { ...emptyAnalysis },
 };
 
+// --- Helper Components for new design ---
+
+const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+    <div>
+        <label className="block text-sm text-[#8A91A8] uppercase tracking-wider mb-2">{label}</label>
+        {children}
+    </div>
+);
+
+// --- Unified Form Control Styles ---
+const baseControlClasses = "w-full bg-[#1A1D26] border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors";
+
+// Classes for select elements with custom arrows
+const selectClasses = `${baseControlClasses} pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4M8 15l4-4 4 4'/%3e%3c/svg%3e")] disabled:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500`;
+
+// Classes for standard text inputs (date, textarea)
+const textInputClasses = `${baseControlClasses} px-3 py-2`;
+
+// Classes for number inputs (hides default spinners)
+const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
+
+
+// --- Re-styled Components ---
 
 const AnalysisSection: React.FC<{
     title: string;
@@ -50,32 +72,34 @@ const AnalysisSection: React.FC<{
     }
     
     return (
-        <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700/50">
+        <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
             <h3 className="text-lg font-semibold text-white mb-3">{title}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label className="block text-sm font-medium mb-1">Chart Screenshot</label>
-                    <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => onFileChange(e.target.files ? e.target.files[0] : null)}
-                        className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500"
-                    />
+                    <FormField label="Chart Screenshot">
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => onFileChange(e.target.files ? e.target.files[0] : null)}
+                            className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
+                        />
+                    </FormField>
                     {analysis.image && (
-                        <div className="mt-2 relative">
-                           <img src={analysis.image} alt={`${title} preview`} className="rounded-md max-h-40" />
-                           <button onClick={handleImageRemove} className="absolute top-1 right-1 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors">&times;</button>
+                        <div className="mt-3 relative">
+                           <img src={analysis.image} alt={`${title} preview`} className="rounded-md max-h-40 border border-gray-700" />
+                           <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none">&times;</button>
                         </div>
                     )}
                 </div>
                 <div>
-                    <label className="block text-sm font-medium mb-1">Notes</label>
-                    <textarea
-                        value={analysis.notes || ''}
-                        onChange={(e) => onNotesChange(e.target.value)}
-                        rows={5}
-                        className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    ></textarea>
+                    <FormField label="Notes">
+                        <textarea
+                            value={analysis.notes || ''}
+                            onChange={(e) => onNotesChange(e.target.value)}
+                            rows={5}
+                            className={textInputClasses}
+                        ></textarea>
+                    </FormField>
                 </div>
             </div>
         </div>
@@ -114,7 +138,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
         let newState = {...prev, [name]: updatedValue};
         
         if (name === 'result') {
-            if (value !== Result.Missed) newState.missedReason = undefined;
             if (value === Result.InProgress) newState.closeType = undefined;
         }
 
@@ -167,104 +190,94 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Date</label>
-          <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9" />
+        <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
+            <div className="flex justify-between items-center mb-5">
+                <h3 className="text-xl font-semibold text-white">Trade Details</h3>
+                {tradeToEdit && (
+                    <button type="submit" disabled={!isFormValid} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium text-sm">
+                        Update Trade
+                    </button>
+                )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
+                <FormField label="Date">
+                    <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
+                </FormField>
+                <FormField label="Account">
+                    <select name="accountId" value={trade.accountId} onChange={handleChange} required className={selectClasses}>
+                        <option value="">Select Account</option>
+                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="Pair">
+                    <select name="pair" value={trade.pair} onChange={handleChange} required className={selectClasses}>
+                        <option value="">Select Pair</option>
+                        {pairs.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="Direction">
+                    <select name="direction" value={trade.direction} onChange={handleChange} required className={selectClasses}>
+                        <option value={Direction.Long}>Long</option>
+                        <option value={Direction.Short}>Short</option>
+                    </select>
+                </FormField>
+
+                <FormField label="Entry Type">
+                    <select name="entry" value={trade.entry} onChange={handleChange} className={selectClasses}>
+                        <option value="">Select Entry</option>
+                        {entries.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="R:R Ratio">
+                    <input type="number" name="rr" value={trade.rr} onChange={handleChange} required step="any" className={numberInputClasses} />
+                </FormField>
+                <FormField label="SL Type">
+                    <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
+                        <option value="">Select Stoploss</option>
+                        {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="TP Type">
+                    <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={selectClasses}>
+                        <option value="">Select Take Profit</option>
+                        {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </FormField>
+
+                <FormField label="Result">
+                    <select name="result" value={trade.result} onChange={handleChange} required className={selectClasses}>
+                        {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="Risk (%)">
+                    <select name="risk" value={trade.risk} onChange={handleChange} className={selectClasses}>
+                        {risks.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="Commission ($)">
+                    <input type="number" name="commission" value={trade.commission || 0} onChange={handleChange} step="any" className={numberInputClasses} />
+                </FormField>
+                <FormField label="Close Type">
+                    <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
+                        <option value="">Select Type</option>
+                        {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                    </select>
+                </FormField>
+            </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Account</label>
-          <select name="accountId" value={trade.accountId} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            <option value="">Select Account</option>
-            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Pair</label>
-          <select name="pair" value={trade.pair} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            <option value="">Select Pair</option>
-            {pairs.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Direction</label>
-          <select name="direction" value={trade.direction} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            <option value={Direction.Long}>Long</option>
-            <option value={Direction.Short}>Short</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Entry Type</label>
-          <select name="entry" value={trade.entry} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            <option value="">Select Entry</option>
-            {entries.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-         <div>
-          <label className="block text-sm font-medium mb-1">Stoploss Type</label>
-          <select name="stoploss" value={trade.stoploss} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            <option value="">Select Stoploss</option>
-            {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Take Profit Type</label>
-          <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            <option value="">Select Take Profit</option>
-            {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-         <div>
-          <label className="block text-sm font-medium mb-1">Result</label>
-          <select name="result" value={trade.result} onChange={handleChange} required className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Risk (%)</label>
-          <select name="risk" value={trade.risk} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-            {risks.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">R:R</label>
-          <input type="number" name="rr" value={trade.rr} onChange={handleChange} required step="any" className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Commission</label>
-          <input type="number" name="commission" value={trade.commission || 0} onChange={handleChange} step="any" className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9" />
-        </div>
-         {trade.result === Result.Missed && (
-          <div>
-            <label className="block text-sm font-medium mb-1">Missed Reason</label>
-            <select name="missedReason" value={trade.missedReason || ''} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-              <option value="">Select Reason</option>
-              <option value="Fear">Fear</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-        )}
-         {isClosedTrade && (
-          <div>
-            <label className="block text-sm font-medium mb-1">Close Type</label>
-            <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 h-9">
-              <option value="">Select Type</option>
-              {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
-            </select>
-          </div>
-        )}
-      </div>
       
-      <div className="space-y-4">
-        <AnalysisSection title="D1" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
-        <AnalysisSection title="1h" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
-        <AnalysisSection title="5m" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
-        <AnalysisSection title="Result" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+      <div>
+            <h3 className="text-xl font-semibold text-white mb-4">Analysis Breakdown</h3>
+            <div className="space-y-4">
+                <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
+                <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
+                <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
+                <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+            </div>
       </div>
 
-      <div className="flex justify-end pt-4 space-x-3">
-        <button type="button" onClick={onCancel} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
-        <button type="submit" disabled={!isFormValid} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
+      <div className="flex justify-end pt-4">
+        <button type="submit" disabled={!isFormValid} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
             {tradeToEdit ? 'Update Trade' : 'Add Trade'}
         </button>
       </div>

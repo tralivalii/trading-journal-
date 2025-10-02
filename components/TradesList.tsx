@@ -10,7 +10,6 @@ interface TradesListProps {
   onEdit: (trade: Trade) => void;
   onView: (trade: Trade) => void;
   onDelete: (id: string) => void;
-  onUpdateResult: (id: string, result: Result) => void;
 }
 
 type JournalPeriod = 'this-month' | 'last-month' | 'this-quarter' | 'all';
@@ -27,7 +26,7 @@ const AlertIcon: React.FC<{ message: string }> = ({ message }) => (
 );
 
 
-const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onView, onDelete, onUpdateResult }) => {
+const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onView, onDelete }) => {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [period, setPeriod] = useState<JournalPeriod>('this-month');
   
@@ -56,21 +55,21 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
 
   const sortedMonthKeys = useMemo(() => Object.keys(groupedByMonthKey).sort().reverse(), [groupedByMonthKey]);
 
-  const getResultColor = (result: Result) => {
+  const getResultClasses = (result: Result) => {
     switch (result) {
-      case Result.Win: return 'text-green-400';
-      case Result.Loss: return 'text-red-400';
-      case Result.Breakeven: return 'text-gray-400';
-      case Result.InProgress: return 'text-yellow-400';
-      case Result.Missed: return 'text-blue-400';
-      default: return 'text-white';
+      case Result.Win: return 'bg-[#10B981]/10 text-[#10B981]';
+      case Result.Loss: return 'bg-[#EF4444]/10 text-[#EF4444]';
+      case Result.Breakeven: return 'bg-gray-500/10 text-[#8A91A8]';
+      case Result.InProgress: return 'bg-yellow-500/10 text-yellow-400';
+      case Result.Missed: return 'bg-blue-500/10 text-blue-400';
+      default: return 'bg-gray-700 text-white';
     }
   };
 
   const PeriodButton: React.FC<{p: JournalPeriod, label: string}> = ({ p, label }) => (
     <button 
       onClick={() => setPeriod(p)}
-      className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
+      className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
     >
       {label}
     </button>
@@ -88,12 +87,12 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                     <PeriodButton p="all" label="All Time" />
                 </div>
                 <div>
-                    <label htmlFor="accountFilter" className="text-sm text-gray-400 mr-2">Account:</label>
+                    <label htmlFor="accountFilter" className="text-sm text-[#8A91A8] mr-2">Account:</label>
                     <select 
                         id="accountFilter"
                         value={selectedAccountId}
                         onChange={(e) => setSelectedAccountId(e.target.value)}
-                        className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
                     >
                         <option value="all">All Accounts</option>
                         {accounts.map(acc => (
@@ -114,66 +113,59 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                     return (
                          <div key={monthKey}>
                              <h2 className="text-xl font-semibold text-white mb-3 pl-1">{monthName}</h2>
-                             <div className="bg-gray-800/50 rounded-lg border border-gray-700/50 overflow-x-auto">
-                                <table className="w-full text-sm text-left text-gray-300">
-                                  <thead className="text-xs text-gray-400 uppercase bg-gray-800">
-                                    <tr>
-                                      <th scope="col" className="px-6 py-3">Date</th>
-                                      <th scope="col" className="px-6 py-3">Pair</th>
-                                      <th scope="col" className="px-6 py-3">Direction</th>
-                                      <th scope="col" className="px-6 py-3">R:R</th>
-                                      <th scope="col" className="px-6 py-3">PnL</th>
-                                      <th scope="col" className="px-6 py-3">Result</th>
-                                      <th scope="col" className="px-6 py-3 text-center">Actions</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {monthTrades.map(trade => {
-                                        const account = accountsMap.get(trade.accountId);
-                                        const currency = account?.currency || 'USD';
-                                        return (
-                                      <tr key={trade.id} onClick={() => onView(trade)} className="bg-gray-800/50 border-b border-gray-700/50 hover:bg-gray-700/50 transition-colors cursor-pointer">
-                                        <td className="px-6 py-4">{new Date(trade.date).toLocaleDateString()}</td>
-                                        <td className="px-6 py-4 font-medium text-white flex items-center gap-2">
-                                            {trade.pair}
-                                            {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
-                                        </td>
-                                        <td className={`px-6 py-4 font-semibold ${trade.direction === 'Long' ? 'text-cyan-400' : 'text-purple-400'}`}>{trade.direction}</td>
-                                        <td className="px-6 py-4">{trade.rr.toFixed(2)}</td>
-                                        <td className={`px-6 py-4 font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                          {Math.abs(trade.pnl).toLocaleString('en-US', { style: 'currency', currency: currency })}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                          <select
-                                            value={trade.result}
-                                            onChange={(e) => onUpdateResult(trade.id, e.target.value as Result)}
-                                            onClick={(e) => e.stopPropagation()} // Prevent triggering other row events
-                                            className={`font-bold p-1 rounded-md border-2 border-transparent bg-transparent hover:border-gray-600 focus:bg-gray-700 focus:ring-1 focus:ring-blue-500 transition-colors ${getResultColor(trade.result)}`}
-                                          >
-                                            {Object.values(Result).map(res => (
-                                              <option key={res} value={res} className="bg-gray-800 text-white font-bold">
-                                                {res}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </td>
-                                        <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                          <div className="flex justify-center items-center gap-4">
-                                            <button onClick={() => onView(trade)} className="font-medium text-blue-500 hover:underline">View</button>
-                                            <button onClick={() => onEdit(trade)} className="font-medium text-yellow-500 hover:underline">Edit</button>
-                                            <button onClick={() => onDelete(trade.id)} className="font-medium text-red-500 hover:underline">Delete</button>
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    )})}
-                                  </tbody>
-                                </table>
+                             <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[700px] text-sm text-left text-[#F0F0F0]">
+                                    <thead className="text-xs text-[#8A91A8] uppercase bg-gray-800">
+                                        <tr>
+                                        <th scope="col" className="px-6 py-3">Date</th>
+                                        <th scope="col" className="px-6 py-3">Pair</th>
+                                        <th scope="col" className="px-6 py-3">Direction</th>
+                                        <th scope="col" className="px-6 py-3">R:R</th>
+                                        <th scope="col" className="px-6 py-3">PnL</th>
+                                        <th scope="col" className="px-6 py-3">Result</th>
+                                        <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {monthTrades.map(trade => {
+                                            const account = accountsMap.get(trade.accountId);
+                                            const currency = account?.currency || 'USD';
+                                            return (
+                                        <tr key={trade.id} onPointerUp={() => onView(trade)} className="odd:bg-[#232733] even:bg-[#2A2F3B] border-b border-gray-700/50 last:border-b-0 hover:bg-gray-700/50 transition-colors cursor-pointer">
+                                            <td className="px-6 py-4 whitespace-nowrap">{new Date(trade.date).toLocaleDateString()}</td>
+                                            <td className="px-6 py-4 font-medium text-white flex items-center gap-2 whitespace-nowrap">
+                                                {trade.pair}
+                                                {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
+                                            </td>
+                                            <td className={`px-6 py-4 font-semibold ${trade.direction === 'Long' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>{trade.direction}</td>
+                                            <td className="px-6 py-4">{trade.rr.toFixed(2)}</td>
+                                            <td className={`px-6 py-4 font-semibold ${trade.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'} whitespace-nowrap`}>
+                                            {Math.abs(trade.pnl).toLocaleString('en-US', { style: 'currency', currency: currency })}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center w-28 inline-block ${getResultClasses(trade.result)}`}>
+                                                    {trade.result}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-center whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
+                                            <div className="flex justify-center items-center gap-4">
+                                                <button onClick={() => onView(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5">{ICONS.eye} View</button>
+                                                <button onClick={() => onEdit(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5">{ICONS.pencil} Edit</button>
+                                                <button onClick={() => onDelete(trade.id)} className="font-medium text-[#EF4444] hover:underline flex items-center gap-1.5">{ICONS.trash} Delete</button>
+                                            </div>
+                                            </td>
+                                        </tr>
+                                        )})}
+                                    </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     );
                 })
             ) : (
-                <div className="text-center py-16 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50">
                     <p className="text-gray-500">
                         No trades found for the selected period.
                     </p>
