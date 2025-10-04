@@ -1,34 +1,31 @@
-import React, { createContext, useReducer, useContext, Dispatch, ReactNode } from 'react';
-import { UserData, User, Trade, Note, Account, DefaultSettings } from '../types';
-import * as db from './databaseService';
-import * as imageDB from './imageDB';
+import React, { createContext, useReducer, useContext, Dispatch, ReactNode, useEffect } from 'react';
+import { UserData, User, Trade, Note, Account, DefaultSettings, Analysis } from '../types';
+import { supabase } from './supabase';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
+
 
 // --- STATE AND ACTION TYPES ---
 
 interface AppState {
-    currentUser: User | null;
+    session: Session | null;
+    currentUser: SupabaseUser | null;
     userData: UserData | null;
     isLoading: boolean;
 }
 
 type Action =
-  | { type: 'LOGIN_SUCCESS'; payload: { user: User; data: UserData } }
-  | { type: 'LOGOUT' }
+  | { type: 'SET_SESSION'; payload: Session | null }
+  | { type: 'SET_USER_DATA'; payload: UserData | null }
   | { type: 'SET_IS_LOADING'; payload: boolean }
-  | { type: 'SET_TRADES'; payload: Trade[] }
-  | { type: 'SET_ACCOUNTS'; payload: Account[] }
-  | { type: 'SET_PAIRS'; payload: string[] }
-  | { type: 'SET_ENTRIES'; payload: string[] }
-  | { type: 'SET_RISKS'; payload: number[] }
-  | { type: 'SET_DEFAULT_SETTINGS'; payload: DefaultSettings }
-  | { type: 'SET_NOTES'; payload: Note[] }
-  | { type: 'SET_STOPLOSSES'; payload: string[] }
-  | { type: 'SET_TAKEPROFITS'; payload: string[] }
-  | { type: 'SET_CLOSETYPES'; payload: string[] };
-  
+  | { type: 'UPDATE_TRADES'; payload: Trade[] }
+  | { type: 'UPDATE_ACCOUNTS'; payload: Account[] }
+  | { type: 'UPDATE_NOTES'; payload: Note[] }
+  | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof UserData, value: any } };
+
 // --- INITIAL STATE ---
 
 const initialState: AppState = {
+    session: null,
     currentUser: null,
     userData: null,
     isLoading: true,
@@ -38,64 +35,40 @@ const initialState: AppState = {
 
 const appReducer = (state: AppState, action: Action): AppState => {
     switch (action.type) {
-        case 'LOGIN_SUCCESS':
+        case 'SET_SESSION':
             return {
                 ...state,
-                currentUser: action.payload.user,
-                userData: action.payload.data,
-                isLoading: false,
+                session: action.payload,
+                currentUser: action.payload?.user ?? null,
             };
-        case 'LOGOUT':
-            return {
+        case 'SET_USER_DATA':
+             return {
                 ...state,
-                currentUser: null,
-                userData: null,
+                userData: action.payload
             };
         case 'SET_IS_LOADING':
             return {
                 ...state,
                 isLoading: action.payload,
             };
-        case 'SET_TRADES':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { trades: action.payload });
+        case 'UPDATE_TRADES':
+             if (!state.userData) return state;
             return { ...state, userData: { ...state.userData, trades: action.payload } };
-        case 'SET_ACCOUNTS':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { accounts: action.payload });
+        case 'UPDATE_ACCOUNTS':
+             if (!state.userData) return state;
             return { ...state, userData: { ...state.userData, accounts: action.payload } };
-        case 'SET_PAIRS':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { pairs: action.payload });
-            return { ...state, userData: { ...state.userData, pairs: action.payload } };
-        case 'SET_ENTRIES':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { entries: action.payload });
-            return { ...state, userData: { ...state.userData, entries: action.payload } };
-        case 'SET_RISKS':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { risks: action.payload });
-            return { ...state, userData: { ...state.userData, risks: action.payload } };
-        case 'SET_DEFAULT_SETTINGS':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { defaultSettings: action.payload });
-            return { ...state, userData: { ...state.userData, defaultSettings: action.payload } };
-        case 'SET_NOTES':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { notes: action.payload });
+        case 'UPDATE_NOTES':
+            if (!state.userData) return state;
             return { ...state, userData: { ...state.userData, notes: action.payload } };
-        case 'SET_STOPLOSSES':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { stoplosses: action.payload });
-            return { ...state, userData: { ...state.userData, stoplosses: action.payload } };
-        case 'SET_TAKEPROFITS':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { takeprofits: action.payload });
-            return { ...state, userData: { ...state.userData, takeprofits: action.payload } };
-        case 'SET_CLOSETYPES':
-            if (!state.currentUser || !state.userData) return state;
-            db.updateUserData(state.currentUser.email, { closeTypes: action.payload });
-            return { ...state, userData: { ...state.userData, closeTypes: action.payload } };
+        case 'UPDATE_USER_DATA_FIELD':
+            if (!state.userData) return state;
+            return {
+                ...state,
+                userData: {
+                    ...state.userData,
+                    [action.payload.field]: action.payload.value,
+                },
+            };
         default:
             return state;
     }
@@ -111,6 +84,24 @@ const AppContext = createContext<{ state: AppState; dispatch: Dispatch<Action> }
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
 
+    useEffect(() => {
+        const getSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            dispatch({ type: 'SET_SESSION', payload: session });
+            if (!session) {
+                dispatch({ type: 'SET_IS_LOADING', payload: false });
+            }
+        }
+        
+        getSession();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            dispatch({ type: 'SET_SESSION', payload: session });
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
+
     return (
         <AppContext.Provider value={{ state, dispatch }}>
             {children}
@@ -123,38 +114,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 export const useAppContext = () => useContext(AppContext);
 
 // --- HELPER ACTIONS ---
-export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeIdToDelete: string) => {
-    if (!state.currentUser || !state.userData) return;
-
-    const { email } = state.currentUser;
-    const { trades } = state.userData;
-    
-    const tradeToDelete = trades.find(t => t.id === tradeIdToDelete);
-    if (tradeToDelete) {
-        const imageKeys = [
-            tradeToDelete.analysisD1.image,
-            tradeToDelete.analysis1h.image,
-            tradeToDelete.analysis5m.image,
-            tradeToDelete.analysisResult.image,
-        ].filter((key): key is string => !!key);
-
-        try {
-            await Promise.all(imageKeys.map(key => imageDB.deleteImage(key)));
-        } catch (error) {
-            console.error("Failed to delete one or more images from IndexedDB:", error);
-        }
-    }
-    
-    const newTrades = trades.filter(trade => trade.id !== tradeIdToDelete);
-    dispatch({ type: 'SET_TRADES', payload: newTrades });
-};
-
-export const saveTradeAction = (dispatch: Dispatch<Action>, state: AppState, tradeToSave: Trade, isEditing: boolean) => {
+export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeToSave: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }, isEditing: boolean) => {
     if (!state.currentUser || !state.userData) return;
     
     const { accounts, trades } = state.userData;
     const account = accounts.find(a => a.id === tradeToSave.accountId);
-    if (!account) return;
+    if (!account) throw new Error("Account not found");
 
     const accountTrades = trades.filter(t => t.accountId === account.id && t.id !== tradeToSave.id);
     const accountPnl = accountTrades.reduce((sum, trade) => sum + trade.pnl, 0);
@@ -166,17 +131,76 @@ export const saveTradeAction = (dispatch: Dispatch<Action>, state: AppState, tra
     if (tradeToSave.result === 'Win') pnl = riskAmount * tradeToSave.rr;
     else if (tradeToSave.result === 'Loss') pnl = -riskAmount;
 
-    const finalTrade: Trade = { ...tradeToSave, id: tradeToSave.id || crypto.randomUUID(), riskAmount, pnl: pnl - commission, commission };
+    // Supabase requires snake_case for column names if they are multi-word
+    const tradeForDb = {
+        user_id: state.currentUser.id,
+        account_id: tradeToSave.accountId,
+        date: tradeToSave.date,
+        pair: tradeToSave.pair,
+        direction: tradeToSave.direction,
+        entry: tradeToSave.entry,
+        risk: tradeToSave.risk,
+        rr: tradeToSave.rr,
+        risk_amount: riskAmount,
+        pnl: pnl - commission,
+        commission: commission,
+        stoploss: tradeToSave.stoploss,
+        takeprofit: tradeToSave.takeprofit,
+        result: tradeToSave.result,
+        entry_price: tradeToSave.entryPrice,
+        stoploss_price: tradeToSave.stoplossPrice,
+        takeprofit_price: tradeToSave.takeprofitPrice,
+        close_type: tradeToSave.closeType,
+        analysis_d1: tradeToSave.analysisD1,
+        analysis_1h: tradeToSave.analysis1h,
+        analysis_5m: tradeToSave.analysis5m,
+        analysis_result: tradeToSave.analysisResult,
+    };
 
-    let newTrades: Trade[];
-    if(isEditing) {
-        const existingIndex = trades.findIndex(t => t.id === finalTrade.id);
-        newTrades = [...trades];
-        if (existingIndex > -1) {
-            newTrades[existingIndex] = finalTrade;
-        }
+    if (isEditing && tradeToSave.id) {
+        const { data, error } = await supabase.from('trades').update(tradeForDb).eq('id', tradeToSave.id).select().single();
+        if (error) throw error;
+        
+        const updatedTrades = trades.map(t => t.id === data.id ? { ...t, ...tradeToSave, riskAmount, pnl: pnl - commission } : t);
+        dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
     } else {
-        newTrades = [...trades, finalTrade];
+        const { data, error } = await supabase.from('trades').insert(tradeForDb).select().single();
+        if (error) throw error;
+
+        const newTrade: Trade = {
+            id: data.id,
+            ...tradeToSave,
+            riskAmount,
+            pnl: pnl - commission
+        };
+        dispatch({ type: 'UPDATE_TRADES', payload: [...trades, newTrade] });
     }
-    dispatch({ type: 'SET_TRADES', payload: newTrades });
+};
+
+export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeIdToDelete: string) => {
+    if (!state.currentUser || !state.userData) return;
+    const { trades } = state.userData;
+    
+    const tradeToDelete = trades.find(t => t.id === tradeIdToDelete);
+    if (tradeToDelete) {
+        // Delete associated images from storage
+        const imageKeys: string[] = [
+            tradeToDelete.analysisD1.image,
+            tradeToDelete.analysis1h.image,
+            tradeToDelete.analysis5m.image,
+            tradeToDelete.analysisResult.image,
+        ].filter((key): key is string => !!key);
+
+        if (imageKeys.length > 0) {
+            const filePaths = imageKeys.map(key => `${state.currentUser.id}/${key}`);
+            const { error: storageError } = await supabase.storage.from('screenshots').remove(filePaths);
+            if (storageError) console.error("Error deleting images from Supabase Storage:", storageError);
+        }
+    }
+    
+    const { error } = await supabase.from('trades').delete().eq('id', tradeIdToDelete);
+    if (error) throw error;
+
+    const newTrades = trades.filter(trade => trade.id !== tradeIdToDelete);
+    dispatch({ type: 'UPDATE_TRADES', payload: newTrades });
 };

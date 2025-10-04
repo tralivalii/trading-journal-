@@ -1,123 +1,75 @@
-// services/imageDB.ts
-
-const DB_NAME = 'TradingJournalImages';
-const STORE_NAME = 'images';
+// FIX: Implemented IndexedDB service for storing and retrieving images for notes.
+const DB_NAME = 'TradeJournalImages';
+const STORE_NAME = 'screenshots';
 const DB_VERSION = 1;
 
-let db: IDBDatabase;
+let dbPromise: Promise<IDBDatabase> | null = null;
 
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    if (db) {
-      return resolve(db);
+const getDb = (): Promise<IDBDatabase> => {
+    if (!dbPromise) {
+        dbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+            request.onerror = () => {
+                console.error('IndexedDB error:', request.error);
+                reject('Error opening IndexedDB.');
+            };
+
+            request.onupgradeneeded = (event) => {
+                const db = (event.target as IDBOpenDBRequest).result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
+            };
+
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+        });
     }
-
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => {
-      console.error("IndexedDB error:", request.error);
-      reject(request.error);
-    };
-
-    request.onsuccess = () => {
-      db = request.result;
-      resolve(db);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const dbInstance = (event.target as IDBOpenDBRequest).result;
-      if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
-        const store = dbInstance.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('by_user', 'userEmail', { unique: false });
-      }
-    };
-  });
+    return dbPromise;
 };
 
-export const saveImage = async (userEmail: string, blob: Blob): Promise<string> => {
-  const db = await openDB();
-  const id = crypto.randomUUID();
-  const data = { id, userEmail, blob };
+export async function saveImage(userId: string, file: File): Promise<string> {
+    const db = await getDb();
+    const key = `${userId}-${crypto.randomUUID()}-${file.name}`;
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    transaction.oncomplete = () => {
-      resolve(id);
-    };
-    transaction.onerror = () => {
-      reject(transaction.error);
-    };
-     transaction.onabort = () => {
-      reject(transaction.error || new DOMException('Transaction aborted'));
-    };
-
-    const store = transaction.objectStore(STORE_NAME);
-    store.put(data);
-  });
-};
-
-export const getImage = async (id: string): Promise<Blob | null> => {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(id);
-
-    request.onsuccess = () => {
-      resolve(request.result ? request.result.blob : null);
-    };
-    request.onerror = () => reject(request.error);
-  });
-};
-
-export const deleteImage = async (id: string): Promise<void> => {
-    const db = await openDB();
-    
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readwrite');
-        transaction.oncomplete = () => {
-            resolve();
-        };
-        transaction.onerror = () => {
-            reject(transaction.error);
-        };
-        transaction.onabort = () => {
-            reject(transaction.error || new DOMException('Transaction aborted'));
-        };
-
         const store = transaction.objectStore(STORE_NAME);
-        store.delete(id);
+        store.put(file, key);
+
+        transaction.oncomplete = () => resolve(key);
+        transaction.onerror = () => reject(transaction.error);
     });
 }
 
+export async function getImage(key: string): Promise<Blob | undefined> {
+    if (!key) return undefined;
+    const db = await getDb();
 
-export const deleteImagesForUser = async (userEmail: string): Promise<void> => {
-    const db = await openDB();
-    
     return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(key);
+
+        request.onsuccess = () => {
+            resolve(request.result as Blob | undefined);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+export async function deleteImage(key: string): Promise<void> {
+    if (!key) return;
+    const db = await getDb();
+
+    return new Promise<void>((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
-        const index = store.index('by_user');
-        const request = index.openKeyCursor(IDBKeyRange.only(userEmail));
+        store.delete(key);
 
-        const deletePromises: Promise<void>[] = [];
-        
-        request.onsuccess = () => {
-            const cursor = request.result;
-            if (cursor) {
-                const deleteRequest = store.delete(cursor.primaryKey);
-                deletePromises.push(new Promise((res, rej) => {
-                    deleteRequest.onsuccess = () => res();
-                    deleteRequest.onerror = () => rej(deleteRequest.error);
-                }));
-                cursor.continue();
-            }
-        };
-
-        transaction.oncomplete = () => {
-            Promise.all(deletePromises).then(() => resolve()).catch(reject);
-        };
+        transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
     });
 }

@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
-import * as imageDB from '../services/imageDB';
 import { useAppContext } from '../services/appState';
+import { supabase } from '../services/supabase';
 
 interface TradeFormProps {
-  onSave: (trade: Trade) => void;
+  onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
   onCancel: () => void;
   tradeToEdit?: Trade | null;
-  accounts: Account[]; // Still need active accounts passed in
+  accounts: Account[];
 }
 
 const emptyAnalysis: Analysis = { image: undefined, notes: '' };
@@ -31,8 +31,6 @@ const initialTradeState = {
   analysisResult: { ...emptyAnalysis },
 };
 
-// --- Helper Components for new design ---
-
 const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
     <div>
         <label className="block text-sm text-[#8A91A8] uppercase tracking-wider mb-2">{label}</label>
@@ -40,20 +38,11 @@ const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ lab
     </div>
 );
 
-// --- Unified Form Control Styles ---
 const baseControlClasses = "w-full bg-[#1A1D26] border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors";
-
-// Classes for select elements with custom arrows
 const selectClasses = `${baseControlClasses} pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4M8 15l4-4 4 4'/%3e%3c/svg%3e")] disabled:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500`;
-
-// Classes for standard text inputs (date, textarea)
 const textInputClasses = `${baseControlClasses} px-3 py-2`;
-
-// Classes for number inputs (hides default spinners)
 const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
 
-
-// --- Re-styled Components ---
 
 const AnalysisSection: React.FC<{
     title: string;
@@ -106,8 +95,8 @@ const AnalysisSection: React.FC<{
 
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts }) => {
   const { state } = useAppContext();
-  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = state.userData!;
-  const currentUserEmail = state.currentUser!.email;
+  const { userData, currentUser } = state;
+  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = userData!;
 
   const [trade, setTrade] = useState(() => {
      const defaults = {
@@ -137,43 +126,42 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
 
     setTrade(prev => {
         let newState = {...prev, [name]: updatedValue};
-        
-        if (name === 'result') {
-            if (value === Result.InProgress) newState.closeType = undefined;
+        if (name === 'result' && value === Result.InProgress) {
+            newState.closeType = undefined;
         }
-
         return newState;
     });
   };
 
-  const handleAnalysisChange = (section: keyof Omit<typeof trade, 'id' | 'pnl'>, field: 'notes' | 'image', value: string | undefined) => {
+  const handleAnalysisChange = (section: keyof Omit<typeof trade, 'id' | 'pnl' | 'riskAmount'>, field: 'notes' | 'image', value: string | undefined) => {
       setTrade(prev => ({
           ...prev,
           [section]: {
               ...(prev[section] as Analysis),
               [field]: value
           }
-      }))
+      }));
   };
 
-  const handleFileChange = async (section: keyof Omit<typeof trade, 'id' | 'pnl'>, file: File | null) => {
+  const handleFileChange = async (section: keyof Omit<typeof trade, 'id' | 'pnl' | 'riskAmount'>, file: File | null) => {
       const currentImageKey = (trade[section] as Analysis).image;
 
-      // Delete old image from DB if it exists
       if (currentImageKey) {
           try {
-              await imageDB.deleteImage(currentImageKey);
+              await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);
           } catch (e) {
-              console.error("Failed to delete old image", e);
+              console.error("Failed to delete old image from Supabase Storage", e);
           }
       }
 
       if (file) {
         try {
-            const imageKey = await imageDB.saveImage(currentUserEmail, file);
+            const imageKey = `${crypto.randomUUID()}-${file.name}`;
+            const { error } = await supabase.storage.from('screenshots').upload(`${currentUser!.id}/${imageKey}`, file);
+            if (error) throw error;
             handleAnalysisChange(section, 'image', imageKey);
         } catch (error) {
-            console.error("Error saving image to IndexedDB:", error);
+            console.error("Error saving image to Supabase Storage:", error);
             alert("Could not save image.");
         }
       } else {
@@ -187,16 +175,12 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
       alert("Please select an account and a pair.");
       return;
     }
-
-    const tradeData: Trade = {
-      ...trade,
-      id: tradeToEdit?.id || '', 
-      riskAmount: 0,
-      pnl: 0,
-      date: new Date(trade.date).toISOString(), // Convert local time to ISO string
-    };
-
-    onSave(tradeData);
+    const { riskAmount, pnl, ...tradeData } = trade;
+    onSave({
+        ...tradeData,
+        id: tradeToEdit?.id,
+        date: new Date(trade.date).toISOString(),
+    });
   };
 
   const isFormValid = trade.accountId && trade.pair;
@@ -205,14 +189,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
   return (
     <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
         <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
-            <div className="flex justify-between items-center mb-5">
-                <h3 className="text-xl font-semibold text-white">Trade Details</h3>
-                {tradeToEdit && (
-                    <button type="submit" disabled={!isFormValid} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium text-sm">
-                        Update Trade
-                    </button>
-                )}
-            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
                 <FormField label="Date">
                     <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
@@ -235,7 +211,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
                         <option value={Direction.Short}>Short</option>
                     </select>
                 </FormField>
-
                 <FormField label="Entry Type">
                     <select name="entry" value={trade.entry} onChange={handleChange} className={selectClasses}>
                         <option value="">Select Entry</option>
@@ -257,7 +232,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
                         {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                 </FormField>
-
                 <FormField label="Result">
                     <select name="result" value={trade.result} onChange={handleChange} required className={selectClasses}>
                         {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}

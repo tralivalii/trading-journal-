@@ -3,7 +3,7 @@ import { Note } from '../types';
 import { ICONS } from '../constants';
 import Modal from './ui/Modal';
 import * as imageDB from '../services/imageDB';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+// FIX: Removed unused Supabase hook, as note images are handled by IndexedDB.
 import { useAppContext } from '../services/appState';
 
 declare var DOMPurify: any;
@@ -338,8 +338,31 @@ const NoteEditor: React.FC<{
     );
 };
 
+// FIX: This component now fetches images from IndexedDB using imageDB.getImage and creates a blob URL, which is the correct behavior for notes.
 const ImageFromDB: React.FC<{ imageId: string; alt: string; onClick: () => void }> = ({ imageId, alt, onClick }) => {
-    const imageUrl = useImageBlobUrl(imageId);
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!imageId) return;
+        
+        let isMounted = true;
+        let objectUrl: string | null = null;
+
+        imageDB.getImage(imageId).then(blob => {
+            if (isMounted && blob) {
+                objectUrl = URL.createObjectURL(blob);
+                setImageUrl(objectUrl);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [imageId]);
+
     if (!imageUrl) return <div className="my-2 h-24 bg-gray-700 rounded-lg animate-pulse"></div>;
     return (
         <img 

@@ -1,7 +1,6 @@
 // FIX: Added full content for App.tsx
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import useLocalStorage from './hooks/useLocalStorage';
-import { Account, Trade, Stats, Result, User, Note } from './types';
+import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction } from './services/appState';
 import TradesList from './components/TradesList';
 import Modal from './components/ui/Modal';
@@ -12,12 +11,12 @@ import NotesView from './components/NotesView';
 import { calculateStats, filterTradesByPeriod } from './services/statisticsService';
 import { analyzeTradeGroups, calculateStreaks } from './services/analysisService';
 import Auth from './components/Auth';
-import * as db from './services/databaseService';
 import { ICONS } from './constants';
+import { supabase } from './services/supabase';
 
 declare const Chart: any;
 
-type View = 'journal' | 'dashboard' | 'notes' | 'data'; // Remove 'analysis' view
+type View = 'journal' | 'dashboard' | 'notes' | 'data'; 
 type Period = 'week' | 'month' | 'quarter' | 'all';
 type AnalysisGroup = Result.Win | Result.Loss | Result.Breakeven | Result.Missed;
 
@@ -34,7 +33,6 @@ const StatCard: React.FC<{ label: string, value: string | number, className?: st
     );
 };
 
-// Component moved from AnalysisView
 const DataCard: React.FC<{ title: string, children: React.ReactNode, className?: string, headerAction?: React.ReactNode }> = ({ title, children, className, headerAction }) => (
     <div className={`bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col ${className}`}>
         <div className="flex justify-between items-center p-4 border-b border-gray-700/50">
@@ -45,11 +43,9 @@ const DataCard: React.FC<{ title: string, children: React.ReactNode, className?:
     </div>
 );
 
-
-// Component moved from AnalysisView
 const NoData: React.FC<{ message?: string, onAction?: () => void, actionText?: string }> = ({ message, onAction, actionText }) => (
     <div className="text-center py-8 text-[#8A91A8] flex-grow flex flex-col items-center justify-center gap-4">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         <p>{message || "Not enough data to display."}</p>
@@ -85,7 +81,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     const activeAccountIds = useMemo(() => new Set(activeAccounts.map(a => a.id)), [activeAccounts]);
     const tradesForStats = useMemo(() => trades.filter(t => activeAccountIds.has(t.accountId)), [trades, activeAccountIds]);
     
-    // --- Dashboard Stats Logic ---
     const [period, setPeriod] = useState<Period>('month');
     const [isBalancesModalOpen, setIsBalancesModalOpen] = useState(false);
     const filteredTrades = useMemo(() => filterTradesByPeriod(tradesForStats, period), [tradesForStats, period]);
@@ -98,8 +93,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     const mainCurrency = activeAccounts.length > 0 ? (activeAccounts[0].currency || 'USD') : 'USD';
     const totalBalance = useMemo(() => Array.from(accountBalances.values()).reduce((sum: number, balance: number) => sum + balance, 0), [accountBalances]);
     
-
-    // --- Analysis Logic (from former AnalysisView) ---
     const [activeGroup, setActiveGroup] = useState<AnalysisGroup>(Result.Loss);
 
     const analysisTrades = useMemo(() => {
@@ -155,8 +148,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     }, [selectedGroupStats]);
 
     const DistributionChart: React.FC<{ title: string; data: Record<string, number>; total: number }> = ({ title, data, total }) => {
-        // FIX: Explicitly cast values to numbers for sorting. This helps TypeScript's
-        // type inference in complex scenarios and prevents potential type errors.
         const sortedData = Object.entries(data).sort(([, a], [, b]) => Number(b) - Number(a));
 
         if (sortedData.length === 0) return (
@@ -171,7 +162,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                 <h4 className="text-sm font-semibold text-[#8A91A8] mb-3 uppercase">{title}</h4>
                 <div className="space-y-4 text-sm">
                     {sortedData.map(([key, value]) => {
-                        // FIX: Explicitly cast value to a number to prevent type errors during the arithmetic operation.
                         const percentage = total > 0 ? (Number(value) / total) * 100 : 0;
                         return (
                             <div key={key}>
@@ -190,10 +180,8 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         );
     };
 
-
     return (
         <div>
-            {/* --- Original Dashboard Content --- */}
             <div className="mb-6">
                 <h1 className="text-3xl font-bold text-white">Dashboard</h1>
                 <div className="flex flex-wrap items-center gap-2 mt-4">
@@ -229,7 +217,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                  <StatCard label="W/L/B/M" value={`${stats.wins}/${stats.losses}/${stats.breakevens}/${stats.missed}`} className="text-[#F0F0F0]"/>
             </div>
 
-            {/* --- Merged Analysis Content --- */}
             <div className="mt-12 space-y-8">
                  <div className="flex justify-between items-center flex-wrap gap-4">
                      <h2 className="text-3xl font-bold text-white">Trade Analysis</h2>
@@ -364,13 +351,66 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     );
 }
 
+// Default user data for new users, fetched from the 'user_data' table
+const getDefaultUserData = async (userId: string): Promise<UserData> => {
+  const { data, error } = await supabase
+    .from('user_data')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
+    console.error('Error fetching user data:', error);
+    throw error;
+  }
+
+  if (data) {
+    // Convert snake_case from DB to camelCase for the app
+    return {
+        ...data.data, // assuming settings are in a jsonb column 'data'
+        trades: [],
+        accounts: [],
+        notes: [],
+    };
+  }
+
+  // If no settings found, create default ones
+  const defaultSettings = {
+    pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
+    entries: ['2.0', 'IDM', 'Market', 'FVG', 'Order block'],
+    risks: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5],
+    defaultSettings: {
+      accountId: '',
+      pair: 'EUR/USD',
+      entry: '2.0',
+      risk: 1,
+    },
+    stoplosses: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
+    takeprofits: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
+    closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
+  };
+  
+  const { error: insertError } = await supabase
+    .from('user_data')
+    .insert({ user_id: userId, data: defaultSettings });
+
+  if (insertError) {
+    console.error('Error creating default user data:', insertError);
+    throw insertError;
+  }
+
+  return {
+    ...defaultSettings,
+    trades: [],
+    accounts: [],
+    notes: [],
+  };
+};
+
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { currentUser, userData, isLoading } = state;
+  const { session, currentUser, userData, isLoading } = state;
 
-  const [users, setUsers] = useLocalStorage<User[]>('trading-journal-users', []);
-
-  // UI State
   const [isFormModalOpen, setFormModalOpen] = useState(false);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
   const [isDeleteConfirmModalOpen, setDeleteConfirmModalOpen] = useState(false);
@@ -381,14 +421,62 @@ function AppContent() {
   const [activeView, setActiveView] = useState<View>('journal');
   const [isLogoutConfirmModalOpen, setLogoutConfirmModalOpen] = useState(false);
   
-  // FAB State
   const [showFab, setShowFab] = useState(true);
   const lastScrollY = useRef(0);
 
-  // Toast State
   const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   
+  useEffect(() => {
+    if (currentUser && !userData) {
+      const fetchUserData = async () => {
+        dispatch({ type: 'SET_IS_LOADING', payload: true });
+        
+        // Fetch all data in parallel
+        const [
+          { data: accountsData, error: accountsError },
+          { data: tradesData, error: tradesError },
+          { data: notesData, error: notesError }
+        ] = await Promise.all([
+          supabase.from('accounts').select('*').eq('user_id', currentUser.id),
+          supabase.from('trades').select('*').eq('user_id', currentUser.id),
+          supabase.from('notes').select('*').eq('user_id', currentUser.id)
+        ]);
+
+        if (accountsError || tradesError || notesError) {
+          console.error('Error fetching data:', accountsError || tradesError || notesError);
+          dispatch({ type: 'SET_IS_LOADING', payload: false });
+          return;
+        }
+
+        // A placeholder for user-specific settings, if you add them later
+        const baseUserData = {
+            pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
+            entries: ['2.0', 'IDM', 'Market', 'FVG', 'Order block'],
+            risks: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5],
+            defaultSettings: { accountId: '', pair: 'EUR/USD', entry: '2.0', risk: 1 },
+            stoplosses: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
+            takeprofits: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
+            closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
+        };
+        
+        const fullUserData: UserData = {
+          ...baseUserData,
+          accounts: (accountsData || []).map(a => ({...a, accountId: a.id})),
+          trades: (tradesData || []).map(t => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result })),
+          notes: notesData || []
+        };
+        
+        dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
+        dispatch({ type: 'SET_IS_LOADING', payload: false });
+      };
+      
+      fetchUserData();
+    } else if (!currentUser) {
+       dispatch({ type: 'SET_USER_DATA', payload: null });
+    }
+  }, [currentUser, userData, dispatch]);
+
   const showToast = useCallback((message: string) => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
@@ -400,9 +488,9 @@ function AppContent() {
   }, []);
 
   const controlFabVisibility = useCallback(() => {
-      if (window.scrollY > lastScrollY.current && window.scrollY > 100) { // if scroll down
+      if (window.scrollY > lastScrollY.current && window.scrollY > 100) {
           setShowFab(false);
-      } else { // if scroll up
+      } else {
           setShowFab(true);
       }
       lastScrollY.current = window.scrollY;
@@ -414,15 +502,6 @@ function AppContent() {
           window.removeEventListener('scroll', controlFabVisibility);
       };
   }, [controlFabVisibility]);
-  
-  const handleAuthSuccess = useCallback((user: User) => {
-    dispatch({ type: 'SET_IS_LOADING', payload: true });
-    db.getUserData(user.email).then(data => {
-        if (data) {
-            dispatch({ type: 'LOGIN_SUCCESS', payload: { user, data } });
-        }
-    });
-  }, [dispatch]);
 
   const activeAccounts = useMemo(() => userData?.accounts.filter(a => !a.isArchived) || [], [userData]);
 
@@ -443,7 +522,6 @@ function AppContent() {
 
   const handleEditFromDetail = (trade: Trade) => {
     setDetailModalOpen(false);
-    // Use a small timeout to make the modal transition smoother
     setTimeout(() => {
         handleEditTrade(trade);
     }, 150); 
@@ -456,42 +534,43 @@ function AppContent() {
 
   const handleConfirmDeleteTrade = async () => {
     if (tradeIdToDelete) {
-        await deleteTradeAction(dispatch, state, tradeIdToDelete);
-        showToast('Trade deleted successfully.');
+        try {
+            await deleteTradeAction(dispatch, state, tradeIdToDelete);
+            showToast('Trade deleted successfully.');
+        } catch (error) {
+            console.error(error);
+            showToast('Failed to delete trade.');
+        }
     }
     setDeleteTradeModalOpen(false);
     setTradeIdToDelete(null);
   };
 
-  const handleSaveTrade = (tradeDataFromForm: Trade) => {
-    saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
-    showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.');
-    setFormModalOpen(false);
-    setTradeToEdit(null);
+  const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'>) => {
+    try {
+        await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
+        showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.');
+        setFormModalOpen(false);
+        setTradeToEdit(null);
+    } catch(error) {
+        console.error(error);
+        showToast('Failed to save trade.');
+    }
   };
-
+  
   const handleLogout = () => {
     setLogoutConfirmModalOpen(true);
   };
 
-  const handleConfirmLogout = () => {
-    dispatch({ type: 'LOGOUT' });
+  const handleConfirmLogout = async () => {
+    await supabase.auth.signOut();
+    dispatch({ type: 'SET_SESSION', payload: null });
     setLogoutConfirmModalOpen(false);
   };
   
   const handleDeleteUserAccount = async () => {
-    if (!currentUser) return;
-    try {
-        await db.deleteUserData(currentUser.email);
-        setUsers(prevUsers => prevUsers.filter(user => user.email !== currentUser.email));
-        dispatch({ type: 'LOGOUT' });
-        showToast('Your account has been permanently deleted.');
-    } catch (error) {
-        console.error("Failed to delete user account:", error);
-        showToast('Error deleting account. Please try again.');
-    } finally {
-        setDeleteConfirmModalOpen(false);
-    }
+    alert("This functionality requires server-side logic to properly delete a user and is not implemented in this example.");
+    setDeleteConfirmModalOpen(false);
   };
 
   const NavItem: React.FC<{view: View, label: string}> = ({view, label}) => (
@@ -504,11 +583,11 @@ function AppContent() {
       </button>
   );
 
-  if (!currentUser || !userData) {
-    return <Auth onAuthSuccess={handleAuthSuccess} users={users} setUsers={setUsers} />;
+  if (!session) {
+    return <Auth />;
   }
 
-  if (isLoading) {
+  if (isLoading || !userData) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] text-white">
             <div className="text-xl animate-pulse">Loading Your Journal...</div>
@@ -528,7 +607,7 @@ function AppContent() {
             </div>
             <div className="flex items-center gap-4 w-full justify-center md:w-auto mt-4 md:mt-0">
                 <div className="flex items-center gap-4">
-                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{currentUser.email}</span>
+                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{currentUser?.email}</span>
                     <button onClick={handleLogout} className="text-sm font-medium text-[#8A91A8] hover:text-[#3B82F6] transition-colors">
                         Logout
                     </button>
@@ -618,8 +697,6 @@ function AppContent() {
 }
 
 const App: React.FC = () => (
-    // The provider is in index.tsx, but AppContent needs to be a separate component
-    // to be able to call the useAppContext hook.
     <AppContent />
 );
 
