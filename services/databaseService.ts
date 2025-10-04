@@ -1,28 +1,40 @@
 // services/databaseService.ts
 import { UserData, Trade, Account, Direction, Result, Currency, Note } from '../types';
 
-// This is our "database" stored in localStorage.
-// In a real app, this would be a remote server.
-const DB_KEY = 'trading_journal_main_database';
-const LATENCY = 300; // Simulate network latency
+const DB_NAME = 'trading_journal_main_database_v2';
+const STORE_NAME = 'users_data';
+const DB_VERSION = 1;
 
-interface Database {
-  [email: string]: UserData;
-}
+let db: IDBDatabase;
 
-const getDb = (): Database => {
-  try {
-    const dbString = localStorage.getItem(DB_KEY);
-    return dbString ? JSON.parse(dbString) : {};
-  } catch (e) {
-    console.error("Failed to parse database from localStorage", e);
-    return {};
-  }
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    if (db) {
+      return resolve(db);
+    }
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => {
+      console.error("IndexedDB error:", request.error);
+      reject(request.error);
+    };
+
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+
+    request.onupgradeneeded = (event) => {
+      const dbInstance = (event.target as IDBOpenDBRequest).result;
+      if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+        // The key will be the user's email.
+        dbInstance.createObjectStore(STORE_NAME, { keyPath: 'email' });
+      }
+    };
+  });
 };
 
-const saveDb = (db: Database) => {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
-};
 
 const getDefaultUserData = (): UserData => {
   const today = new Date();
@@ -180,7 +192,8 @@ const getDefaultUserData = (): UserData => {
         id: defaultAccountId,
         name: 'Main Account',
         initialBalance: 10000,
-        currency: Currency.USD
+        currency: Currency.USD,
+        isArchived: false,
       }
     ],
     pairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'],
@@ -195,15 +208,17 @@ const getDefaultUserData = (): UserData => {
     notes: [
       {
         id: crypto.randomUUID(),
-        date: new Date(new Date().setDate(today.getDate() - 1)).toISOString().split('T')[0],
-        title: "Market Reversal Watch",
-        content: "Market is showing signs of a potential reversal. Need to be cautious with long positions and look for confirmation before entering shorts."
+        date: new Date(new Date().setDate(today.getDate() - 1)).toISOString(),
+        content: "Market is showing signs of a potential reversal. Need to be cautious with long positions and look for confirmation before entering shorts. The volume on the down moves is increasing, and key support levels are being tested. Watching the DXY for correlation.",
+        tags: ['analysis', 'market-sentiment'],
+        isFavorite: true,
       },
       {
         id: crypto.randomUUID(),
-        date: new Date(new Date().setDate(today.getDate() - 7)).toISOString().split('T')[0],
-        title: "Psychology Check-in",
-        content: "Psychology check: I've been hesitating on entries this week. Need to trust my analysis and stick to the plan. FOMO is not a strategy."
+        date: new Date(new Date().setDate(today.getDate() - 7)).toISOString(),
+        content: "Psychology Check-in: I've been hesitating on entries this week. Need to trust my analysis and stick to the plan. FOMO is not a strategy. The market doesn't care about my feelings. Discipline is key.",
+        tags: ['psychology'],
+        isFavorite: false,
       }
     ],
     stoplosses: initialStoplosses,
@@ -212,65 +227,100 @@ const getDefaultUserData = (): UserData => {
   };
 };
 
+
 // --- Public API ---
 
 /**
- * Initializes the data store for a newly registered user.
+ * Initializes the data store for a newly registered user if they don't exist.
  */
-export const initializeUser = (email: string): Promise<void> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const db = getDb();
-      if (!db[email]) {
-        db[email] = getDefaultUserData();
-        saveDb(db);
-      }
-      resolve();
-    }, LATENCY);
-  });
+export const initializeUser = async (email: string): Promise<void> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(email);
+        
+        request.onsuccess = () => {
+            if (!request.result) {
+                const writeTransaction = db.transaction(STORE_NAME, 'readwrite');
+                const writeStore = writeTransaction.objectStore(STORE_NAME);
+                const newUserRecord = { email, data: getDefaultUserData() };
+                const writeRequest = writeStore.put(newUserRecord);
+
+                writeRequest.onsuccess = () => resolve();
+                writeRequest.onerror = () => reject(writeRequest.error);
+            } else {
+                resolve(); // User already exists
+            }
+        };
+        request.onerror = () => reject(request.error);
+    });
 };
 
 /**
  * Fetches all data for a given user.
  */
-export const getUserData = (email: string): Promise<UserData> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const db = getDb();
-      // If user data doesn't exist for some reason, initialize it.
-      if (!db[email]) {
-        db[email] = getDefaultUserData();
-        saveDb(db);
-      }
-      resolve(db[email]);
-    }, LATENCY);
-  });
+export const getUserData = async (email: string): Promise<UserData | null> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(email);
+
+        request.onsuccess = () => {
+            if (request.result) {
+                resolve(request.result.data);
+            } else {
+                // If user data doesn't exist, initialize it and return the default data.
+                console.warn(`No data found for ${email}, initializing with defaults.`);
+                initializeUser(email).then(() => {
+                    resolve(getDefaultUserData());
+                }).catch(reject);
+            }
+        };
+        request.onerror = () => reject(request.error);
+    });
 };
 
 /**
- * Saves all data for a given user.
+ * Updates one or more properties of a user's data.
  */
-export const saveUserData = (email: string, data: UserData): Promise<void> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const db = getDb();
-      db[email] = data;
-      saveDb(db);
-      resolve();
-    }, LATENCY);
-  });
+export const updateUserData = async (email: string, updates: Partial<UserData>): Promise<void> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(email);
+
+        request.onerror = () => reject(request.error);
+        
+        request.onsuccess = () => {
+            const existingRecord = request.result;
+            if (existingRecord) {
+                const updatedData = { ...existingRecord.data, ...updates };
+                const putRequest = store.put({ email, data: updatedData });
+
+                putRequest.onsuccess = () => resolve();
+                putRequest.onerror = () => reject(putRequest.error);
+            } else {
+                reject(new Error(`User data not found for email: ${email}`));
+            }
+        };
+    });
 };
+
 
 /**
  * Deletes all data for a given user.
  */
-export const deleteUserData = (email: string): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const db = getDb();
-        delete db[email];
-        saveDb(db);
-        resolve();
-      }, LATENCY);
+export const deleteUserData = async (email: string): Promise<void> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.delete(email);
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
     });
-}
+};

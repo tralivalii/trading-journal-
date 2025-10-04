@@ -3,7 +3,7 @@ import { User } from '../types';
 import * as db from '../services/databaseService';
 
 interface AuthProps {
-  onAuthSuccess: (user: { email: string }) => void;
+  onAuthSuccess: (user: User) => void;
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
 }
@@ -40,8 +40,8 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setUsers }) => {
         return;
       }
       const newUser = { email, password };
-      setUsers(prev => [...prev, newUser]);
       db.initializeUser(newUser.email).then(() => {
+        setUsers(prev => [...prev, newUser]);
         onAuthSuccess({ email: newUser.email });
       });
     }
@@ -53,16 +53,13 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setUsers }) => {
     const guestPassword = 'password';
 
     try {
+        await db.initializeUser(guestEmail);
         const userExists = users.some(u => u.email === guestEmail);
-        
         if (!userExists) {
             const newUser = { email: guestEmail, password: guestPassword };
             setUsers(prev => [...prev, newUser]);
-            await db.initializeUser(newUser.email);
-            onAuthSuccess({ email: newUser.email });
-        } else {
-            onAuthSuccess({ email: guestEmail });
         }
+        onAuthSuccess({ email: guestEmail });
     } catch (e) {
         setError('Could not log in as guest. Please try again.');
         console.error(e);
@@ -78,19 +75,15 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, users, setUsers }) => {
     e.preventDefault();
     if (googleEmail) {
         setError('');
-        const userExists = users.some(u => u.email === googleEmail);
-        
-        if (!userExists) {
-            const newUser = { email: googleEmail };
-            setUsers(prev => [...prev, newUser]);
-            db.initializeUser(newUser.email).then(() => {
-                onAuthSuccess({ email: newUser.email });
-                setGoogleModalOpen(false);
-            });
-        } else {
+        db.initializeUser(googleEmail).then(() => {
+            const userExists = users.some(u => u.email === googleEmail);
+            if (!userExists) {
+                const newUser = { email: googleEmail };
+                setUsers(prev => [...prev, newUser]);
+            }
             onAuthSuccess({ email: googleEmail });
             setGoogleModalOpen(false);
-        }
+        });
     }
   };
 

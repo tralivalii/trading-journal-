@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 // FIX: Changed import to be a relative path
 import { ICONS } from '../../constants';
 
@@ -11,6 +11,15 @@ interface ModalProps {
 }
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = '2xl' }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
+  const titleId = `modal-title-${Math.random().toString(36).substring(2, 9)}`;
+
+  useEffect(() => {
+    if (isOpen) {
+        modalRef.current?.focus();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -24,11 +33,22 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center backdrop-blur-sm p-4" onClick={onClose}>
-      <div className={`bg-[#232733] rounded-lg shadow-xl w-full ${sizeClasses[size]} border border-gray-700/50 flex flex-col max-h-[90vh]`} onClick={e => e.stopPropagation()}>
+    <div 
+        className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center backdrop-blur-sm p-4" 
+        onClick={onClose}
+    >
+      <div 
+        ref={modalRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={`bg-[#232733] rounded-lg shadow-xl w-full ${sizeClasses[size]} border border-gray-700/50 flex flex-col max-h-[90vh] focus:outline-none`} 
+        onClick={e => e.stopPropagation()}
+       >
         <div className="flex justify-between items-center p-4 border-b border-gray-700/50 flex-shrink-0">
-          <h2 className="text-xl font-semibold text-[#F0F0F0]">{title}</h2>
-          <button onClick={onClose} className="text-[#8A91A8] hover:text-white transition-colors">
+          <h2 id={titleId} className="text-xl font-semibold text-[#F0F0F0]">{title}</h2>
+          <button onClick={onClose} className="text-[#8A91A8] hover:text-white transition-colors" aria-label="Close modal">
             <span className="w-6 h-6">{ICONS.x}</span>
           </button>
         </div>

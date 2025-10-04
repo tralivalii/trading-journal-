@@ -1,14 +1,14 @@
 // FIX: Added full content for App.tsx
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import useLocalStorage from './hooks/useLocalStorage';
-import { Account, DefaultSettings, Trade, Stats, Result, User, UserData, Note } from './types';
+import { Account, Trade, Stats, Result, User, Note } from './types';
+import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction } from './services/appState';
 import TradesList from './components/TradesList';
 import Modal from './components/ui/Modal';
 import TradeForm from './components/TradeForm';
 import TradeDetail from './components/TradeDetail';
 import DataView from './components/DataView';
 import NotesView from './components/NotesView';
-import NoteDetail from './components/NoteDetail';
 import { calculateStats, filterTradesByPeriod } from './services/statisticsService';
 import { analyzeTradeGroups, calculateStreaks } from './services/analysisService';
 import Auth from './components/Auth';
@@ -47,26 +47,55 @@ const DataCard: React.FC<{ title: string, children: React.ReactNode, className?:
 
 
 // Component moved from AnalysisView
-const NoData: React.FC<{ message?: string }> = ({ message }) => (
-    <div className="text-center py-8 text-[#8A91A8] flex-grow flex items-center justify-center">
+const NoData: React.FC<{ message?: string, onAction?: () => void, actionText?: string }> = ({ message, onAction, actionText }) => (
+    <div className="text-center py-8 text-[#8A91A8] flex-grow flex flex-col items-center justify-center gap-4">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
         <p>{message || "Not enough data to display."}</p>
+        {onAction && actionText && (
+            <button 
+                onClick={onAction}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors mt-2"
+            >
+               <span className="w-5 h-5">{ICONS.plus}</span> {actionText}
+            </button>
+        )}
     </div>
 );
 
 
-const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalances: Map<string, number> }> = ({ trades, accounts, accountBalances }) => {
+const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
+    const { state } = useAppContext();
+    const { trades, accounts } = state.userData!;
+
+    const accountBalances = useMemo(() => {
+        const balances = new Map<string, number>();
+        accounts.forEach(acc => {
+          if (!acc.isArchived) {
+            const accountTrades = trades.filter(t => t.accountId === acc.id);
+            const netPnl = accountTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
+            balances.set(acc.id, acc.initialBalance + netPnl);
+          }
+        });
+        return balances;
+    }, [trades, accounts]);
+
+    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
+    const activeAccountIds = useMemo(() => new Set(activeAccounts.map(a => a.id)), [activeAccounts]);
+    const tradesForStats = useMemo(() => trades.filter(t => activeAccountIds.has(t.accountId)), [trades, activeAccountIds]);
+    
     // --- Dashboard Stats Logic ---
     const [period, setPeriod] = useState<Period>('month');
     const [isBalancesModalOpen, setIsBalancesModalOpen] = useState(false);
-    const filteredTrades = useMemo(() => filterTradesByPeriod(trades, period), [trades, period]);
+    const filteredTrades = useMemo(() => filterTradesByPeriod(tradesForStats, period), [tradesForStats, period]);
     const stats: Stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
     const formatCurrency = (amount: number, currency: string | undefined = 'USD') => amount.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const formatPercent = (value: number) => `${value.toFixed(2)}%`;
     const formatRR = (value: number) => `${value.toFixed(2)}R`;
 
-    const mainCurrency = accounts.length > 0 ? (accounts[0].currency || 'USD') : 'USD';
-    // FIX: Explicitly type the parameters of the reduce function to prevent a type inference error.
+    const mainCurrency = activeAccounts.length > 0 ? (activeAccounts[0].currency || 'USD') : 'USD';
     const totalBalance = useMemo(() => Array.from(accountBalances.values()).reduce((sum: number, balance: number) => sum + balance, 0), [accountBalances]);
     
 
@@ -80,8 +109,8 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
             quarter: 'this-quarter',
             all: 'all',
         };
-        return filterTradesByPeriod(trades, periodMap[period]);
-    }, [trades, period]);
+        return filterTradesByPeriod(tradesForStats, periodMap[period]);
+    }, [tradesForStats, period]);
 
     const analysisData = useMemo(() => analyzeTradeGroups(analysisTrades), [analysisTrades]);
     const streaks = useMemo(() => calculateStreaks(analysisTrades), [analysisTrades]);
@@ -207,11 +236,9 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                 </div>
 
                 {trades.length === 0 ? (
-                     <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50">
-                        <p className="text-[#8A91A8]">
-                            Add some trades to see your analysis.
-                        </p>
-                    </div>
+                    <DataCard title="Performance Analysis">
+                        <NoData message="Add some trades to see your analysis." onAction={onAddTrade} actionText="Add New Trade" />
+                    </DataCard>
                 ) : (
                     <div className="space-y-8">
                         <DataCard title="Performance Group Comparison">
@@ -284,7 +311,7 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                                 className="lg:col-span-2"
                                 headerAction={
                                     <div className="relative group">
-                                        <button className="text-[#8A91A8] hover:text-white transition-colors">
+                                        <button className="text-[#8A91A8] hover:text-white transition-colors" aria-label="View Details">
                                             <span className="w-5 h-5">{ICONS.eye}</span>
                                         </button>
                                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 bg-gray-900 text-white text-xs rounded-md border border-gray-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -320,7 +347,7 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
             
             <Modal isOpen={isBalancesModalOpen} onClose={() => setIsBalancesModalOpen(false)} title="Account Balances">
                  <div className="space-y-3">
-                     {accounts.map(acc => (
+                     {activeAccounts.map(acc => (
                          <div key={acc.id} className="grid grid-cols-3 items-center text-sm p-3 bg-gray-900/50 rounded-lg border border-gray-700/50">
                              <div className="col-span-2">
                                 <span className="font-semibold text-white">{acc.name}</span>
@@ -330,30 +357,20 @@ const Dashboard: React.FC<{ trades: Trade[]; accounts: Account[]; accountBalance
                              <span className="text-lg font-bold text-right text-cyan-400">{formatCurrency(accountBalances.get(acc.id) ?? 0, acc.currency)}</span>
                          </div>
                      ))}
-                     {accounts.length === 0 && <p className="text-center text-[#8A91A8] py-4">No accounts created yet.</p>}
+                     {activeAccounts.length === 0 && <p className="text-center text-[#8A91A8] py-4">No accounts created yet.</p>}
                  </div>
              </Modal>
         </div>
     );
 }
 
-function App() {
-  const [currentUser, setCurrentUser] = useLocalStorage<User | null>('trading-journal-user', null);
+function AppContent() {
+  const { state, dispatch } = useAppContext();
+  const { currentUser, userData, isLoading } = state;
+
   const [users, setUsers] = useLocalStorage<User[]>('trading-journal-users', []);
 
-  // State is now managed locally with useState
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [pairs, setPairs] = useState<string[]>([]);
-  const [entries, setEntries] = useState<string[]>([]);
-  const [risks, setRisks] = useState<number[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [stoplosses, setStoplosses] = useState<string[]>([]);
-  const [takeprofits, setTakeprofits] = useState<string[]>([]);
-  const [closeTypes, setCloseTypes] = useState<string[]>([]);
-  const [defaultSettings, setDefaultSettings] = useState<DefaultSettings>({ accountId: '', pair: '', entry: '', risk: 1 });
-  
-  const [isLoading, setIsLoading] = useState(true);
+  // UI State
   const [isFormModalOpen, setFormModalOpen] = useState(false);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
   const [isDeleteConfirmModalOpen, setDeleteConfirmModalOpen] = useState(false);
@@ -364,16 +381,23 @@ function App() {
   const [activeView, setActiveView] = useState<View>('journal');
   const [isLogoutConfirmModalOpen, setLogoutConfirmModalOpen] = useState(false);
   
-  // Note Modal State
-  const [isNoteModalOpen, setNoteModalOpen] = useState(false);
-  const [isNoteEditMode, setNoteEditMode] = useState(false);
-  const [noteToViewOrEdit, setNoteToViewOrEdit] = useState<Note | null>(null);
-  const [isDeleteNoteModalOpen, setDeleteNoteModalOpen] = useState(false);
-  const [noteIdToDelete, setNoteIdToDelete] = useState<string | null>(null);
-  
   // FAB State
   const [showFab, setShowFab] = useState(true);
   const lastScrollY = useRef(0);
+
+  // Toast State
+  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  
+  const showToast = useCallback((message: string) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToast({ message, id: Date.now() });
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+    }, 3000);
+  }, []);
 
   const controlFabVisibility = useCallback(() => {
       if (window.scrollY > lastScrollY.current && window.scrollY > 100) { // if scroll down
@@ -390,88 +414,17 @@ function App() {
           window.removeEventListener('scroll', controlFabVisibility);
       };
   }, [controlFabVisibility]);
-
-  // Fetch data from DB on user login
-  useEffect(() => {
-    if (currentUser) {
-      setIsLoading(true);
-      db.getUserData(currentUser.email).then(data => {
-        setTrades(data.trades);
-        setAccounts(data.accounts);
-        setPairs(data.pairs);
-        setEntries(data.entries || []);
-        setRisks(data.risks);
-        setNotes(data.notes || []); // Handle legacy users without notes
-        setStoplosses(data.stoplosses || []);
-        setTakeprofits(data.takeprofits || []);
-        setCloseTypes(data.closeTypes || []);
-        setDefaultSettings(data.defaultSettings);
-        setIsLoading(false);
-      });
-    } else {
-      // Clear data on logout to prevent flash of old content
-      setTrades([]);
-      setAccounts([]);
-      setPairs([]);
-      setEntries([]);
-      setRisks([]);
-      setNotes([]);
-      setStoplosses([]);
-      setTakeprofits([]);
-      setCloseTypes([]);
-      setDefaultSettings({ accountId: '', pair: '', entry: '', risk: 1 });
-      setIsLoading(false);
-    }
-  }, [currentUser]);
-
-  // Generic function to save the entire user data state to the DB
-  const saveData = useCallback((data: Partial<UserData>) => {
-    if (currentUser) {
-      const fullData: UserData = {
-        trades: data.trades !== undefined ? data.trades : trades,
-        accounts: data.accounts !== undefined ? data.accounts : accounts,
-        pairs: data.pairs !== undefined ? data.pairs : pairs,
-        entries: data.entries !== undefined ? data.entries : entries,
-        risks: data.risks !== undefined ? data.risks : risks,
-        defaultSettings: data.defaultSettings !== undefined ? data.defaultSettings : defaultSettings,
-        notes: data.notes !== undefined ? data.notes : notes,
-        stoplosses: data.stoplosses !== undefined ? data.stoplosses : stoplosses,
-        takeprofits: data.takeprofits !== undefined ? data.takeprofits : takeprofits,
-        closeTypes: data.closeTypes !== undefined ? data.closeTypes : closeTypes,
-      };
-      db.saveUserData(currentUser.email, fullData);
-    }
-  }, [currentUser, trades, accounts, pairs, entries, risks, defaultSettings, notes, stoplosses, takeprofits, closeTypes]);
-
-  // Create wrapper functions for state setters that also save to DB
-  const createSetter = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, state: T, key: keyof UserData) => 
-    (newValue: React.SetStateAction<T>) => {
-        const updatedValue = newValue instanceof Function ? newValue(state) : newValue;
-        setter(updatedValue);
-        saveData({ [key]: updatedValue });
-  };
   
-  const setTradesAndSave = createSetter(setTrades, trades, 'trades');
-  const setAccountsAndSave = createSetter(setAccounts, accounts, 'accounts');
-  const setPairsAndSave = createSetter(setPairs, pairs, 'pairs');
-  const setEntriesAndSave = createSetter(setEntries, entries, 'entries');
-  const setRisksAndSave = createSetter(setRisks, risks, 'risks');
-  const setDefaultSettingsAndSave = createSetter(setDefaultSettings, defaultSettings, 'defaultSettings');
-  const setNotesAndSave = createSetter(setNotes, notes, 'notes');
-  const setStoplossesAndSave = createSetter(setStoplosses, stoplosses, 'stoplosses');
-  const setTakeprofitsAndSave = createSetter(setTakeprofits, takeprofits, 'takeprofits');
-  const setCloseTypesAndSave = createSetter(setCloseTypes, closeTypes, 'closeTypes');
-
-
-  const accountBalances = useMemo(() => {
-    const balances = new Map<string, number>();
-    accounts.forEach(acc => {
-      const accountTrades = trades.filter(t => t.accountId === acc.id);
-      const netPnl = accountTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
-      balances.set(acc.id, acc.initialBalance + netPnl);
+  const handleAuthSuccess = useCallback((user: User) => {
+    dispatch({ type: 'SET_IS_LOADING', payload: true });
+    db.getUserData(user.email).then(data => {
+        if (data) {
+            dispatch({ type: 'LOGIN_SUCCESS', payload: { user, data } });
+        }
     });
-    return balances;
-  }, [trades, accounts]);
+  }, [dispatch]);
+
+  const activeAccounts = useMemo(() => userData?.accounts.filter(a => !a.isArchived) || [], [userData]);
 
   const handleAddTrade = () => {
     setTradeToEdit(null);
@@ -501,98 +454,44 @@ function App() {
     setDeleteTradeModalOpen(true);
   };
 
-  const handleConfirmDeleteTrade = () => {
+  const handleConfirmDeleteTrade = async () => {
     if (tradeIdToDelete) {
-        setTradesAndSave(prev => prev.filter(trade => trade.id !== tradeIdToDelete));
+        await deleteTradeAction(dispatch, state, tradeIdToDelete);
+        showToast('Trade deleted successfully.');
     }
     setDeleteTradeModalOpen(false);
     setTradeIdToDelete(null);
   };
 
   const handleSaveTrade = (tradeDataFromForm: Trade) => {
-    const account = accounts.find(a => a.id === tradeDataFromForm.accountId);
-    if (!account) return alert("Account not found!");
-
-    const accountTrades = trades.filter(t => t.accountId === account.id && t.id !== tradeDataFromForm.id);
-    const accountPnl = accountTrades.reduce((sum, trade) => sum + trade.pnl, 0);
-    const currentBalance = account.initialBalance + accountPnl;
-    
-    const riskAmount = currentBalance * (tradeDataFromForm.risk / 100);
-    const commission = tradeDataFromForm.commission || 0;
-    let pnl = 0;
-    if (tradeDataFromForm.result === Result.Win) pnl = riskAmount * tradeDataFromForm.rr;
-    else if (tradeDataFromForm.result === Result.Loss) pnl = -riskAmount;
-
-    const finalTrade: Trade = { ...tradeDataFromForm, id: tradeDataFromForm.id || crypto.randomUUID(), riskAmount, pnl: pnl - commission, commission };
-
-    setTradesAndSave(prev => {
-      const existingIndex = prev.findIndex(t => t.id === finalTrade.id);
-      if (existingIndex > -1) {
-        const newTrades = [...prev];
-        newTrades[existingIndex] = finalTrade;
-        return newTrades;
-      }
-      return [...prev, finalTrade];
-    });
+    saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
+    showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.');
     setFormModalOpen(false);
     setTradeToEdit(null);
   };
-  
-  // Note Handlers
-  const handleAddNote = (title: string, content: string) => {
-      const newNote: Note = {
-          id: crypto.randomUUID(),
-          date: new Date().toISOString().split('T')[0],
-          title,
-          content,
-      };
-      setNotesAndSave(prev => [newNote, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  };
-  
-  const handleViewNote = (note: Note) => {
-      setNoteToViewOrEdit(note);
-      setNoteEditMode(false);
-      setNoteModalOpen(true);
-  };
-  
-  const handleUpdateNote = (noteId: string, title: string, content: string) => {
-      setNotesAndSave(prev => prev.map(n => n.id === noteId ? { ...n, title, content } : n));
-      setNoteModalOpen(false);
-      setNoteToViewOrEdit(null);
-      setNoteEditMode(false);
-  };
-  
-  const handleDeleteNoteRequest = (id: string) => {
-      setNoteIdToDelete(id);
-      setNoteModalOpen(false); // Close the detail modal first
-      setDeleteNoteModalOpen(true);
-  };
-  
-  const handleConfirmDeleteNote = () => {
-      if (noteIdToDelete) {
-          setNotesAndSave(prev => prev.filter(n => n.id !== noteIdToDelete));
-      }
-      setDeleteNoteModalOpen(false);
-      setNoteIdToDelete(null);
-      setNoteToViewOrEdit(null);
-  };
-
 
   const handleLogout = () => {
     setLogoutConfirmModalOpen(true);
   };
 
   const handleConfirmLogout = () => {
-    setCurrentUser(null);
+    dispatch({ type: 'LOGOUT' });
     setLogoutConfirmModalOpen(false);
   };
   
   const handleDeleteUserAccount = async () => {
     if (!currentUser) return;
-    await db.deleteUserData(currentUser.email);
-    setUsers(prevUsers => prevUsers.filter(user => user.email !== currentUser.email));
-    setCurrentUser(null);
-    setDeleteConfirmModalOpen(false);
+    try {
+        await db.deleteUserData(currentUser.email);
+        setUsers(prevUsers => prevUsers.filter(user => user.email !== currentUser.email));
+        dispatch({ type: 'LOGOUT' });
+        showToast('Your account has been permanently deleted.');
+    } catch (error) {
+        console.error("Failed to delete user account:", error);
+        showToast('Error deleting account. Please try again.');
+    } finally {
+        setDeleteConfirmModalOpen(false);
+    }
   };
 
   const NavItem: React.FC<{view: View, label: string}> = ({view, label}) => (
@@ -605,8 +504,8 @@ function App() {
       </button>
   );
 
-  if (!currentUser) {
-    return <Auth onAuthSuccess={setCurrentUser} users={users} setUsers={setUsers} />;
+  if (!currentUser || !userData) {
+    return <Auth onAuthSuccess={handleAuthSuccess} users={users} setUsers={setUsers} />;
   }
 
   if (isLoading) {
@@ -638,23 +537,10 @@ function App() {
         </header>
 
         <main>
-          {activeView === 'journal' && <TradesList trades={trades} accounts={accounts} onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} />}
-          {activeView === 'dashboard' && <Dashboard trades={trades} accounts={accounts} accountBalances={accountBalances} />}
-          {activeView === 'notes' && <NotesView notes={notes} onAddNote={handleAddNote} onViewNote={handleViewNote} />}
-          {activeView === 'data' && <DataView 
-              accounts={accounts} setAccounts={setAccountsAndSave}
-              pairs={pairs} setPairs={setPairsAndSave}
-              entries={entries} setEntries={setEntriesAndSave}
-              risks={risks} setRisks={setRisksAndSave}
-              defaultSettings={defaultSettings} setDefaultSettings={setDefaultSettingsAndSave}
-              accountBalances={accountBalances}
-              setTrades={setTradesAndSave}
-              stoplosses={stoplosses} setStoplosses={setStoplossesAndSave}
-              takeprofits={takeprofits} setTakeprofits={setTakeprofitsAndSave}
-              closeTypes={closeTypes} setCloseTypes={setCloseTypesAndSave}
-              onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)}
-            />
-          }
+          {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade}/>}
+          {activeView === 'dashboard' && <Dashboard onAddTrade={handleAddTrade} />}
+          {activeView === 'notes' && <NotesView showToast={showToast} />}
+          {activeView === 'data' && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} showToast={showToast} />}
         </main>
       </div>
 
@@ -668,14 +554,31 @@ function App() {
           </svg>
       </button>
 
-      <Modal isOpen={isFormModalOpen} onClose={() => setFormModalOpen(false)} title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'}>
-        <TradeForm onSave={handleSaveTrade} onCancel={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={accounts} pairs={pairs} entries={entries} risks={risks} defaultSettings={defaultSettings} stoplosses={stoplosses} takeprofits={takeprofits} closeTypes={closeTypes} />
+      {toast && (
+        <div key={toast.id} className="fixed top-5 right-5 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg animate-fade-in-out z-50 border border-green-500">
+            {toast.message}
+        </div>
+      )}
+      <style>{`
+        @keyframes fade-in-out {
+          0% { opacity: 0; transform: translateY(-20px); }
+          15% { opacity: 1; transform: translateY(0); }
+          85% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-20px); }
+        }
+        .animate-fade-in-out {
+          animation: fade-in-out 3s ease-in-out forwards;
+        }
+      `}</style>
+
+      <Modal isOpen={isFormModalOpen} onClose={() => setFormModalOpen(false)} title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} size="4xl">
+        <TradeForm onSave={handleSaveTrade} onCancel={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
       </Modal>
       
       <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">
         {tradeToView && <TradeDetail 
             trade={tradeToView} 
-            account={accounts.find(a => a.id === tradeToView.accountId)} 
+            account={userData.accounts.find(a => a.id === tradeToView.accountId)} 
             onEdit={handleEditFromDetail}
         />}
       </Modal>
@@ -710,28 +613,14 @@ function App() {
         </div>
       </Modal>
 
-      <Modal isOpen={isNoteModalOpen} onClose={() => setNoteModalOpen(false)} title={noteToViewOrEdit ? noteToViewOrEdit.title : 'Note'}>
-        {noteToViewOrEdit && <NoteDetail 
-            note={noteToViewOrEdit}
-            isEditMode={isNoteEditMode}
-            onSetEditMode={setNoteEditMode}
-            onUpdate={handleUpdateNote}
-            onDelete={handleDeleteNoteRequest}
-        />}
-      </Modal>
-      
-      <Modal isOpen={isDeleteNoteModalOpen} onClose={() => setDeleteNoteModalOpen(false)} title="Confirm Note Deletion">
-        <div className="text-center">
-            <p className="text-gray-300 mb-6">Are you sure you want to permanently delete this note?</p>
-            <div className="flex justify-center gap-4">
-                <button onClick={() => setDeleteNoteModalOpen(false)} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
-                <button onClick={handleConfirmDeleteNote} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Yes, Delete Note</button>
-            </div>
-        </div>
-      </Modal>
-
     </div>
   );
 }
+
+const App: React.FC = () => (
+    // The provider is in index.tsx, but AppContent needs to be a separate component
+    // to be able to call the useAppContext hook.
+    <AppContent />
+);
 
 export default App;

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 // FIX: Removed unused and non-existent 'CloseType' from imports.
 import { Trade, Account, Result, Analysis } from '../types';
 import { ICONS } from '../constants';
+import useImageBlobUrl from '../hooks/useImageBlobUrl';
 
 interface TradeDetailProps {
   trade: Trade;
@@ -20,28 +21,32 @@ const AnalysisDetailSection: React.FC<{
     title: string; 
     analysis: Analysis;
     onImageClick: (src: string) => void;
-}> = ({ title, analysis, onImageClick }) => (
-    <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
-        <h3 className="text-lg font-semibold text-white mb-3">{title}</h3>
-        <div className="space-y-4">
-             <div className="w-full">
-                {analysis.image ? (
-                    <img 
-                        src={analysis.image} 
-                        alt={`${title} chart`} 
-                        className="rounded-md border border-gray-700 w-full cursor-pointer hover:opacity-90 transition-opacity object-contain"
-                        onClick={() => onImageClick(analysis.image!)}
-                    />
-                ) : (
-                    <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full">No Image</div>
-                )}
-            </div>
-            <div>
-                <p className="text-[#F0F0F0] whitespace-pre-wrap text-sm">{analysis.notes || 'No notes for this section.'}</p>
+}> = ({ title, analysis, onImageClick }) => {
+    const imageUrl = useImageBlobUrl(analysis.image);
+    
+    return (
+        <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
+            <h3 className="text-lg font-semibold text-white mb-3">{title}</h3>
+            <div className="space-y-4">
+                 <div className="w-full">
+                    {imageUrl ? (
+                        <img 
+                            src={imageUrl} 
+                            alt={`${title} chart`} 
+                            className="rounded-md border border-gray-700 w-full cursor-pointer hover:opacity-90 transition-opacity object-contain"
+                            onClick={() => onImageClick(imageUrl)}
+                        />
+                    ) : (
+                        <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full">No Image</div>
+                    )}
+                </div>
+                <div>
+                    <p className="text-[#F0F0F0] whitespace-pre-wrap text-sm">{analysis.notes || 'No notes for this section.'}</p>
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+}
 
 
 const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => {

@@ -1,29 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 // FIX: Changed imports to be relative paths
-import { Account, DefaultSettings, Trade, Currency } from '../types';
+import { Account, Currency } from '../types';
 import { ICONS } from '../constants';
 import Modal from './ui/Modal';
+import { useAppContext } from '../services/appState';
 
 interface DataViewProps {
-    accounts: Account[];
-    setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
-    pairs: string[];
-    setPairs: React.Dispatch<React.SetStateAction<string[]>>;
-    entries: string[];
-    setEntries: React.Dispatch<React.SetStateAction<string[]>>;
-    risks: number[];
-    setRisks: React.Dispatch<React.SetStateAction<number[]>>;
-    defaultSettings: DefaultSettings;
-    setDefaultSettings: React.Dispatch<React.SetStateAction<DefaultSettings>>;
-    accountBalances: Map<string, number>;
-    setTrades: React.Dispatch<React.SetStateAction<Trade[]>>;
-    stoplosses: string[];
-    setStoplosses: React.Dispatch<React.SetStateAction<string[]>>;
-    takeprofits: string[];
-    setTakeprofits: React.Dispatch<React.SetStateAction<string[]>>;
-    closeTypes: string[];
-    setCloseTypes: React.Dispatch<React.SetStateAction<string[]>>;
     onInitiateDeleteAccount: () => void;
+    showToast: (message: string) => void;
 }
 
 const DataCard: React.FC<{ title: string, children: React.ReactNode }> = ({ title, children }) => (
@@ -33,42 +17,100 @@ const DataCard: React.FC<{ title: string, children: React.ReactNode }> = ({ titl
     </div>
 );
 
-const DataView: React.FC<DataViewProps> = (props) => {
-    const { accounts, setAccounts, pairs, setPairs, entries, setEntries, risks, setRisks, defaultSettings, setDefaultSettings, accountBalances, setTrades, stoplosses, setStoplosses, takeprofits, setTakeprofits, closeTypes, setCloseTypes, onInitiateDeleteAccount } = props;
-    const [isAccountModalOpen, setAccountModalOpen] = useState(false);
+const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast }) => {
+    const { state, dispatch } = useAppContext();
+    const { accounts, pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes, trades } = state.userData!;
     
+    const [isAccountModalOpen, setAccountModalOpen] = useState(false);
+    const [isEditAccountModalOpen, setEditAccountModalOpen] = useState(false);
+    const [accountToEdit, setAccountToEdit] = useState<Account | null>(null);
+
+    const [isArchiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+    const [accountToArchive, setAccountToArchive] = useState<Account | null>(null);
+    const [isBalanceWarningOpen, setBalanceWarningOpen] = useState(false);
+    const [pendingAccountUpdate, setPendingAccountUpdate] = useState<Account | null>(null);
+    
+    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
+    
+    const accountBalances = useMemo(() => {
+        const balances = new Map<string, number>();
+        accounts.forEach(acc => {
+            const accountTrades = trades.filter(t => t.accountId === acc.id);
+            const netPnl = accountTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
+            balances.set(acc.id, acc.initialBalance + netPnl);
+        });
+        return balances;
+    }, [trades, accounts]);
+
     const selectClasses = "w-full bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4M8 15l4-4 4 4'/%3e%3c/svg%3e\")]";
 
     const handleAddAccount = (name: string, initialBalance: number, currency: Currency) => {
         if (name && initialBalance >= 0) {
             const newAccount: Account = { id: crypto.randomUUID(), name, initialBalance, currency };
-            setAccounts(prev => [...prev, newAccount]);
+            dispatch({ type: 'SET_ACCOUNTS', payload: [...accounts, newAccount] });
             setAccountModalOpen(false);
+            showToast('Account created successfully.');
+        }
+    };
+
+    const handleEditClick = (account: Account) => {
+        setAccountToEdit(account);
+        setEditAccountModalOpen(true);
+    };
+    
+    const processAccountUpdate = (updatedAccount: Account) => {
+        dispatch({ type: 'SET_ACCOUNTS', payload: accounts.map(acc => acc.id === updatedAccount.id ? updatedAccount : acc) });
+        showToast('Account updated successfully.');
+        setEditAccountModalOpen(false);
+        setAccountToEdit(null);
+        setPendingAccountUpdate(null);
+        setBalanceWarningOpen(false);
+    };
+
+    const handleUpdateAccount = (updatedAccount: Account) => {
+        if (accountToEdit && updatedAccount.initialBalance !== accountToEdit.initialBalance) {
+            setPendingAccountUpdate(updatedAccount);
+            setBalanceWarningOpen(true);
+        } else {
+            processAccountUpdate(updatedAccount);
         }
     };
     
-    const handleDeleteAccount = (id: string) => {
-        if(window.confirm('Are you sure? This will also delete all associated trades.')) {
-            setAccounts(prev => prev.filter(a => a.id !== id));
-            setTrades(prev => prev.filter(t => t.accountId !== id));
+    const handleInitiateArchive = (account: Account) => {
+        setAccountToArchive(account);
+        setArchiveConfirmOpen(true);
+    };
+
+    const handleConfirmArchive = () => {
+        if (accountToArchive) {
+            const newAccounts = accounts.map(a => a.id === accountToArchive.id ? { ...a, isArchived: true } : a);
+            dispatch({ type: 'SET_ACCOUNTS', payload: newAccounts });
+            showToast(`Account "${accountToArchive.name}" has been archived.`);
         }
-    }
+        setAccountToArchive(null);
+        setArchiveConfirmOpen(false);
+    };
 
     const createListManager = <T extends string | number>(
-        list: T[], 
-        setList: React.Dispatch<React.SetStateAction<T[]>>, 
+        list: T[],
+        actionType: 'SET_PAIRS' | 'SET_ENTRIES' | 'SET_RISKS' | 'SET_STOPLOSSES' | 'SET_TAKEPROFITS' | 'SET_CLOSETYPES',
         placeholder: string,
+        listName: string,
         inputType: 'text' | 'number' = 'text'
     ) => {
         const [newItem, setNewItem] = useState('');
         const handleAdd = () => {
             if (newItem && !list.includes(newItem as T)) {
-                setList(prev => [...prev, (inputType === 'number' ? Number(newItem) : newItem) as T]);
+                const updatedList = [...list, (inputType === 'number' ? Number(newItem) : newItem) as T];
+                dispatch({ type: actionType, payload: updatedList as any });
                 setNewItem('');
+                showToast(`${listName} added.`);
             }
         };
         const handleRemove = (itemToRemove: T) => {
-             setList(prev => prev.filter(item => item !== itemToRemove));
+             const updatedList = list.filter(item => item !== itemToRemove);
+             dispatch({ type: actionType, payload: updatedList as any });
+             showToast(`${listName} removed.`);
         };
 
         return (
@@ -77,7 +119,7 @@ const DataView: React.FC<DataViewProps> = (props) => {
                     {list.map(item => (
                         <div key={String(item)} className="flex items-center gap-2 bg-gray-700 px-3 py-1 rounded-full text-sm">
                             <span>{item}{inputType === 'number' ? '%' : ''}</span>
-                            <button onClick={() => handleRemove(item)} className="text-gray-400 hover:text-white">&times;</button>
+                            <button onClick={() => handleRemove(item)} className="text-gray-400 hover:text-white" aria-label={`Remove ${item}`}>&times;</button>
                         </div>
                     ))}
                 </div>
@@ -98,7 +140,9 @@ const DataView: React.FC<DataViewProps> = (props) => {
     
     const handleDefaultChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const {name, value} = e.target;
-        setDefaultSettings(prev => ({...prev, [name]: name === 'risk' ? Number(value) : value}));
+        const newSettings = {...defaultSettings, [name]: name === 'risk' ? Number(value) : value};
+        dispatch({ type: 'SET_DEFAULT_SETTINGS', payload: newSettings });
+        showToast('Default settings saved.');
     }
 
     return (
@@ -107,43 +151,52 @@ const DataView: React.FC<DataViewProps> = (props) => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
                     <DataCard title="Accounts">
-                         <div className="space-y-2">
-                            {accounts.map(acc => (
-                                <div key={acc.id} className="grid grid-cols-3 items-center bg-gray-800 hover:bg-gray-700/50 p-3 rounded-lg transition-colors text-sm">
-                                    <span className="font-semibold text-white">{acc.name}</span>
-                                    <span className="text-[#8A91A8]">{(accountBalances.get(acc.id) ?? 0).toLocaleString('en-US', { style: 'currency', currency: acc.currency || 'USD' })}</span>
-                                    <div className="text-right">
-                                        <button onClick={() => handleDeleteAccount(acc.id)} className="text-gray-500 hover:text-[#EF4444] transition-colors">
+                         <div className="space-y-3">
+                            {activeAccounts.map(acc => (
+                                <div key={acc.id} className="flex items-center justify-between bg-gray-800 hover:bg-gray-700/50 p-3 rounded-lg transition-colors text-sm">
+                                    <div>
+                                        <span className="font-semibold text-white">{acc.name}</span>
+                                        <p className="text-xs text-[#8A91A8] mt-0.5">
+                                            Balance: {(accountBalances.get(acc.id) ?? 0).toLocaleString('en-US', { style: 'currency', currency: acc.currency || 'USD' })}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center shrink-0 gap-3">
+                                        <button onClick={() => handleEditClick(acc)} className="text-gray-500 hover:text-[#3B82F6] transition-colors" aria-label={`Edit account ${acc.name}`}>
+                                            <span className="w-5 h-5">{ICONS.pencil}</span>
+                                        </button>
+                                        <button onClick={() => handleInitiateArchive(acc)} className="text-gray-500 hover:text-[#EF4444] transition-colors" aria-label={`Archive account ${acc.name}`}>
                                             <span className="w-5 h-5">{ICONS.trash}</span>
                                         </button>
                                     </div>
                                 </div>
                             ))}
-                            {accounts.length === 0 && <p className="text-center text-[#8A91A8] col-span-4 py-2 text-sm">No accounts created.</p>}
+                            {activeAccounts.length === 0 && <p className="text-center text-[#8A91A8] py-2 text-sm">No active accounts.</p>}
                         </div>
-                        <button onClick={() => setAccountModalOpen(true)} className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors">
-                           <span className="w-5 h-5">{ICONS.plus}</span> New Account
-                        </button>
+                        <div className="pt-2">
+                             <button onClick={() => setAccountModalOpen(true)} className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-transparent border border-[#3B82F6] text-[#3B82F6] rounded-md hover:bg-[#3B82F6] hover:text-white text-sm font-medium transition-colors">
+                               <span className="w-5 h-5">{ICONS.plus}</span> New Account
+                            </button>
+                        </div>
                     </DataCard>
                     <DataCard title="Trading Pairs">
-                        {createListManager(pairs, setPairs, 'e.g., BTC/USDT')}
+                        {createListManager(pairs, 'SET_PAIRS', 'e.g., BTC/USDT', 'Pair')}
                     </DataCard>
                      <DataCard title="Entries">
-                        {createListManager(entries, setEntries, 'e.g., IDM')}
+                        {createListManager(entries, 'SET_ENTRIES', 'e.g., IDM', 'Entry')}
                     </DataCard>
                     <DataCard title="Stoploss">
-                        {createListManager(stoplosses, setStoplosses, 'e.g., fractal')}
+                        {createListManager(stoplosses, 'SET_STOPLOSSES', 'e.g., fractal', 'Stoploss type')}
                     </DataCard>
                 </div>
                  <div className="space-y-8">
                      <DataCard title="Risk Profiles (%)">
-                        {createListManager(risks, setRisks, 'e.g., 1.5', 'number')}
+                        {createListManager(risks, 'SET_RISKS', 'e.g., 1.5', 'Risk', 'number')}
                     </DataCard>
                      <DataCard title="Take Profit">
-                        {createListManager(takeprofits, setTakeprofits, 'e.g., OB')}
+                        {createListManager(takeprofits, 'SET_TAKEPROFITS', 'e.g., OB', 'Take Profit type')}
                     </DataCard>
                     <DataCard title="Close Types">
-                        {createListManager(closeTypes, setCloseTypes, 'e.g., SL Hit')}
+                        {createListManager(closeTypes, 'SET_CLOSETYPES', 'e.g., SL Hit', 'Close type')}
                     </DataCard>
                     <DataCard title="Default New Trade Values">
                         <div className="space-y-3">
@@ -151,7 +204,7 @@ const DataView: React.FC<DataViewProps> = (props) => {
                                 <label className="block text-sm font-medium mb-1 text-[#8A91A8]">Default Account</label>
                                 <select name="accountId" value={defaultSettings.accountId} onChange={handleDefaultChange} className={selectClasses}>
                                      <option value="">None</option>
-                                     {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                     {activeAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                                 </select>
                             </div>
                             <div>
@@ -179,12 +232,12 @@ const DataView: React.FC<DataViewProps> = (props) => {
                     </DataCard>
                     <DataCard title="Delete Account">
                         <div>
-                            <p className="text-sm text-[#8A91A8] mb-3">Permanently delete your account and all associated trading data. This action is irreversible.</p>
+                            <p className="text-sm text-[#8A91A8] mb-3">Permanently delete your user profile and all associated trading data. This action is irreversible.</p>
                             <button
                                 onClick={onInitiateDeleteAccount}
                                 className="px-4 py-2 bg-[#EF4444] text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
                             >
-                                Delete Account
+                                Delete User Profile
                             </button>
                         </div>
                     </DataCard>
@@ -217,6 +270,63 @@ const DataView: React.FC<DataViewProps> = (props) => {
                         <button type="submit" className="px-6 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors">Create Account</button>
                      </div>
                 </form>
+            </Modal>
+            <Modal isOpen={isEditAccountModalOpen} onClose={() => setEditAccountModalOpen(false)} title="Edit Account">
+                {accountToEdit && (
+                    <form onSubmit={(e) => {
+                        e.preventDefault();
+                        const target = e.target as typeof e.target & { name: { value: string }, balance: { value: string }, currency: { value: Currency } };
+                        handleUpdateAccount({
+                            ...accountToEdit,
+                            name: target.name.value,
+                            initialBalance: parseFloat(target.balance.value),
+                            currency: target.currency.value,
+                        });
+                    }} className="space-y-4">
+                         <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Account Name</label>
+                            <input name="name" type="text" required defaultValue={accountToEdit.name} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white" />
+                         </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Initial Balance</label>
+                            <input name="balance" type="number" step="0.01" min="0" required defaultValue={accountToEdit.initialBalance} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white" />
+                         </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Currency</label>
+                            <select name="currency" required defaultValue={accountToEdit.currency || Currency.USD} className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white">
+                               <option value={Currency.USD}>USD</option>
+                               <option value={Currency.EUR}>EUR</option>
+                            </select>
+                         </div>
+                         <div className="flex justify-end pt-4">
+                            <button type="submit" className="px-6 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors">Save Changes</button>
+                         </div>
+                    </form>
+                )}
+            </Modal>
+
+            <Modal isOpen={isArchiveConfirmOpen} onClose={() => setArchiveConfirmOpen(false)} title="Confirm Account Archive">
+                <div className="text-center">
+                    <p className="text-gray-300 mb-6">
+                        Are you sure you want to archive this account?
+                        <br />
+                        <span className="text-sm text-gray-400">Associated trades will be kept for your records but will be excluded from dashboard statistics.</span>
+                    </p>
+                    <div className="flex justify-center gap-4">
+                        <button onClick={() => setArchiveConfirmOpen(false)} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
+                        <button onClick={handleConfirmArchive} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Yes, Archive</button>
+                    </div>
+                </div>
+            </Modal>
+
+             <Modal isOpen={isBalanceWarningOpen} onClose={() => setBalanceWarningOpen(false)} title="Confirm Balance Change">
+                <div className="text-center">
+                    <p className="text-gray-300 mb-6">Changing the initial balance will affect the calculated current balance but will not alter historical PnL records. Do you want to continue?</p>
+                    <div className="flex justify-center gap-4">
+                        <button onClick={() => setBalanceWarningOpen(false)} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
+                        <button onClick={() => processAccountUpdate(pendingAccountUpdate!)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors">Yes, Continue</button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

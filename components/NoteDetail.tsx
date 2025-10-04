@@ -5,32 +5,29 @@ interface NoteDetailProps {
     note: Note;
     isEditMode: boolean;
     onSetEditMode: (isEditing: boolean) => void;
-    onUpdate: (id: string, title: string, content: string) => void;
+    // FIX: Removed `title` from onUpdate signature as it doesn't exist on the Note type.
+    onUpdate: (id: string, content: string) => void;
     onDelete: (id: string) => void;
 }
 
 const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete }) => {
-    const [title, setTitle] = useState(note.title);
+    // FIX: Removed state for `title` as it doesn't exist on the Note type.
     const [content, setContent] = useState(note.content);
 
     useEffect(() => {
-        setTitle(note.title);
+        // FIX: Removed logic for setting `title` state.
         setContent(note.content);
     }, [note]);
     
     const handleSave = () => {
-        onUpdate(note.id, title, content);
+        // FIX: Removed `title` from the onUpdate call.
+        onUpdate(note.id, content);
     };
 
     if (isEditMode) {
         return (
             <div className="space-y-4">
-                 <input 
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Note Title"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white"
-                />
+                 {/* FIX: Removed input field for the non-existent `title` property. */}
                 <textarea 
                     value={content}
                     onChange={(e) => setContent(e.target.value)}

@@ -1,21 +1,17 @@
 import React, { useState } from 'react';
-import { Trade, Account, Direction, Result, DefaultSettings, Analysis } from '../types';
+import { Trade, Account, Direction, Result, Analysis } from '../types';
+import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import * as imageDB from '../services/imageDB';
+import { useAppContext } from '../services/appState';
 
 interface TradeFormProps {
   onSave: (trade: Trade) => void;
   onCancel: () => void;
   tradeToEdit?: Trade | null;
-  accounts: Account[];
-  pairs: string[];
-  entries: string[];
-  risks: number[];
-  defaultSettings: DefaultSettings;
-  stoplosses: string[];
-  takeprofits: string[];
-  closeTypes: string[];
+  accounts: Account[]; // Still need active accounts passed in
 }
 
-const emptyAnalysis: Analysis = { image: '', notes: '' };
+const emptyAnalysis: Analysis = { image: undefined, notes: '' };
 const initialTradeState = {
   date: new Date().toISOString().slice(0, 16), // Format for datetime-local
   accountId: '',
@@ -65,7 +61,8 @@ const AnalysisSection: React.FC<{
     onFileChange: (file: File | null) => void;
     onNotesChange: (notes: string) => void;
 }> = ({ title, analysis, onFileChange, onNotesChange }) => {
-    
+    const imageUrl = useImageBlobUrl(analysis.image);
+
     const handleImageRemove = (e: React.MouseEvent) => {
         e.preventDefault();
         onFileChange(null);
@@ -84,10 +81,10 @@ const AnalysisSection: React.FC<{
                             className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
                         />
                     </FormField>
-                    {analysis.image && (
+                    {imageUrl && (
                         <div className="mt-3 relative">
-                           <img src={analysis.image} alt={`${title} preview`} className="rounded-md max-h-40 border border-gray-700" />
-                           <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none">&times;</button>
+                           <img src={imageUrl} alt={`${title} preview`} className="rounded-md max-h-40 border border-gray-700" />
+                           <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none" aria-label="Remove image">&times;</button>
                         </div>
                     )}
                 </div>
@@ -107,7 +104,11 @@ const AnalysisSection: React.FC<{
 };
 
 
-const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts, pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes }) => {
+const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts }) => {
+  const { state } = useAppContext();
+  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = state.userData!;
+  const currentUserEmail = state.currentUser!.email;
+
   const [trade, setTrade] = useState(() => {
      const defaults = {
         ...initialTradeState,
@@ -145,7 +146,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
     });
   };
 
-  const handleAnalysisChange = (section: keyof Omit<typeof trade, 'id' | 'pnl'>, field: 'notes' | 'image', value: string) => {
+  const handleAnalysisChange = (section: keyof Omit<typeof trade, 'id' | 'pnl'>, field: 'notes' | 'image', value: string | undefined) => {
       setTrade(prev => ({
           ...prev,
           [section]: {
@@ -155,15 +156,28 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
       }))
   };
 
-  const handleFileChange = (section: keyof Omit<typeof trade, 'id' | 'pnl'>, file: File | null) => {
+  const handleFileChange = async (section: keyof Omit<typeof trade, 'id' | 'pnl'>, file: File | null) => {
+      const currentImageKey = (trade[section] as Analysis).image;
+
+      // Delete old image from DB if it exists
+      if (currentImageKey) {
+          try {
+              await imageDB.deleteImage(currentImageKey);
+          } catch (e) {
+              console.error("Failed to delete old image", e);
+          }
+      }
+
       if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            handleAnalysisChange(section, 'image', reader.result as string);
-        };
-        reader.readAsDataURL(file);
+        try {
+            const imageKey = await imageDB.saveImage(currentUserEmail, file);
+            handleAnalysisChange(section, 'image', imageKey);
+        } catch (error) {
+            console.error("Error saving image to IndexedDB:", error);
+            alert("Could not save image.");
+        }
       } else {
-        handleAnalysisChange(section, 'image', '');
+        handleAnalysisChange(section, 'image', undefined);
       }
   };
 

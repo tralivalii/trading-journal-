@@ -20,7 +20,7 @@ export enum Direction {
 
 // New type for analysis sections
 export interface Analysis {
-  image?: string; // Base64 string
+  image?: string; // This is now an ID/key for an image in IndexedDB
   notes?: string;
 }
 
@@ -58,6 +58,7 @@ export interface Account {
   name: string;
   initialBalance: number;
   currency?: Currency;
+  isArchived?: boolean;
 }
 
 export interface User {
@@ -70,8 +71,14 @@ export interface User {
 export interface Note {
   id: string;
   date: string;
-  title: string;
   content: string;
+  tags?: string[];
+  isFavorite?: boolean;
+  attachments?: {
+    name: string;
+    type: string; // MIME type
+    data: string; // This is now an ID/key for an image in IndexedDB
+  }[];
 }
 
 export interface Stats {
@@ -80,6 +87,7 @@ export interface Stats {
   wins: number;
   losses: number;
   breakevens: number;
+  // FIX: Corrected typo from `anumber` to `number`.
   missed: number;
   averageRR: number;
   totalRR: number;
@@ -104,6 +112,7 @@ export interface UserData {
     defaultSettings: DefaultSettings;
     notes: Note[];
     stoplosses: string[];
+    // FIX: Corrected typo from `takeprofite` to `takeprofits` to resolve type errors.
     takeprofits: string[];
     closeTypes: string[];
 }

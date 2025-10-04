@@ -1,15 +1,15 @@
 import React, { useState, useMemo } from 'react';
 // FIX: Changed imports to be relative paths
-import { Trade, Account, Result } from '../types';
+import { Trade, Result } from '../types';
 import { ICONS } from '../constants';
 import { filterTradesByPeriod } from '../services/statisticsService';
+import { useAppContext } from '../services/appState';
 
 interface TradesListProps {
-  trades: Trade[];
-  accounts: Account[];
   onEdit: (trade: Trade) => void;
   onView: (trade: Trade) => void;
   onDelete: (id: string) => void;
+  onAddTrade: () => void;
 }
 
 type JournalPeriod = 'this-month' | 'last-month' | 'this-quarter' | 'all';
@@ -26,11 +26,15 @@ const AlertIcon: React.FC<{ message: string }> = ({ message }) => (
 );
 
 
-const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onView, onDelete }) => {
+const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade }) => {
+  const { state } = useAppContext();
+  const { trades, accounts } = state.userData!;
+  
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [period, setPeriod] = useState<JournalPeriod>('this-month');
   
   const accountsMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc])), [accounts]);
+  const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
 
   const filteredTrades = useMemo(() => {
     const accountFiltered = trades.filter(trade => selectedAccountId === 'all' || trade.accountId === selectedAccountId);
@@ -95,7 +99,7 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                         className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
                     >
                         <option value="all">All Accounts</option>
-                        {accounts.map(acc => (
+                        {activeAccounts.map(acc => (
                             <option key={acc.id} value={acc.id}>{acc.name}</option>
                         ))}
                     </select>
@@ -122,6 +126,7 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                                         <th scope="col" className="px-6 py-3">Pair</th>
                                         <th scope="col" className="px-6 py-3">Direction</th>
                                         <th scope="col" className="px-6 py-3">R:R</th>
+                                        <th scope="col" className="px-6 py-3">Risk</th>
                                         <th scope="col" className="px-6 py-3">PnL</th>
                                         <th scope="col" className="px-6 py-3">Result</th>
                                         <th scope="col" className="px-6 py-3 text-center">Actions</th>
@@ -136,10 +141,12 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                                             <td className="px-6 py-4 whitespace-nowrap">{new Date(trade.date).toLocaleDateString()}</td>
                                             <td className="px-6 py-4 font-medium text-white flex items-center gap-2 whitespace-nowrap">
                                                 {trade.pair}
+                                                {account?.isArchived && <AlertIcon message="Account Archived" />}
                                                 {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
                                             </td>
                                             <td className={`px-6 py-4 font-semibold ${trade.direction === 'Long' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>{trade.direction}</td>
                                             <td className="px-6 py-4">{trade.rr.toFixed(2)}</td>
+                                            <td className="px-6 py-4">{trade.risk}%</td>
                                             <td className={`px-6 py-4 font-semibold ${trade.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'} whitespace-nowrap`}>
                                             {Math.abs(trade.pnl).toLocaleString('en-US', { style: 'currency', currency: currency })}
                                             </td>
@@ -150,9 +157,9 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                                             </td>
                                             <td className="px-6 py-4 text-center whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
                                             <div className="flex justify-center items-center gap-4">
-                                                <button onClick={() => onView(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5">{ICONS.eye} View</button>
-                                                <button onClick={() => onEdit(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5">{ICONS.pencil} Edit</button>
-                                                <button onClick={() => onDelete(trade.id)} className="font-medium text-[#EF4444] hover:underline flex items-center gap-1.5">{ICONS.trash} Delete</button>
+                                                <button onClick={() => onView(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`View trade for ${trade.pair} on ${new Date(trade.date).toLocaleDateString()}`}>{ICONS.eye} View</button>
+                                                <button onClick={() => onEdit(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`Edit trade for ${trade.pair} on ${new Date(trade.date).toLocaleDateString()}`}>{ICONS.pencil} Edit</button>
+                                                <button onClick={() => onDelete(trade.id)} className="font-medium text-[#EF4444] hover:underline flex items-center gap-1.5" aria-label={`Delete trade for ${trade.pair} on ${new Date(trade.date).toLocaleDateString()}`}>{ICONS.trash} Delete</button>
                                             </div>
                                             </td>
                                         </tr>
@@ -165,10 +172,19 @@ const TradesList: React.FC<TradesListProps> = ({ trades, accounts, onEdit, onVie
                     );
                 })
             ) : (
-                <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50">
+                <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col items-center justify-center gap-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
                     <p className="text-gray-500">
                         No trades found for the selected period.
                     </p>
+                    <button 
+                        onClick={onAddTrade}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors"
+                    >
+                       <span className="w-5 h-5">{ICONS.plus}</span> Add First Trade
+                    </button>
                 </div>
             )}
         </div>
