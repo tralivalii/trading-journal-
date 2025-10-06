@@ -349,9 +349,24 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                                         <p className={`font-semibold ${!acc.isArchived && 'text-white'}`}>{acc.name}</p>
                                         <p className="text-xs">Initial Balance: {acc.initialBalance.toLocaleString('en-US', { style: 'currency', currency: acc.currency || 'USD' })}</p>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <button onClick={() => handleOpenAccountModal(acc)} className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={acc.isArchived}>Edit</button>
-                                        <button onClick={() => handleToggleArchiveAccount(acc)} className="text-yellow-400 hover:text-yellow-300 transition-colors">{acc.isArchived ? 'Unarchive' : 'Archive'}</button>
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            onClick={() => handleOpenAccountModal(acc)} 
+                                            className="px-3 py-1 text-xs font-medium rounded-full transition-colors bg-blue-600/20 text-blue-300 hover:bg-blue-600/40 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed" 
+                                            disabled={acc.isArchived}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button 
+                                            onClick={() => handleToggleArchiveAccount(acc)} 
+                                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                                acc.isArchived 
+                                                    ? 'bg-green-600/20 text-green-300 hover:bg-green-600/40' 
+                                                    : 'bg-yellow-600/20 text-yellow-300 hover:bg-yellow-600/40'
+                                            }`}
+                                        >
+                                            {acc.isArchived ? 'Unarchive' : 'Archive'}
+                                        </button>
                                     </div>
                                 </div>
                             )) : <p className="text-center text-gray-500 py-4">No accounts created yet.</p>}
