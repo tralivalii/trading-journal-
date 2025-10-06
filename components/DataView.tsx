@@ -134,16 +134,18 @@ const EditableTagList: React.FC<{
                                 </button>
                             </div>
                         ) : (
-                            <div 
+                            <div
                                 tabIndex={0}
-                                className="group relative flex items-center justify-center bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium px-3 py-1 rounded-full cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-16"
+                                className="group relative bg-gray-600 text-white text-sm font-medium px-3 py-1 rounded-full cursor-pointer transition-colors min-w-16 flex justify-center items-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 onClick={() => handleEditStart(index, item)}
                             >
-                                {/* The actual text, becomes invisible on hover/focus */}
-                                <span className="group-hover:invisible group-focus:invisible">{item}</span>
-                                
-                                {/* The hover content, absolutely positioned to cover and center */}
-                                <div className="absolute inset-0 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity">
+                                {/* The actual text, always present for sizing */}
+                                <span className="whitespace-nowrap">{item}</span>
+
+                                {/* The hover overlay, covers the whole tag */}
+                                <div
+                                    className="absolute inset-0 flex items-center justify-center gap-2 rounded-full bg-gray-500/90 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity"
+                                >
                                     <span className="text-xs font-semibold uppercase tracking-wider">Edit</span>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleRemoveItem(item); }}
