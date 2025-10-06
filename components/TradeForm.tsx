@@ -95,7 +95,7 @@ const AnalysisSection: React.FC<{
 
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts }) => {
   const { state } = useAppContext();
-  const { userData, currentUser } = state;
+  const { userData, currentUser, isGuest } = state;
   const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = userData!;
 
   const [trade, setTrade] = useState(() => {
@@ -146,6 +146,21 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
   const handleFileChange = async (section: keyof Omit<typeof trade, 'id' | 'pnl' | 'riskAmount'>, file: File | null) => {
       const currentImageKey = (trade[section] as Analysis).image;
 
+      // Guest mode: use blob URLs
+      if (isGuest) {
+          if (currentImageKey && currentImageKey.startsWith('blob:')) {
+              URL.revokeObjectURL(currentImageKey);
+          }
+          if (file) {
+              const blobUrl = URL.createObjectURL(file);
+              handleAnalysisChange(section, 'image', blobUrl);
+          } else {
+              handleAnalysisChange(section, 'image', undefined);
+          }
+          return;
+      }
+
+      // Registered user: use Supabase Storage
       if (currentImageKey) {
           try {
               await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);

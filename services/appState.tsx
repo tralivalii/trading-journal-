@@ -11,6 +11,7 @@ interface AppState {
     currentUser: SupabaseUser | null;
     userData: UserData | null;
     isLoading: boolean;
+    isGuest: boolean;
 }
 
 type Action =
@@ -20,7 +21,9 @@ type Action =
   | { type: 'UPDATE_TRADES'; payload: Trade[] }
   | { type: 'UPDATE_ACCOUNTS'; payload: Account[] }
   | { type: 'UPDATE_NOTES'; payload: Note[] }
-  | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof UserData, value: any } };
+  | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof UserData, value: any } }
+  | { type: 'SET_GUEST_MODE'; payload: boolean };
+
 
 // --- INITIAL STATE ---
 
@@ -29,6 +32,7 @@ const initialState: AppState = {
     currentUser: null,
     userData: null,
     isLoading: true,
+    isGuest: false,
 };
 
 // --- REDUCER ---
@@ -40,6 +44,16 @@ const appReducer = (state: AppState, action: Action): AppState => {
                 ...state,
                 session: action.payload,
                 currentUser: action.payload?.user ?? null,
+                isGuest: false, // Logging in or out exits guest mode
+            };
+        case 'SET_GUEST_MODE':
+            return {
+                ...state,
+                isGuest: action.payload,
+                session: null,
+                currentUser: null,
+                userData: null, // Force a reload of data for guest/user
+                isLoading: true,
             };
         case 'SET_USER_DATA':
              return {
@@ -115,9 +129,9 @@ export const useAppContext = () => useContext(AppContext);
 
 // --- HELPER ACTIONS ---
 export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeToSave: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }, isEditing: boolean) => {
-    if (!state.currentUser || !state.userData) return;
-    
+    if (!state.userData) return;
     const { accounts, trades } = state.userData;
+
     const account = accounts.find(a => a.id === tradeToSave.accountId);
     if (!account) throw new Error("Account not found");
 
@@ -130,8 +144,29 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
     let pnl = 0;
     if (tradeToSave.result === 'Win') pnl = riskAmount * tradeToSave.rr;
     else if (tradeToSave.result === 'Loss') pnl = -riskAmount;
+    const finalPnl = pnl - commission;
 
-    // Supabase requires snake_case for column names if they are multi-word
+    // --- Guest Mode Logic ---
+    if (state.isGuest) {
+        if (isEditing && tradeToSave.id) {
+            const updatedTrade: Trade = { ...tradeToSave as Trade, id: tradeToSave.id, riskAmount, pnl: finalPnl };
+            const updatedTrades = trades.map(t => t.id === tradeToSave.id ? updatedTrade : t);
+            dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+        } else {
+            const newTrade: Trade = {
+                id: crypto.randomUUID(),
+                ...tradeToSave,
+                riskAmount,
+                pnl: finalPnl
+            };
+            dispatch({ type: 'UPDATE_TRADES', payload: [...trades, newTrade] });
+        }
+        return;
+    }
+
+    // --- Supabase Logic ---
+    if (!state.currentUser) return;
+    
     const tradeForDb = {
         user_id: state.currentUser.id,
         account_id: tradeToSave.accountId,
@@ -142,7 +177,7 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
         risk: tradeToSave.risk,
         rr: tradeToSave.rr,
         risk_amount: riskAmount,
-        pnl: pnl - commission,
+        pnl: finalPnl,
         commission: commission,
         stoploss: tradeToSave.stoploss,
         takeprofit: tradeToSave.takeprofit,
@@ -161,7 +196,7 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
         const { data, error } = await supabase.from('trades').update(tradeForDb).eq('id', tradeToSave.id).select().single();
         if (error) throw error;
         
-        const updatedTrades = trades.map(t => t.id === data.id ? { ...t, ...tradeToSave, riskAmount, pnl: pnl - commission } : t);
+        const updatedTrades = trades.map(t => t.id === data.id ? { ...t, ...tradeToSave, riskAmount, pnl: finalPnl } : t);
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
     } else {
         const { data, error } = await supabase.from('trades').insert(tradeForDb).select().single();
@@ -171,19 +206,42 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
             id: data.id,
             ...tradeToSave,
             riskAmount,
-            pnl: pnl - commission
+            pnl: finalPnl
         };
         dispatch({ type: 'UPDATE_TRADES', payload: [...trades, newTrade] });
     }
 };
 
 export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeIdToDelete: string) => {
-    if (!state.currentUser || !state.userData) return;
+    if (!state.userData) return;
     const { trades } = state.userData;
+
+    // --- Guest Mode Logic ---
+    if (state.isGuest) {
+        const tradeToDelete = trades.find(t => t.id === tradeIdToDelete);
+        if (tradeToDelete) {
+             const imageKeys: (string | undefined)[] = [
+                tradeToDelete.analysisD1.image,
+                tradeToDelete.analysis1h.image,
+                tradeToDelete.analysis5m.image,
+                tradeToDelete.analysisResult.image,
+            ];
+            imageKeys.forEach(key => {
+                if (key && key.startsWith('blob:')) {
+                    URL.revokeObjectURL(key);
+                }
+            });
+        }
+        const newTrades = trades.filter(trade => trade.id !== tradeIdToDelete);
+        dispatch({ type: 'UPDATE_TRADES', payload: newTrades });
+        return;
+    }
+
+    // --- Supabase Logic ---
+    if (!state.currentUser) return;
     
     const tradeToDelete = trades.find(t => t.id === tradeIdToDelete);
     if (tradeToDelete) {
-        // Delete associated images from storage
         const imageKeys: string[] = [
             tradeToDelete.analysisD1.image,
             tradeToDelete.analysis1h.image,

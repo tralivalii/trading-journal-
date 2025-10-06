@@ -33,7 +33,7 @@ const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webk
 
 const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast }) => {
     const { state, dispatch } = useAppContext();
-    const { userData, currentUser } = state;
+    const { userData, currentUser, isGuest } = state;
     const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings } = userData!;
 
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -46,6 +46,22 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
     };
 
     const handleSaveAccount = async (accountData: Omit<Account, 'id'>) => {
+        if (isGuest) {
+            if (accountToEdit) {
+                const updatedAccount = { ...accountToEdit, ...accountData };
+                const updatedAccounts = accounts.map(a => a.id === accountToEdit.id ? updatedAccount : a);
+                dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+                showToast('Account updated locally.');
+            } else {
+                const newAccount = { ...accountData, id: crypto.randomUUID() };
+                dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...accounts, newAccount] });
+                showToast('Account added locally.');
+            }
+            setIsAccountModalOpen(false);
+            setAccountToEdit(null);
+            return;
+        }
+
         if (!currentUser) return;
         
         try {
@@ -81,6 +97,15 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
     };
     
     const handleToggleArchiveAccount = async (account: Account) => {
+        const updatedAccount = { ...account, isArchived: !account.isArchived };
+        const updatedAccounts = accounts.map(a => a.id === account.id ? updatedAccount : a);
+
+        if (isGuest) {
+            dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+            showToast(`Account ${updatedAccount.isArchived ? 'archived' : 'unarchived'}.`);
+            return;
+        }
+
         if (!currentUser) return;
 
         try {
@@ -92,7 +117,6 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                 .single();
 
             if (error) throw error;
-            const updatedAccounts = accounts.map(a => a.id === data.id ? data : a);
             dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
             showToast(`Account ${data.isArchived ? 'archived' : 'unarchived'}.`);
         } catch (error) {
@@ -102,6 +126,12 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
     };
 
     const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
+        if (isGuest) {
+            dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
+            showToast('Settings updated locally.');
+            return;
+        }
+        
         if (!currentUser || !userData) return;
         
         const allSettingsData = { pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings };
@@ -190,7 +220,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                  </DataCard>
                  <DataCard title="Danger Zone">
                     <p className="text-sm text-gray-400 mb-4">Permanently delete your account and all associated data. This action cannot be undone.</p>
-                    <button onClick={onInitiateDeleteAccount} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors self-start text-sm">Delete My Account</button>
+                    <button onClick={onInitiateDeleteAccount} className={`px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors self-start text-sm ${isGuest ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isGuest}>Delete My Account</button>
                  </DataCard>
             </div>
 

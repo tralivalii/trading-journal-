@@ -8,6 +8,12 @@ const useImageBlobUrl = (imageKey: string | undefined | null): string | null => 
     const [url, setUrl] = useState<string | null>(null);
 
     useEffect(() => {
+        // If the key is already a blob URL (from guest mode), use it directly
+        if (imageKey && imageKey.startsWith('blob:')) {
+            setUrl(imageKey);
+            return;
+        }
+
         if (!imageKey || !currentUser) {
             setUrl(null);
             return;

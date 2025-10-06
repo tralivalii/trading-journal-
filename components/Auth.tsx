@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
+import { useAppContext } from '../services/appState';
 
 const Auth: React.FC = () => {
+  const { dispatch } = useAppContext();
   const [isLoginView, setIsLoginView] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,18 +39,13 @@ const Auth: React.FC = () => {
     setLoading(false);
   };
 
-  const handleGuestLogin = async () => {
+  const handleGuestLogin = () => {
+    setLoading(true);
     setError('');
     setMessage('');
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-        email: 'guest@example.com',
-        password: 'guestpassword',
-    });
-    if (error) {
-        setError('Guest login failed. The guest account might not be set up.');
-    }
-    setLoading(false);
+    // This will switch the app to a local-only guest mode
+    dispatch({ type: 'SET_GUEST_MODE', payload: true });
+    // No need to set loading to false, as the component will unmount
   };
 
   return (

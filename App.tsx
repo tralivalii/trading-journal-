@@ -353,31 +353,10 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     );
 }
 
-// Default user data for new users, fetched from the 'user_data' table
-const getDefaultUserData = async (userId: string): Promise<UserData> => {
-  const { data, error } = await supabase
-    .from('user_data')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
-    console.error('Error fetching user data:', error);
-    throw error;
-  }
-
-  if (data) {
-    // Convert snake_case from DB to camelCase for the app
-    return {
-        ...data.data, // assuming settings are in a jsonb column 'data'
-        trades: [],
-        accounts: [],
-        notes: [],
-    };
-  }
-
-  // If no settings found, create default ones
-  const defaultSettings = {
+const defaultGuestData: UserData = {
+    trades: [],
+    accounts: [],
+    notes: [],
     pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
     entries: ['2.0', 'IDM', 'Market', 'FVG', 'Order block'],
     risks: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5],
@@ -390,28 +369,11 @@ const getDefaultUserData = async (userId: string): Promise<UserData> => {
     stoplosses: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
     takeprofits: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
     closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
-  };
-  
-  const { error: insertError } = await supabase
-    .from('user_data')
-    .insert({ user_id: userId, data: defaultSettings });
-
-  if (insertError) {
-    console.error('Error creating default user data:', insertError);
-    throw insertError;
-  }
-
-  return {
-    ...defaultSettings,
-    trades: [],
-    accounts: [],
-    notes: [],
-  };
 };
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { session, currentUser, userData, isLoading } = state;
+  const { session, currentUser, userData, isLoading, isGuest } = state;
 
   const [isFormModalOpen, setFormModalOpen] = useState(false);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
@@ -430,11 +392,18 @@ function AppContent() {
   const toastTimerRef = useRef<number | null>(null);
   
   useEffect(() => {
+    // Handle guest mode data loading
+    if (isGuest && !userData) {
+      dispatch({ type: 'SET_USER_DATA', payload: defaultGuestData });
+      dispatch({ type: 'SET_IS_LOADING', payload: false });
+      return;
+    }
+
+    // Handle registered user data loading
     if (currentUser && !userData) {
       const fetchUserData = async () => {
         dispatch({ type: 'SET_IS_LOADING', payload: true });
         
-        // Fetch all data in parallel
         const [
           { data: accountsData, error: accountsError },
           { data: tradesData, error: tradesError },
@@ -451,7 +420,6 @@ function AppContent() {
           return;
         }
 
-        // A placeholder for user-specific settings, if you add them later
         const baseUserData = {
             pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
             entries: ['2.0', 'IDM', 'Market', 'FVG', 'Order block'],
@@ -474,10 +442,10 @@ function AppContent() {
       };
       
       fetchUserData();
-    } else if (!currentUser) {
+    } else if (!currentUser && !isGuest) {
        dispatch({ type: 'SET_USER_DATA', payload: null });
     }
-  }, [currentUser, userData, dispatch]);
+  }, [currentUser, userData, dispatch, isGuest]);
 
   const showToast = useCallback((message: string) => {
     if (toastTimerRef.current) {
@@ -561,7 +529,11 @@ function AppContent() {
   };
   
   const handleLogout = () => {
-    setLogoutConfirmModalOpen(true);
+    if (isGuest) {
+      dispatch({ type: 'SET_GUEST_MODE', payload: false });
+    } else {
+      setLogoutConfirmModalOpen(true);
+    }
   };
 
   const handleConfirmLogout = async () => {
@@ -585,7 +557,7 @@ function AppContent() {
       </button>
   );
 
-  if (!session) {
+  if (!session && !isGuest) {
     return <Auth />;
   }
 
@@ -609,9 +581,9 @@ function AppContent() {
             </div>
             <div className="flex items-center gap-4 w-full justify-center md:w-auto mt-4 md:mt-0">
                 <div className="flex items-center gap-4">
-                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{currentUser?.email}</span>
+                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{isGuest ? 'Guest Mode' : currentUser?.email}</span>
                     <button onClick={handleLogout} className="text-sm font-medium text-[#8A91A8] hover:text-[#3B82F6] transition-colors">
-                        Logout
+                        {isGuest ? 'Exit Guest Mode' : 'Logout'}
                     </button>
                 </div>
             </div>
