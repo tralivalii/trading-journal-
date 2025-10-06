@@ -135,20 +135,21 @@ const EditableTagList: React.FC<{
                             </div>
                         ) : (
                             <div 
-                                className="group relative flex items-center bg-gray-600 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full cursor-pointer hover:bg-gray-500 transition-colors"
+                                tabIndex={0}
+                                className="group relative flex items-center bg-gray-600 text-white text-sm font-medium px-3 py-1 rounded-full cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 onClick={() => handleEditStart(index, item)}
                             >
                                 <span>{item}</span>
-                                <div className="flex items-center ml-1">
-                                    <span className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+                                <div className="absolute inset-0 flex items-center justify-end bg-gray-500 rounded-full opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity pr-2">
+                                    <span className="text-white" aria-hidden="true">
                                         <span className="w-4 h-4 block">{ICONS.pencil}</span>
                                     </span>
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); handleRemoveItem(item); }} 
-                                        className="ml-1 text-gray-400 hover:text-white rounded-full w-4 h-4 flex items-center justify-center transition-colors text-base"
+                                        className="ml-1 text-white hover:text-red-400 rounded-full w-4 h-4 flex items-center justify-center transition-colors"
                                         aria-label={`Remove ${item}`}
                                     >
-                                        &times;
+                                        <span className="text-lg leading-none select-none">&times;</span>
                                     </button>
                                 </div>
                             </div>
