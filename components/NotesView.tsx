@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAppContext } from '../services/appState';
 import { Note } from '../types';
 import NoteDetail from './NoteDetail';
@@ -9,6 +10,72 @@ interface NotesViewProps {
     showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
+const NotesSidebar: React.FC<{
+    notes: Note[];
+    searchQuery: string;
+    onSearchChange: (query: string) => void;
+    onTagClick: (tag: string) => void;
+    activeTag: string | null;
+}> = ({ notes, searchQuery, onSearchChange, onTagClick, activeTag }) => {
+    
+    const displayTags = useMemo(() => {
+        const allTags = notes.flatMap(note => note.tags || []);
+        const uniqueTags = [...new Set(allTags)];
+        
+        // Shuffle and pick 30
+        for (let i = uniqueTags.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [uniqueTags[i], uniqueTags[j]] = [uniqueTags[j], uniqueTags[i]];
+        }
+        return uniqueTags.slice(0, 30);
+
+    }, [notes]);
+
+    return (
+        <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700/50">
+                <h3 className="text-lg font-semibold text-white mb-3">Search Tags</h3>
+                <input 
+                    type="text"
+                    placeholder="e.g., eurusd"
+                    value={searchQuery}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    className="w-full bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white"
+                />
+            </div>
+            <div className="p-4 overflow-y-auto">
+                <h3 className="text-lg font-semibold text-white mb-3">Discover Tags</h3>
+                <div className="flex flex-wrap gap-2">
+                    {displayTags.length > 0 ? displayTags.map(tag => (
+                        <button 
+                            key={tag}
+                            onClick={() => onTagClick(tag)}
+                            className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                                activeTag === tag 
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                            }`}
+                        >
+                            #{tag}
+                        </button>
+                    )) : (
+                        <p className="text-sm text-gray-500 italic">No tags found. Add notes with #hashtags to see them here.</p>
+                    )}
+                </div>
+                 {activeTag && (
+                    <button 
+                        onClick={() => onTagClick('')} 
+                        className="text-xs text-blue-400 hover:underline mt-4"
+                    >
+                        Clear filter
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
 const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     const { state, dispatch } = useAppContext();
     const { userData, currentUser, isGuest } = state;
@@ -17,6 +84,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     const [selectedNote, setSelectedNote] = useState<Note | null>(null);
     const [isEditMode, setIsEditMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeTag, setActiveTag] = useState<string | null>(null);
 
     useEffect(() => {
         // If the selected note is deleted from the list, deselect it.
@@ -49,6 +117,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             content: 'New Note...',
             user_id: currentUser.id,
             date: new Date().toISOString(),
+            tags: [],
         };
 
         try {
@@ -64,6 +133,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                 id: data.id,
                 date: data.date,
                 content: data.content,
+                tags: data.tags || [],
             };
 
             dispatch({ type: 'UPDATE_NOTES', payload: [fullNewNote, ...notes] });
@@ -75,6 +145,11 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             showToast('Failed to create note.', 'error');
         }
     };
+    
+    const parseTags = (content: string): string[] => {
+        const tags = content.match(/#\w+/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
+        return [...new Set(tags)]; // Return unique tags
+    };
 
     const handleUpdateNote = async (id: string, content: string) => {
         if (isGuest) {
@@ -84,19 +159,28 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
         }
         if (!currentUser) return;
         
+        const tags = parseTags(content);
+        
         try {
             const { data, error } = await supabase
                 .from('notes')
-                .update({ content })
+                .update({ content, tags })
                 .eq('id', id)
                 .select()
                 .single();
             
             if (error) throw error;
             
-            const updatedNotes = notes.map(n => n.id === id ? { ...n, content: data.content } : n);
+            const updatedNote: Note = {
+                id: data.id,
+                date: data.date,
+                content: data.content,
+                tags: data.tags || [],
+            };
+
+            const updatedNotes = notes.map(n => n.id === id ? updatedNote : n);
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            setSelectedNote(prev => prev ? {...prev, content: data.content} : null);
+            setSelectedNote(updatedNote);
             setIsEditMode(false);
             showToast('Note updated.', 'success');
         } catch (error) {
@@ -129,26 +213,34 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             showToast('Failed to delete note.', 'error');
         }
     };
+    
+    const handleTagClick = (tag: string) => {
+        setSearchQuery('');
+        setActiveTag(prev => prev === tag ? null : tag);
+    };
 
     const filteredNotes = useMemo(() => {
-        return notes
-            .filter(note => note.content.toLowerCase().includes(searchQuery.toLowerCase()))
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [notes, searchQuery]);
+        let notesToFilter = [...notes];
+        
+        if (activeTag) {
+            notesToFilter = notesToFilter.filter(note => note.tags?.includes(activeTag));
+        }
+
+        if (searchQuery) {
+             notesToFilter = notesToFilter.filter(note => 
+                note.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+        }
+
+        return notesToFilter.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [notes, searchQuery, activeTag]);
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8 min-h-[75vh]">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[75vh]">
             {/* Note List */}
-            <div className="md:col-span-1 lg:col-span-1 bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col">
+            <div className="lg:col-span-3 bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col">
                 <div className="p-4 border-b border-gray-700/50 flex-shrink-0">
-                    <h2 className="text-xl font-semibold text-white mb-3">All Notes</h2>
-                    <input 
-                        type="text"
-                        placeholder="Search notes..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white"
-                    />
+                    <h2 className="text-xl font-semibold text-white">All Notes ({filteredNotes.length})</h2>
                 </div>
                 <div className="overflow-y-auto flex-grow">
                     {filteredNotes.map(note => (
@@ -170,7 +262,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             </div>
 
             {/* Note Detail */}
-            <div className="md:col-span-2 lg:col-span-3 bg-[#232733] rounded-lg border border-gray-700/50 p-6">
+            <div className="lg:col-span-6 bg-[#232733] rounded-lg border border-gray-700/50 p-6">
                 {selectedNote ? (
                     <NoteDetail 
                         note={selectedNote}
@@ -178,6 +270,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                         onSetEditMode={setIsEditMode}
                         onUpdate={handleUpdateNote}
                         onDelete={handleDeleteNote}
+                        showToast={showToast}
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full text-gray-500">
@@ -188,6 +281,17 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                         <p>Or, <button onClick={handleAddNewNote} className="text-[#3B82F6] hover:underline">create a new note</button>.</p>
                     </div>
                 )}
+            </div>
+            
+            {/* Sidebar */}
+            <div className="lg:col-span-3">
+                <NotesSidebar 
+                    notes={notes} 
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    onTagClick={handleTagClick}
+                    activeTag={activeTag}
+                />
             </div>
         </div>
     );
