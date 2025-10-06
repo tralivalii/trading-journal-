@@ -67,15 +67,18 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            const imageKey = `note-${note.id}-${crypto.randomUUID()}-${file.name}`;
+            const fileExtension = file.name.split('.').pop();
+            const fileName = `${crypto.randomUUID()}.${fileExtension}`;
+            const filePath = `public/${fileName}`;
+
             const { error: uploadError } = await supabase.storage
                 .from('screenshots')
-                .upload(`${currentUser.id}/${imageKey}`, file);
+                .upload(filePath, file);
             if (uploadError) throw uploadError;
 
             const { data: { publicUrl } } = supabase.storage
                 .from('screenshots')
-                .getPublicUrl(`${currentUser.id}/${imageKey}`);
+                .getPublicUrl(filePath);
 
             const finalMarkdown = `\n![${file.name}](${publicUrl})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
