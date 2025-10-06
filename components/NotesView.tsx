@@ -114,7 +114,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
         if (!currentUser) return;
 
         const newNoteData = {
-            content: 'New Note...',
+            content: '',
             user_id: currentUser.id,
             date: new Date().toISOString(),
             tags: [],
@@ -147,7 +147,8 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     };
     
     const parseTags = (content: string): string[] => {
-        const tags = content.match(/#\w+/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
+        // Use matchAll with a Unicode-aware regex to correctly capture non-latin characters.
+        const tags = [...content.matchAll(/#(\p{L}[\p{L}\p{N}_]*)/gu)].map(match => match[1].toLowerCase());
         return [...new Set(tags)]; // Return unique tags
     };
 
@@ -262,7 +263,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             </div>
 
             {/* Note Detail */}
-            <div className="lg:col-span-6 bg-[#232733] rounded-lg border border-gray-700/50 p-6">
+            <div className="lg:col-span-6 bg-[#232733] rounded-lg border border-gray-700/50 p-4">
                 {selectedNote ? (
                     <NoteDetail 
                         note={selectedNote}

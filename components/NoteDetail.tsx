@@ -47,7 +47,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            const imageKey = `notes/${note.id}/${crypto.randomUUID()}-${file.name}`;
+            // FIX: Flattened the storage path to avoid potential issues with nested folder policies.
+            const imageKey = `notes/${note.id}-${crypto.randomUUID()}-${file.name}`;
             const { error: uploadError } = await supabase.storage
                 .from('screenshots')
                 .upload(`${currentUser.id}/${imageKey}`, file);
@@ -94,8 +95,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         
         let html = markdown;
         
-        // Process hashtags
-        html = html.replace(/#(\w+)/g, '<span class="bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded-sm">#$1</span>');
+        // Process hashtags with Unicode support and simplified styling
+        html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<span class="text-blue-400">#$1</span>');
         
         // Process images
         html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
@@ -111,11 +112,13 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     if (isEditMode) {
         return (
             <div className="flex flex-col h-full">
+                <h2 className="text-xl font-semibold text-white mb-4">Edit Note</h2>
                 <textarea 
                     ref={textareaRef}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     onPaste={handlePaste}
+                    placeholder="Write your thoughts..."
                     className="w-full bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white flex-grow"
                     style={{ minHeight: '300px' }}
                 />
