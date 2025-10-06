@@ -115,7 +115,7 @@ const EditableTagList: React.FC<{
                 {items.map((item, index) => (
                     <div key={index}>
                         {editingIndex === index ? (
-                            <div className="flex items-center bg-gray-700 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full ring-2 ring-blue-500">
+                            <div className="flex items-center bg-gray-700 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full ring-2 ring-blue-500 min-w-16 justify-center">
                                 <input
                                     type={inputType}
                                     value={editingValue}
@@ -136,7 +136,7 @@ const EditableTagList: React.FC<{
                         ) : (
                             <div 
                                 tabIndex={0}
-                                className="group relative flex items-center justify-center bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium px-3 py-1 rounded-full cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="group relative flex items-center justify-center bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium px-3 py-1 rounded-full cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-16"
                                 onClick={() => handleEditStart(index, item)}
                             >
                                 {/* The actual text, becomes invisible on hover/focus */}
