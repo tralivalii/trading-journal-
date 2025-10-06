@@ -416,7 +416,7 @@ function AppContent() {
   const [showFab, setShowFab] = useState(true);
   const lastScrollY = useRef(0);
 
-  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
+  const [toast, setToast] = useState<{ message: string; id: number; type: 'success' | 'error' } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   
   useEffect(() => {
@@ -471,11 +471,11 @@ function AppContent() {
     }
   }, [currentUser, userData, dispatch, isGuest]);
 
-  const showToast = useCallback((message: string) => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
     }
-    setToast({ message, id: Date.now() });
+    setToast({ message, id: Date.now(), type });
     toastTimerRef.current = window.setTimeout(() => {
       setToast(null);
     }, 3000);
@@ -501,7 +501,7 @@ function AppContent() {
 
   const handleAddTrade = () => {
     if (isGuest) {
-        showToast("This feature is disabled in guest mode.");
+        showToast("This feature is disabled in guest mode.", 'error');
         return;
     }
     setTradeToEdit(null);
@@ -510,7 +510,7 @@ function AppContent() {
 
   const handleEditTrade = (trade: Trade) => {
     if (isGuest) {
-        showToast("This feature is disabled in guest mode.");
+        showToast("This feature is disabled in guest mode.", 'error');
         return;
     }
     setTradeToEdit(trade);
@@ -531,7 +531,7 @@ function AppContent() {
 
   const handleDeleteTrade = (id: string) => {
     if (isGuest) {
-        showToast("This feature is disabled in guest mode.");
+        showToast("This feature is disabled in guest mode.", 'error');
         return;
     }
     setTradeIdToDelete(id);
@@ -542,10 +542,10 @@ function AppContent() {
     if (tradeIdToDelete) {
         try {
             await deleteTradeAction(dispatch, state, tradeIdToDelete, showToast);
-            showToast('Trade deleted successfully.');
+            showToast('Trade deleted successfully.', 'success');
         } catch (error) {
             console.error(error);
-            showToast('Failed to delete trade.');
+            showToast('Failed to delete trade.', 'error');
         }
     }
     setDeleteTradeModalOpen(false);
@@ -556,13 +556,13 @@ function AppContent() {
     try {
         await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit, showToast);
         if (!isGuest) {
-            showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.');
+            showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.', 'success');
         }
         setFormModalOpen(false);
         setTradeToEdit(null);
     } catch(error) {
         console.error(error);
-        showToast('Failed to save trade.');
+        showToast('Failed to save trade.', 'error');
     }
   };
   
@@ -654,7 +654,7 @@ function AppContent() {
       </button>
 
       {toast && (
-        <div key={toast.id} className="fixed top-5 right-5 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg animate-fade-in-out z-50 border border-green-500">
+        <div key={toast.id} className={`fixed top-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg animate-fade-in-out z-50 ${toast.type === 'success' ? 'bg-green-600 border border-green-500' : 'bg-red-600 border border-red-500'}`}>
             {toast.message}
         </div>
       )}

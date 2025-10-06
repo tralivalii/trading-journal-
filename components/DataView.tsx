@@ -6,7 +6,7 @@ import { supabase } from '../services/supabase';
 
 interface DataViewProps {
     onInitiateDeleteAccount: () => void;
-    showToast: (message: string) => void;
+    showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
 // --- Local UI Components ---
@@ -109,7 +109,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleOpenAccountModal = (account: Account | null = null) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             return;
         }
         setAccountToEdit(account);
@@ -118,7 +118,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleSaveAccount = async (accountData: Omit<Account, 'id'>) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             setIsAccountModalOpen(false);
             return;
         }
@@ -163,23 +163,23 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             if (accountToEdit) {
                 const updatedAccounts = accounts.map(a => a.id === appAccount.id ? appAccount : a);
                 dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-                showToast('Account updated successfully.');
+                showToast('Account updated successfully.', 'success');
             } else {
                 dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...accounts, appAccount] });
-                showToast('Account added successfully.');
+                showToast('Account added successfully.', 'success');
             }
             
             setIsAccountModalOpen(false);
             setAccountToEdit(null);
         } catch (error: any) {
             console.error('Failed to save account:', error);
-            showToast(`Failed to save account: ${error.message}`);
+            showToast(`Failed to save account: ${error.message}`, 'error');
         }
     };
     
     const handleToggleArchiveAccount = async (account: Account) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             return;
         }
         if (!currentUser) return;
@@ -195,29 +195,30 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             if (error) throw error;
             const updatedAccounts = accounts.map(a => a.id === data.id ? {...a, isArchived: data.is_archived} : a);
             dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-            showToast(`Account ${data.is_archived ? 'archived' : 'unarchived'}.`);
+            showToast(`Account ${data.is_archived ? 'archived' : 'unarchived'}.`, 'success');
         } catch (error) {
             console.error('Failed to update account status:', error);
-            showToast('Failed to update account status.');
+            showToast('Failed to update account status.', 'error');
         }
     };
 
     const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             return;
         }
         if (!currentUser || !userData) return;
         
         const allSettingsData = { pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings };
+        const updatedData = { ...allSettingsData, [field]: value };
 
         const { error } = await supabase
             .from('user_data')
-            .update({ data: { ...allSettingsData, [field]: value } })
-            .eq('user_id', currentUser.id);
+            .upsert({ user_id: currentUser.id, data: updatedData })
+            .select();
 
         if (error) {
-            showToast(`Error saving settings.`);
+            showToast(`Error saving settings: ${error.message}`, 'error');
             console.error(error);
         } else {
             dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
@@ -235,7 +236,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleSaveDefaults = () => {
         handleSaveSettings('defaultSettings', currentDefaults);
-        showToast("Default settings saved.");
+        showToast("Default settings saved.", 'success');
     };
 
     const sortedAccounts = useMemo(() => 
@@ -244,7 +245,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleInitiateDelete = () => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             return;
         }
         onInitiateDeleteAccount();

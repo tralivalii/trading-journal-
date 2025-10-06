@@ -226,9 +226,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 export const useAppContext = () => useContext(AppContext);
 
 // --- HELPER ACTIONS ---
-export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeToSave: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }, isEditing: boolean, showToast: (message: string) => void) => {
+export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeToSave: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }, isEditing: boolean, showToast: (message: string, type?: 'success' | 'error') => void) => {
     if (state.isGuest) {
-        showToast("This feature is disabled in guest mode.");
+        showToast("This feature is disabled in guest mode.", 'error');
         return;
     }
     if (!state.currentUser || !state.userData) return;
@@ -293,9 +293,9 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
     }
 };
 
-export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeIdToDelete: string, showToast: (message: string) => void) => {
+export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeIdToDelete: string, showToast: (message: string, type?: 'success' | 'error') => void) => {
     if (state.isGuest) {
-        showToast("This feature is disabled in guest mode.");
+        showToast("This feature is disabled in guest mode.", 'error');
         return;
     }
     if (!state.currentUser || !state.userData) return;

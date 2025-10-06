@@ -6,7 +6,7 @@ import { ICONS } from '../constants';
 import { supabase } from '../services/supabase';
 
 interface NotesViewProps {
-    showToast: (message: string) => void;
+    showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
 const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
@@ -40,7 +40,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
 
     const handleAddNewNote = async () => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             return;
         }
         if (!currentUser) return;
@@ -68,16 +68,16 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             dispatch({ type: 'UPDATE_NOTES', payload: [fullNewNote, ...notes] });
             setSelectedNote(fullNewNote);
             setIsEditMode(true);
-            showToast('Note created.');
+            showToast('Note created.', 'success');
         } catch (error) {
             console.error('Failed to create note:', error);
-            showToast('Failed to create note.');
+            showToast('Failed to create note.', 'error');
         }
     };
 
     const handleUpdateNote = async (id: string, content: string) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             setIsEditMode(false);
             return;
         }
@@ -97,16 +97,16 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
             setSelectedNote(prev => prev ? {...prev, content: data.content} : null);
             setIsEditMode(false);
-            showToast('Note updated.');
+            showToast('Note updated.', 'success');
         } catch (error) {
              console.error('Failed to update note:', error);
-            showToast('Failed to update note.');
+            showToast('Failed to update note.', 'error');
         }
     };
     
     const handleDeleteNote = async (id: string) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.");
+            showToast("This feature is disabled in guest mode.", 'error');
             return;
         }
         if (!currentUser) return;
@@ -118,14 +118,14 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             
             const updatedNotes = notes.filter(n => n.id !== id);
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            showToast('Note deleted.');
+            showToast('Note deleted.', 'success');
             if (selectedNote?.id === id) {
                 setSelectedNote(null);
                 setIsEditMode(false);
             }
         } catch (error) {
             console.error('Failed to delete note:', error);
-            showToast('Failed to delete note.');
+            showToast('Failed to delete note.', 'error');
         }
     };
 
