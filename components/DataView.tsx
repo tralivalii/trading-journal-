@@ -41,6 +41,8 @@ const EditableTagList: React.FC<{
     placeholder?: string;
 }> = ({ title, items, onSave, inputType = 'text', placeholder }) => {
     const [newItem, setNewItem] = useState('');
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const [editingValue, setEditingValue] = useState('');
 
     const handleAddItem = (e: React.FormEvent) => {
         e.preventDefault();
@@ -64,21 +66,78 @@ const EditableTagList: React.FC<{
         onSave(updatedItems);
     };
 
+    const handleEditStart = (index: number, value: string | number) => {
+        setEditingIndex(index);
+        setEditingValue(String(value));
+    };
+
+    const handleEditSave = () => {
+        if (editingIndex === null) return;
+
+        const trimmedValue = editingValue.trim();
+        const originalValue = items[editingIndex];
+
+        // Do nothing if value is unchanged or empty
+        if (trimmedValue === '' || String(originalValue) === trimmedValue) {
+            setEditingIndex(null);
+            return;
+        }
+
+        const finalValue = inputType === 'number' ? parseFloat(trimmedValue) : trimmedValue;
+        
+        // Prevent saving if the new value already exists (excluding the original value itself)
+        if (items.filter((_, i) => i !== editingIndex).map(String).includes(String(finalValue))) {
+            setEditingIndex(null); // Just cancel edit
+            return;
+        }
+
+        const updatedItems = items.map((item, index) => index === editingIndex ? finalValue : item);
+        onSave(updatedItems);
+        setEditingIndex(null);
+    };
+    
+    const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleEditSave();
+        } else if (e.key === 'Escape') {
+            setEditingIndex(null);
+        }
+    };
+
+
     return (
         <div>
             <h3 className="text-base font-semibold text-[#8A91A8] mb-2">{title}</h3>
             <div className="flex flex-wrap gap-2 mb-3 min-h-[34px] items-center">
                 {items.map((item, index) => (
-                    <div key={index} className="flex items-center bg-gray-600 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full">
+                    editingIndex === index ? (
+                        <input
+                            key={index}
+                            type={inputType}
+                            value={editingValue}
+                            onChange={(e) => setEditingValue(e.target.value)}
+                            onBlur={handleEditSave}
+                            onKeyDown={handleEditKeyDown}
+                            className={inputType === 'number' ? numberInputClasses : textInputClasses}
+                            autoFocus
+                        />
+                    ) : (
+                    <div 
+                        key={index} 
+                        className="flex items-center bg-gray-600 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full cursor-pointer hover:bg-gray-500 transition-colors"
+                        onClick={() => handleEditStart(index, item)}
+                    >
                         <span>{item}</span>
                         <button 
-                            onClick={() => handleRemoveItem(item)} 
+                            onClick={(e) => { e.stopPropagation(); handleRemoveItem(item); }} 
                             className="ml-2 text-gray-400 hover:text-white rounded-full w-4 h-4 flex items-center justify-center transition-colors text-base"
                             aria-label={`Remove ${item}`}
                         >
                             &times;
                         </button>
                     </div>
+                    )
                 ))}
                 {items.length === 0 && <p className="text-sm text-gray-500 italic">No items added yet.</p>}
             </div>
@@ -222,7 +281,8 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             console.error(error);
         } else {
             dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
-            // Don't show toast on every small change, let the UI be the feedback.
+            const friendlyFieldName = (field as string).charAt(0).toUpperCase() + (field as string).slice(1);
+            showToast(`${friendlyFieldName} updated successfully.`, 'success');
         }
     };
 
@@ -236,7 +296,6 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleSaveDefaults = () => {
         handleSaveSettings('defaultSettings', currentDefaults);
-        showToast("Default settings saved.", 'success');
     };
 
     const sortedAccounts = useMemo(() => 
