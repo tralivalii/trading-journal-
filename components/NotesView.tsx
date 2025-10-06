@@ -47,7 +47,8 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
 
         const newNoteData = {
             content: 'New Note...',
-            user_id: currentUser.id
+            user_id: currentUser.id,
+            date: new Date().toISOString(),
         };
 
         try {
@@ -61,7 +62,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             
             const fullNewNote: Note = {
                 id: data.id,
-                date: data.created_at,
+                date: data.date,
                 content: data.content,
             };
 
