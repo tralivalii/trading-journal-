@@ -69,7 +69,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         try {
             const fileExtension = file.name.split('.').pop();
             const fileName = `${crypto.randomUUID()}.${fileExtension}`;
-            const filePath = `public/${fileName}`;
+            const filePath = `${currentUser.id}/${fileName}`;
 
             const { error: uploadError } = await supabase.storage
                 .from('screenshots')
