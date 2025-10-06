@@ -4,17 +4,11 @@ import { useAppContext } from '../services/appState';
 
 const useImageBlobUrl = (imageKey: string | undefined | null): string | null => {
     const { state } = useAppContext();
-    const { currentUser } = state;
+    const { currentUser, isGuest } = state;
     const [url, setUrl] = useState<string | null>(null);
 
     useEffect(() => {
-        // If the key is already a blob URL (from guest mode), use it directly
-        if (imageKey && imageKey.startsWith('blob:')) {
-            setUrl(imageKey);
-            return;
-        }
-
-        if (!imageKey || !currentUser) {
+        if (!imageKey || !currentUser || isGuest) {
             setUrl(null);
             return;
         }
@@ -37,7 +31,7 @@ const useImageBlobUrl = (imageKey: string | undefined | null): string | null => 
         return () => {
             isMounted = false;
         };
-    }, [imageKey, currentUser]);
+    }, [imageKey, currentUser, isGuest]);
 
     return url;
 };

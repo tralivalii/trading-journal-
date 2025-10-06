@@ -1,7 +1,91 @@
 import React, { createContext, useReducer, useContext, Dispatch, ReactNode, useEffect } from 'react';
-import { UserData, User, Trade, Note, Account, DefaultSettings, Analysis } from '../types';
+import { UserData, User, Trade, Note, Account, DefaultSettings, Analysis, Currency, Direction, Result } from '../types';
 import { supabase } from './supabase';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
+
+
+// --- GUEST MODE SAMPLE DATA ---
+
+const GUEST_ACCOUNTS: Account[] = [
+  { id: 'guest-acc-1', name: 'Main Account (Sample)', initialBalance: 50000, currency: Currency.USD, isArchived: false },
+  { id: 'guest-acc-2', name: 'FTMO Challenge (Sample)', initialBalance: 100000, currency: Currency.USD, isArchived: false },
+  { id: 'guest-acc-3', name: 'Old EUR Account (Sample)', initialBalance: 10000, currency: Currency.EUR, isArchived: true },
+];
+
+const createGuestTrade = (id: number, daysAgo: number, overrides: Partial<Trade>): Trade => {
+    const date = new Date();
+    date.setDate(date.getDate() - daysAgo);
+    
+    const baseTrade: Trade = {
+        id: `guest-trade-${id}`,
+        date: date.toISOString(),
+        accountId: 'guest-acc-1',
+        pair: 'EUR/USD',
+        entry: 'Continuation',
+        direction: Direction.Long,
+        risk: 1,
+        rr: 2.5,
+        riskAmount: 0, // will be calculated
+        result: Result.Win,
+        pnl: 0, // will be calculated
+        commission: 5,
+        stoploss: 'Previous Low',
+        takeprofit: 'Next High',
+        analysisD1: { notes: 'Daily trend is bullish, respecting the moving averages.' },
+        analysis1h: { notes: '1H structure broke to the upside, indicating potential for continuation.' },
+        analysis5m: { notes: 'Waited for a 5m pullback to a key level and entered on confirmation.' },
+        analysisResult: { notes: 'Trade played out as expected. TP was hit cleanly.' },
+        ...overrides,
+    };
+    
+    const riskAmount = (50000 * (baseTrade.risk / 100));
+    baseTrade.riskAmount = riskAmount;
+    
+    if (baseTrade.result === Result.Win) {
+        baseTrade.pnl = (riskAmount * baseTrade.rr) - (baseTrade.commission || 0);
+    } else if (baseTrade.result === Result.Loss) {
+        baseTrade.pnl = -riskAmount - (baseTrade.commission || 0);
+    } else {
+        baseTrade.pnl = -(baseTrade.commission || 0);
+    }
+    
+    return baseTrade;
+};
+
+const GUEST_TRADES: Trade[] = [
+    createGuestTrade(1, 2, { pair: 'EUR/USD', direction: Direction.Long, result: Result.Win, rr: 3.1 }),
+    createGuestTrade(2, 3, { pair: 'GBP/USD', direction: Direction.Short, result: Result.Loss, rr: 2.0 }),
+    createGuestTrade(3, 5, { pair: 'XAU/USD', direction: Direction.Long, result: Result.Win, rr: 4.5, risk: 0.5 }),
+    createGuestTrade(4, 7, { pair: 'BTC/USDT', direction: Direction.Short, result: Result.Breakeven, rr: 1.5 }),
+    createGuestTrade(5, 8, { pair: 'EUR/USD', direction: Direction.Short, result: Result.Loss, rr: 2.2 }),
+    createGuestTrade(6, 10, { pair: 'ETH/USDT', direction: Direction.Long, result: Result.Win, rr: 5.0, risk: 0.75, accountId: 'guest-acc-2' }),
+    createGuestTrade(7, 12, { pair: 'GBP/USD', direction: Direction.Long, result: Result.Loss, rr: 1.8 }),
+    createGuestTrade(8, 15, { pair: 'XAU/USD', direction: Direction.Short, result: Result.Win, rr: 2.8, analysisResult: {notes: 'Manually closed early due to news event approaching.'}, closeType: 'Manual' }),
+    createGuestTrade(9, 20, { pair: 'EUR/USD', direction: Direction.Long, result: Result.Win, rr: 3.3 }),
+    createGuestTrade(10, 25, { pair: 'BTC/USDT', direction: Direction.Long, result: Result.Loss, rr: 2.0, accountId: 'guest-acc-2' }),
+    createGuestTrade(11, 32, { pair: 'EUR/USD', direction: Direction.Long, result: Result.Win, rr: 2.1 }),
+    createGuestTrade(12, 35, { pair: 'GBP/USD', direction: Direction.Short, result: Result.Win, rr: 2.9 }),
+    createGuestTrade(13, 40, { pair: 'XAU/USD', direction: Direction.Long, result: Result.Missed, rr: 4.0 }),
+];
+
+const GUEST_NOTES: Note[] = [
+    { id: 'guest-note-1', date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), content: "Weekly Review (Sample)\n\n- Followed plan on most trades.\n- Over-risked on GBP/USD loss, need to be more disciplined.\n- Overall a profitable week." },
+    { id: 'guest-note-2', date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), content: "Psychology Note (Sample)\n\nFelt FOMO after missing the XAU/USD trade. It's important to remember that there will always be another opportunity. Stick to the plan." },
+    { id: 'guest-note-3', date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(), content: "Backtesting Results for new EUR/USD strategy (Sample)\n\n- Win Rate: 65%\n- Avg R:R: 2.8\n- Looks promising, will forward test on a small account." },
+];
+
+const GUEST_USER_DATA: UserData = {
+    accounts: GUEST_ACCOUNTS,
+    trades: GUEST_TRADES,
+    notes: GUEST_NOTES,
+    pairs: ['EUR/USD', 'GBP/USD', 'USD/JPY', 'XAU/USD', 'BTC/USDT', 'ETH/USDT'],
+    entries: ['2.0', 'Market', 'Order block', 'FVG', 'IDM'],
+    risks: [0.5, 1, 1.5, 2, 2.5, 3, 4, 5],
+    defaultSettings: { accountId: 'guest-acc-1', pair: 'EUR/USD', entry: '2.0', risk: 1 },
+    stoplosses: ['Session High/Low', 'FVG', 'Order block'],
+    takeprofits: ['Session High/Low', 'FVG', 'Order block'],
+    closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
+};
 
 
 // --- STATE AND ACTION TYPES ---
@@ -22,8 +106,7 @@ type Action =
   | { type: 'UPDATE_ACCOUNTS'; payload: Account[] }
   | { type: 'UPDATE_NOTES'; payload: Note[] }
   | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof UserData, value: any } }
-  | { type: 'SET_GUEST_MODE'; payload: boolean };
-
+  | { type: 'SET_GUEST_MODE' };
 
 // --- INITIAL STATE ---
 
@@ -44,16 +127,31 @@ const appReducer = (state: AppState, action: Action): AppState => {
                 ...state,
                 session: action.payload,
                 currentUser: action.payload?.user ?? null,
-                isGuest: false, // Logging in or out exits guest mode
+                isGuest: false, // Real session logs out guest
             };
         case 'SET_GUEST_MODE':
+            const guestUser = {
+                id: 'guest-user',
+                app_metadata: { provider: 'email' },
+                user_metadata: {},
+                aud: 'authenticated',
+                created_at: new Date().toISOString(),
+                email: 'guest@example.com'
+            };
             return {
                 ...state,
-                isGuest: action.payload,
-                session: null,
-                currentUser: null,
-                userData: null, // Force a reload of data for guest/user
-                isLoading: true,
+                isGuest: true,
+                userData: GUEST_USER_DATA,
+                session: {
+                    access_token: 'guest-token',
+                    token_type: 'bearer',
+                    user: guestUser,
+                    expires_in: 3600,
+                    expires_at: Date.now() + 3600 * 1000,
+                    refresh_token: 'guest-refresh-token'
+                },
+                currentUser: guestUser,
+                isLoading: false,
             };
         case 'SET_USER_DATA':
              return {
@@ -128,10 +226,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 export const useAppContext = () => useContext(AppContext);
 
 // --- HELPER ACTIONS ---
-export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeToSave: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }, isEditing: boolean) => {
-    if (!state.userData) return;
+export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeToSave: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }, isEditing: boolean, showToast: (message: string) => void) => {
+    if (state.isGuest) {
+        showToast("This feature is disabled in guest mode.");
+        return;
+    }
+    if (!state.currentUser || !state.userData) return;
+    
     const { accounts, trades } = state.userData;
-
     const account = accounts.find(a => a.id === tradeToSave.accountId);
     if (!account) throw new Error("Account not found");
 
@@ -144,29 +246,8 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
     let pnl = 0;
     if (tradeToSave.result === 'Win') pnl = riskAmount * tradeToSave.rr;
     else if (tradeToSave.result === 'Loss') pnl = -riskAmount;
-    const finalPnl = pnl - commission;
 
-    // --- Guest Mode Logic ---
-    if (state.isGuest) {
-        if (isEditing && tradeToSave.id) {
-            const updatedTrade: Trade = { ...tradeToSave as Trade, id: tradeToSave.id, riskAmount, pnl: finalPnl };
-            const updatedTrades = trades.map(t => t.id === tradeToSave.id ? updatedTrade : t);
-            dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-        } else {
-            const newTrade: Trade = {
-                id: crypto.randomUUID(),
-                ...tradeToSave,
-                riskAmount,
-                pnl: finalPnl
-            };
-            dispatch({ type: 'UPDATE_TRADES', payload: [...trades, newTrade] });
-        }
-        return;
-    }
-
-    // --- Supabase Logic ---
-    if (!state.currentUser) return;
-    
+    // Supabase requires snake_case for column names if they are multi-word
     const tradeForDb = {
         user_id: state.currentUser.id,
         account_id: tradeToSave.accountId,
@@ -177,7 +258,7 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
         risk: tradeToSave.risk,
         rr: tradeToSave.rr,
         risk_amount: riskAmount,
-        pnl: finalPnl,
+        pnl: pnl - commission,
         commission: commission,
         stoploss: tradeToSave.stoploss,
         takeprofit: tradeToSave.takeprofit,
@@ -196,7 +277,7 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
         const { data, error } = await supabase.from('trades').update(tradeForDb).eq('id', tradeToSave.id).select().single();
         if (error) throw error;
         
-        const updatedTrades = trades.map(t => t.id === data.id ? { ...t, ...tradeToSave, riskAmount, pnl: finalPnl } : t);
+        const updatedTrades = trades.map(t => t.id === data.id ? { ...t, ...tradeToSave, riskAmount, pnl: pnl - commission } : t);
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
     } else {
         const { data, error } = await supabase.from('trades').insert(tradeForDb).select().single();
@@ -206,42 +287,23 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
             id: data.id,
             ...tradeToSave,
             riskAmount,
-            pnl: finalPnl
+            pnl: pnl - commission
         };
         dispatch({ type: 'UPDATE_TRADES', payload: [...trades, newTrade] });
     }
 };
 
-export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeIdToDelete: string) => {
-    if (!state.userData) return;
-    const { trades } = state.userData;
-
-    // --- Guest Mode Logic ---
+export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeIdToDelete: string, showToast: (message: string) => void) => {
     if (state.isGuest) {
-        const tradeToDelete = trades.find(t => t.id === tradeIdToDelete);
-        if (tradeToDelete) {
-             const imageKeys: (string | undefined)[] = [
-                tradeToDelete.analysisD1.image,
-                tradeToDelete.analysis1h.image,
-                tradeToDelete.analysis5m.image,
-                tradeToDelete.analysisResult.image,
-            ];
-            imageKeys.forEach(key => {
-                if (key && key.startsWith('blob:')) {
-                    URL.revokeObjectURL(key);
-                }
-            });
-        }
-        const newTrades = trades.filter(trade => trade.id !== tradeIdToDelete);
-        dispatch({ type: 'UPDATE_TRADES', payload: newTrades });
+        showToast("This feature is disabled in guest mode.");
         return;
     }
-
-    // --- Supabase Logic ---
-    if (!state.currentUser) return;
+    if (!state.currentUser || !state.userData) return;
+    const { trades } = state.userData;
     
     const tradeToDelete = trades.find(t => t.id === tradeIdToDelete);
     if (tradeToDelete) {
+        // Delete associated images from storage
         const imageKeys: string[] = [
             tradeToDelete.analysisD1.image,
             tradeToDelete.analysis1h.image,

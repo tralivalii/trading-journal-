@@ -40,12 +40,13 @@ const Auth: React.FC = () => {
   };
 
   const handleGuestLogin = () => {
-    setLoading(true);
     setError('');
     setMessage('');
-    // This will switch the app to a local-only guest mode
-    dispatch({ type: 'SET_GUEST_MODE', payload: true });
-    // No need to set loading to false, as the component will unmount
+    setLoading(true);
+    // Use a small timeout to give feedback to the user before the component unmounts
+    setTimeout(() => {
+        dispatch({ type: 'SET_GUEST_MODE' });
+    }, 250);
   };
 
   return (
@@ -107,7 +108,7 @@ const Auth: React.FC = () => {
                 disabled={loading}
                 className="w-full flex justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm text-sm font-medium text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                Continue as Guest
+                {loading ? 'Loading...' : 'Continue as Guest'}
             </button>
         </div>
         

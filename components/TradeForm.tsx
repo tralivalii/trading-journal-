@@ -144,23 +144,12 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
   };
 
   const handleFileChange = async (section: keyof Omit<typeof trade, 'id' | 'pnl' | 'riskAmount'>, file: File | null) => {
+      if (isGuest) {
+        alert("Image uploads are disabled in guest mode.");
+        return;
+      }
       const currentImageKey = (trade[section] as Analysis).image;
 
-      // Guest mode: use blob URLs
-      if (isGuest) {
-          if (currentImageKey && currentImageKey.startsWith('blob:')) {
-              URL.revokeObjectURL(currentImageKey);
-          }
-          if (file) {
-              const blobUrl = URL.createObjectURL(file);
-              handleAnalysisChange(section, 'image', blobUrl);
-          } else {
-              handleAnalysisChange(section, 'image', undefined);
-          }
-          return;
-      }
-
-      // Registered user: use Supabase Storage
       if (currentImageKey) {
           try {
               await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);

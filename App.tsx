@@ -353,10 +353,31 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     );
 }
 
-const defaultGuestData: UserData = {
-    trades: [],
-    accounts: [],
-    notes: [],
+// Default user data for new users, fetched from the 'user_data' table
+const getDefaultUserData = async (userId: string): Promise<UserData> => {
+  const { data, error } = await supabase
+    .from('user_data')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
+    console.error('Error fetching user data:', error);
+    throw error;
+  }
+
+  if (data) {
+    // Convert snake_case from DB to camelCase for the app
+    return {
+        ...data.data, // assuming settings are in a jsonb column 'data'
+        trades: [],
+        accounts: [],
+        notes: [],
+    };
+  }
+
+  // If no settings found, create default ones
+  const defaultSettings = {
     pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
     entries: ['2.0', 'IDM', 'Market', 'FVG', 'Order block'],
     risks: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5],
@@ -369,6 +390,23 @@ const defaultGuestData: UserData = {
     stoplosses: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
     takeprofits: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
     closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
+  };
+  
+  const { error: insertError } = await supabase
+    .from('user_data')
+    .insert({ user_id: userId, data: defaultSettings });
+
+  if (insertError) {
+    console.error('Error creating default user data:', insertError);
+    throw insertError;
+  }
+
+  return {
+    ...defaultSettings,
+    trades: [],
+    accounts: [],
+    notes: [],
+  };
 };
 
 function AppContent() {
@@ -392,18 +430,11 @@ function AppContent() {
   const toastTimerRef = useRef<number | null>(null);
   
   useEffect(() => {
-    // Handle guest mode data loading
-    if (isGuest && !userData) {
-      dispatch({ type: 'SET_USER_DATA', payload: defaultGuestData });
-      dispatch({ type: 'SET_IS_LOADING', payload: false });
-      return;
-    }
-
-    // Handle registered user data loading
-    if (currentUser && !userData) {
+    if (currentUser && !userData && !isGuest) {
       const fetchUserData = async () => {
         dispatch({ type: 'SET_IS_LOADING', payload: true });
         
+        // Fetch all data in parallel
         const [
           { data: accountsData, error: accountsError },
           { data: tradesData, error: tradesError },
@@ -420,13 +451,14 @@ function AppContent() {
           return;
         }
 
+        // A placeholder for user-specific settings, if you add them later
         const baseUserData = {
             pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
-            entries: ['2.0', 'IDM', 'Market', 'FVG', 'Order block'],
-            risks: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5],
+            entries: ['2.0', 'Market', 'Order block', 'FVG', 'IDM'],
+            risks: [0.5, 1, 1.5, 2, 2.5, 3, 4, 5],
             defaultSettings: { accountId: '', pair: 'EUR/USD', entry: '2.0', risk: 1 },
-            stoplosses: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
-            takeprofits: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
+            stoplosses: ['Session High/Low', 'FVG', 'Order block'],
+            takeprofits: ['Session High/Low', 'FVG', 'Order block'],
             closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
         };
         
@@ -476,11 +508,19 @@ function AppContent() {
   const activeAccounts = useMemo(() => userData?.accounts.filter(a => !a.isArchived) || [], [userData]);
 
   const handleAddTrade = () => {
+    if (isGuest) {
+        showToast("This feature is disabled in guest mode.");
+        return;
+    }
     setTradeToEdit(null);
     setFormModalOpen(true);
   };
 
   const handleEditTrade = (trade: Trade) => {
+    if (isGuest) {
+        showToast("This feature is disabled in guest mode.");
+        return;
+    }
     setTradeToEdit(trade);
     setFormModalOpen(true);
   };
@@ -498,6 +538,10 @@ function AppContent() {
   };
 
   const handleDeleteTrade = (id: string) => {
+    if (isGuest) {
+        showToast("This feature is disabled in guest mode.");
+        return;
+    }
     setTradeIdToDelete(id);
     setDeleteTradeModalOpen(true);
   };
@@ -505,7 +549,7 @@ function AppContent() {
   const handleConfirmDeleteTrade = async () => {
     if (tradeIdToDelete) {
         try {
-            await deleteTradeAction(dispatch, state, tradeIdToDelete);
+            await deleteTradeAction(dispatch, state, tradeIdToDelete, showToast);
             showToast('Trade deleted successfully.');
         } catch (error) {
             console.error(error);
@@ -518,8 +562,10 @@ function AppContent() {
 
   const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'>) => {
     try {
-        await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
-        showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.');
+        await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit, showToast);
+        if (!isGuest) {
+            showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.');
+        }
         setFormModalOpen(false);
         setTradeToEdit(null);
     } catch(error) {
@@ -530,10 +576,10 @@ function AppContent() {
   
   const handleLogout = () => {
     if (isGuest) {
-      dispatch({ type: 'SET_GUEST_MODE', payload: false });
-    } else {
-      setLogoutConfirmModalOpen(true);
+        window.location.reload();
+        return;
     }
+    setLogoutConfirmModalOpen(true);
   };
 
   const handleConfirmLogout = async () => {
@@ -557,7 +603,7 @@ function AppContent() {
       </button>
   );
 
-  if (!session && !isGuest) {
+  if (!session) {
     return <Auth />;
   }
 
@@ -581,13 +627,21 @@ function AppContent() {
             </div>
             <div className="flex items-center gap-4 w-full justify-center md:w-auto mt-4 md:mt-0">
                 <div className="flex items-center gap-4">
-                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{isGuest ? 'Guest Mode' : currentUser?.email}</span>
+                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{currentUser?.email}</span>
                     <button onClick={handleLogout} className="text-sm font-medium text-[#8A91A8] hover:text-[#3B82F6] transition-colors">
-                        {isGuest ? 'Exit Guest Mode' : 'Logout'}
+                        Logout
                     </button>
                 </div>
             </div>
         </header>
+
+        {isGuest && (
+            <div className="container mx-auto -mt-4 mb-6">
+                <div className="bg-yellow-500/20 border border-yellow-500 text-yellow-300 px-4 py-3 rounded-lg text-center text-sm" role="alert">
+                    You are in <strong>Guest Mode</strong>. Your data will not be saved. <a href="/" className="font-bold underline hover:text-white">Sign Up or Sign In</a> to start your journal.
+                </div>
+            </div>
+        )}
 
         <main>
           {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade}/>}

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../services/appState';
-import { Account, Currency, UserData } from '../types';
+import { Account, Currency, UserData, DefaultSettings } from '../types';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
 
@@ -9,8 +9,10 @@ interface DataViewProps {
     showToast: (message: string) => void;
 }
 
+// --- Local UI Components ---
+
 const DataCard: React.FC<{ title: string, children: React.ReactNode, action?: React.ReactNode }> = ({ title, children, action }) => (
-    <div className="bg-[#232733] rounded-lg border border-gray-700/50">
+    <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col">
         <div className="flex justify-between items-center p-4 border-b border-gray-700/50">
             <h2 className="text-xl font-semibold text-white">{title}</h2>
             {action && <div>{action}</div>}
@@ -29,7 +31,72 @@ const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ lab
 const baseControlClasses = "w-full bg-[#1A1D26] border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors";
 const textInputClasses = `${baseControlClasses} px-3 py-2`;
 const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
+const selectClasses = `${textInputClasses} pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4M8 15l4-4 4 4'/%3e%3c/svg%3e")]`;
 
+const EditableTagList: React.FC<{
+    title: string;
+    items: (string | number)[];
+    onSave: (newItems: (string | number)[]) => void;
+    inputType?: 'text' | 'number';
+    placeholder?: string;
+}> = ({ title, items, onSave, inputType = 'text', placeholder }) => {
+    const [newItem, setNewItem] = useState('');
+
+    const handleAddItem = (e: React.FormEvent) => {
+        e.preventDefault();
+        const trimmedItem = newItem.toString().trim();
+        if (!trimmedItem) return;
+
+        const valueToAdd = inputType === 'number' ? parseFloat(trimmedItem) : trimmedItem;
+        if (inputType === 'number' && isNaN(valueToAdd as number)) return;
+        if (items.map(String).includes(String(valueToAdd))) {
+             setNewItem('');
+             return;
+        }
+
+        const updatedItems = [...items, valueToAdd];
+        onSave(updatedItems);
+        setNewItem('');
+    };
+
+    const handleRemoveItem = (itemToRemove: string | number) => {
+        const updatedItems = items.filter(item => item !== itemToRemove);
+        onSave(updatedItems);
+    };
+
+    return (
+        <div>
+            <h3 className="text-base font-semibold text-[#8A91A8] mb-2">{title}</h3>
+            <div className="flex flex-wrap gap-2 mb-3 min-h-[34px] items-center">
+                {items.map((item, index) => (
+                    <div key={index} className="flex items-center bg-gray-600 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full">
+                        <span>{item}</span>
+                        <button 
+                            onClick={() => handleRemoveItem(item)} 
+                            className="ml-2 text-gray-400 hover:text-white rounded-full w-4 h-4 flex items-center justify-center transition-colors text-base"
+                            aria-label={`Remove ${item}`}
+                        >
+                            &times;
+                        </button>
+                    </div>
+                ))}
+                {items.length === 0 && <p className="text-sm text-gray-500 italic">No items added yet.</p>}
+            </div>
+            <form onSubmit={handleAddItem} className="flex gap-2">
+                <input
+                    type={inputType}
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    className={inputType === 'number' ? numberInputClasses : textInputClasses + " flex-grow"}
+                    placeholder={placeholder || `Add new ${title.toLowerCase().slice(0, -1)}...`}
+                />
+                <button type="submit" className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-sm font-medium">Add</button>
+            </form>
+        </div>
+    );
+};
+
+// --- Main DataView Component ---
 
 const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast }) => {
     const { state, dispatch } = useAppContext();
@@ -38,30 +105,23 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountToEdit, setAccountToEdit] = useState<Account | null>(null);
-    const [activeTab, setActiveTab] = useState<'accounts' | 'settings'>('accounts');
+    const [currentDefaults, setCurrentDefaults] = useState(defaultSettings);
 
     const handleOpenAccountModal = (account: Account | null = null) => {
+        if (isGuest) {
+            showToast("This feature is disabled in guest mode.");
+            return;
+        }
         setAccountToEdit(account);
         setIsAccountModalOpen(true);
     };
 
     const handleSaveAccount = async (accountData: Omit<Account, 'id'>) => {
         if (isGuest) {
-            if (accountToEdit) {
-                const updatedAccount = { ...accountToEdit, ...accountData };
-                const updatedAccounts = accounts.map(a => a.id === accountToEdit.id ? updatedAccount : a);
-                dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-                showToast('Account updated locally.');
-            } else {
-                const newAccount = { ...accountData, id: crypto.randomUUID() };
-                dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...accounts, newAccount] });
-                showToast('Account added locally.');
-            }
+            showToast("This feature is disabled in guest mode.");
             setIsAccountModalOpen(false);
-            setAccountToEdit(null);
             return;
         }
-
         if (!currentUser) return;
         
         try {
@@ -74,7 +134,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                     .single();
                 
                 if (error) throw error;
-                const updatedAccounts = accounts.map(a => a.id === data.id ? data : a);
+                const updatedAccounts = accounts.map(a => a.id === data.id ? { ...a, ...data} : a);
                 dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
                 showToast('Account updated successfully.');
             } else {
@@ -97,15 +157,10 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
     };
     
     const handleToggleArchiveAccount = async (account: Account) => {
-        const updatedAccount = { ...account, isArchived: !account.isArchived };
-        const updatedAccounts = accounts.map(a => a.id === account.id ? updatedAccount : a);
-
         if (isGuest) {
-            dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-            showToast(`Account ${updatedAccount.isArchived ? 'archived' : 'unarchived'}.`);
+            showToast("This feature is disabled in guest mode.");
             return;
         }
-
         if (!currentUser) return;
 
         try {
@@ -117,6 +172,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                 .single();
 
             if (error) throw error;
+            const updatedAccounts = accounts.map(a => a.id === data.id ? {...a, isArchived: data.isArchived} : a);
             dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
             showToast(`Account ${data.isArchived ? 'archived' : 'unarchived'}.`);
         } catch (error) {
@@ -127,11 +183,9 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
         if (isGuest) {
-            dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
-            showToast('Settings updated locally.');
+            showToast("This feature is disabled in guest mode.");
             return;
         }
-        
         if (!currentUser || !userData) return;
         
         const allSettingsData = { pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings };
@@ -146,82 +200,112 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             console.error(error);
         } else {
             dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
-            showToast('Settings updated successfully.');
+            // Don't show toast on every small change, let the UI be the feedback.
         }
+    };
+
+    const handleDefaultSettingsChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setCurrentDefaults(prev => ({
+            ...prev,
+            [name]: name === 'risk' ? Number(value) : value,
+        }));
+    };
+
+    const handleSaveDefaults = () => {
+        handleSaveSettings('defaultSettings', currentDefaults);
+        showToast("Default settings saved.");
     };
 
     const sortedAccounts = useMemo(() => 
         [...accounts].sort((a, b) => (a.isArchived ? 1 : -1) - (b.isArchived ? 1 : -1) || a.name.localeCompare(b.name)), 
     [accounts]);
 
-    const handleExportData = () => {
-        const dataStr = JSON.stringify(userData, null, 2);
-        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-        
-        const exportFileDefaultName = 'trade_journal_data.json';
-    
-        const linkElement = document.createElement('a');
-        linkElement.setAttribute('href', dataUri);
-        linkElement.setAttribute('download', exportFileDefaultName);
-        linkElement.click();
-        showToast("Data exported.");
+    const handleInitiateDelete = () => {
+        if (isGuest) {
+            showToast("This feature is disabled in guest mode.");
+            return;
+        }
+        onInitiateDeleteAccount();
     };
 
     return (
         <div>
             <h1 className="text-3xl font-bold text-white mb-6">Data & Settings</h1>
             
-            <div className="border-b border-gray-700 mb-6">
-                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button onClick={() => setActiveTab('accounts')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'accounts' ? 'border-[#3B82F6] text-[#3B82F6]' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'}`}>
-                        Accounts
-                    </button>
-                    <button onClick={() => setActiveTab('settings')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'settings' ? 'border-[#3B82F6] text-[#3B82F6]' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'}`}>
-                        Journal Settings
-                    </button>
-                </nav>
-            </div>
-            
-            {activeTab === 'accounts' && (
-                <DataCard 
-                    title="Trading Accounts" 
-                    action={<button onClick={() => handleOpenAccountModal()} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-sm font-medium">Add Account</button>}
-                >
-                    <div className="space-y-3">
-                        {sortedAccounts.length > 0 ? sortedAccounts.map(acc => (
-                            <div key={acc.id} className={`flex justify-between items-center p-3 rounded-lg border border-gray-700/80 ${acc.isArchived ? 'bg-gray-800/50 text-gray-500' : 'bg-gray-900/50'}`}>
-                                <div>
-                                    <p className={`font-semibold ${!acc.isArchived && 'text-white'}`}>{acc.name}</p>
-                                    <p className="text-xs">Initial Balance: {acc.initialBalance.toLocaleString('en-US', { style: 'currency', currency: acc.currency || 'USD' })}</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Left Column */}
+                <div className="space-y-8">
+                    <DataCard 
+                        title="Trading Accounts" 
+                        action={<button onClick={() => handleOpenAccountModal()} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-sm font-medium">Add Account</button>}
+                    >
+                        <div className="space-y-3">
+                            {sortedAccounts.length > 0 ? sortedAccounts.map(acc => (
+                                <div key={acc.id} className={`flex justify-between items-center p-3 rounded-lg border border-gray-700/80 ${acc.isArchived ? 'bg-gray-800/50 text-gray-500' : 'bg-gray-900/50'}`}>
+                                    <div>
+                                        <p className={`font-semibold ${!acc.isArchived && 'text-white'}`}>{acc.name}</p>
+                                        <p className="text-xs">Initial Balance: {acc.initialBalance.toLocaleString('en-US', { style: 'currency', currency: acc.currency || 'USD' })}</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => handleOpenAccountModal(acc)} className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={acc.isArchived}>Edit</button>
+                                        <button onClick={() => handleToggleArchiveAccount(acc)} className="text-yellow-400 hover:text-yellow-300 transition-colors">{acc.isArchived ? 'Unarchive' : 'Archive'}</button>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <button onClick={() => handleOpenAccountModal(acc)} className="text-blue-400 hover:text-blue-300 transition-colors" disabled={acc.isArchived}>Edit</button>
-                                    <button onClick={() => handleToggleArchiveAccount(acc)} className="text-yellow-400 hover:text-yellow-300 transition-colors">{acc.isArchived ? 'Unarchive' : 'Archive'}</button>
-                                </div>
+                            )) : <p className="text-center text-gray-500 py-4">No accounts created yet.</p>}
+                        </div>
+                    </DataCard>
+
+                    <DataCard title="Default Trade Settings">
+                        <div className="space-y-4">
+                            <FormField label="Default Account">
+                                <select name="accountId" value={currentDefaults.accountId} onChange={handleDefaultSettingsChange} className={selectClasses}>
+                                    <option value="">None</option>
+                                    {accounts.filter(a => !a.isArchived).map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                </select>
+                            </FormField>
+                             <FormField label="Default Pair">
+                                <select name="pair" value={currentDefaults.pair} onChange={handleDefaultSettingsChange} className={selectClasses}>
+                                    <option value="">None</option>
+                                    {pairs.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </FormField>
+                             <FormField label="Default Entry Type">
+                                <select name="entry" value={currentDefaults.entry} onChange={handleDefaultSettingsChange} className={selectClasses}>
+                                    <option value="">None</option>
+                                    {entries.map(e => <option key={e} value={e}>{e}</option>)}
+                                </select>
+                            </FormField>
+                            <FormField label="Default Risk (%)">
+                                <select name="risk" value={currentDefaults.risk} onChange={handleDefaultSettingsChange} className={selectClasses}>
+                                    {risks.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </FormField>
+                            <div className="text-right pt-2">
+                                <button onClick={handleSaveDefaults} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-sm font-medium">Save Defaults</button>
                             </div>
-                        )) : <p className="text-center text-gray-500 py-4">No accounts created yet.</p>}
-                    </div>
-                </DataCard>
-            )}
+                        </div>
+                    </DataCard>
+                </div>
 
-            {activeTab === 'settings' && (
-                <SettingsForm 
-                    initialData={{ pairs, entries, risks, stoplosses, takeprofits, closeTypes }}
-                    onSave={handleSaveSettings}
-                />
-            )}
+                {/* Right Column */}
+                <div className="space-y-8">
+                    <DataCard title="Journal Options">
+                        <div className="space-y-6">
+                            <EditableTagList title="Pairs" items={pairs} onSave={(newItems) => handleSaveSettings('pairs', newItems)} />
+                            <EditableTagList title="Entry Types" items={entries} onSave={(newItems) => handleSaveSettings('entries', newItems)} />
+                            <EditableTagList title="Risk Presets (%)" items={risks} onSave={(newItems) => handleSaveSettings('risks', newItems.map(Number).sort((a,b) => a-b))} inputType="number" placeholder="Add risk %..." />
+                            <EditableTagList title="Stoploss Types" items={stoplosses} onSave={(newItems) => handleSaveSettings('stoplosses', newItems)} />
+                            <EditableTagList title="Takeprofit Types" items={takeprofits} onSave={(newItems) => handleSaveSettings('takeprofits', newItems)} />
+                            <EditableTagList title="Close Types" items={closeTypes} onSave={(newItems) => handleSaveSettings('closeTypes', newItems)} />
+                        </div>
+                    </DataCard>
 
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-                 <DataCard title="Data Management">
-                    <div className="flex gap-4">
-                        <button onClick={handleExportData} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm">Export Data</button>
-                        <button onClick={() => alert("Import functionality is not yet implemented.")} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm disabled:opacity-50" disabled>Import Data</button>
-                    </div>
-                 </DataCard>
-                 <DataCard title="Danger Zone">
-                    <p className="text-sm text-gray-400 mb-4">Permanently delete your account and all associated data. This action cannot be undone.</p>
-                    <button onClick={onInitiateDeleteAccount} className={`px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors self-start text-sm ${isGuest ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isGuest}>Delete My Account</button>
-                 </DataCard>
+                    <DataCard title="Danger Zone">
+                        <p className="text-sm text-gray-400 mb-4">Permanently delete your account and all associated data. This action cannot be undone.</p>
+                        <button onClick={handleInitiateDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors self-start text-sm">Delete My Account</button>
+                    </DataCard>
+                </div>
             </div>
 
             {isAccountModalOpen && (
@@ -233,6 +317,8 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
     );
 };
 
+// --- Local AccountForm Component ---
+
 const AccountForm: React.FC<{ onSave: (data: Omit<Account, 'id'>) => void; onCancel: () => void; accountToEdit: Account | null }> = ({ onSave, onCancel, accountToEdit }) => {
     const [name, setName] = useState(accountToEdit?.name || '');
     const [initialBalance, setInitialBalance] = useState(accountToEdit?.initialBalance || 10000);
@@ -240,11 +326,11 @@ const AccountForm: React.FC<{ onSave: (data: Omit<Account, 'id'>) => void; onCan
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name || initialBalance <= 0) {
+        if (!name.trim() || initialBalance <= 0) {
             alert("Please provide a valid name and initial balance.");
             return;
         }
-        onSave({ name, initialBalance, currency });
+        onSave({ name: name.trim(), initialBalance, currency });
     };
 
     return (
@@ -256,7 +342,7 @@ const AccountForm: React.FC<{ onSave: (data: Omit<Account, 'id'>) => void; onCan
                 <input type="number" value={initialBalance} onChange={e => setInitialBalance(parseFloat(e.target.value) || 0)} required className={numberInputClasses} />
             </FormField>
              <FormField label="Currency">
-                <select value={currency} onChange={e => setCurrency(e.target.value as Currency)} className={textInputClasses}>
+                <select value={currency} onChange={e => setCurrency(e.target.value as Currency)} className={selectClasses}>
                     {Object.values(Currency).map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
             </FormField>
@@ -267,70 +353,5 @@ const AccountForm: React.FC<{ onSave: (data: Omit<Account, 'id'>) => void; onCan
         </form>
     );
 };
-
-const SettingsForm: React.FC<{
-    initialData: {
-        pairs: string[],
-        entries: string[],
-        risks: number[],
-        stoplosses: string[],
-        takeprofits: string[],
-        closeTypes: string[],
-    },
-    onSave: (field: any, value: any) => void,
-}> = ({ initialData, onSave }) => {
-
-    const [settings, setSettings] = useState({
-        pairs: initialData.pairs.join(', '),
-        entries: initialData.entries.join(', '),
-        risks: initialData.risks.join(', '),
-        stoplosses: initialData.stoplosses.join(', '),
-        takeprofits: initialData.takeprofits.join(', '),
-        closeTypes: initialData.closeTypes.join(', '),
-    });
-    
-    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setSettings(prev => ({...prev, [name]: value}));
-    };
-
-    const handleSave = (field: keyof typeof settings) => {
-        const value = settings[field];
-        const arr = value.split(',').map(item => item.trim()).filter(Boolean);
-
-        if(field === 'risks') {
-            onSave(field, arr.map(Number).filter(n => !isNaN(n)));
-        } else {
-            onSave(field, arr);
-        }
-    };
-    
-    const fields: (keyof typeof settings)[] = ['pairs', 'entries', 'risks', 'stoplosses', 'takeprofits', 'closeTypes'];
-
-    return (
-        <DataCard title="Manage Journal Options">
-            <div className="space-y-6">
-            {fields.map(field => (
-                <div key={field}>
-                    {/* FIX: Cast `field` to a string before using string methods `charAt` and `slice` to resolve TypeScript errors. */}
-                    <FormField label={String(field).charAt(0).toUpperCase() + String(field).slice(1).replace(/([A-Z])/g, ' $1')}>
-                        <textarea
-                            name={field}
-                            value={settings[field]}
-                            onChange={handleChange}
-                            rows={2}
-                            className={`${textInputClasses} resize-y`}
-                            placeholder="Comma-separated values"
-                        />
-                    </FormField>
-                    <div className="text-right mt-2">
-                         <button onClick={() => handleSave(field)} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-xs font-medium">Save</button>
-                    </div>
-                </div>
-            ))}
-            </div>
-        </DataCard>
-    )
-}
 
 export default DataView;

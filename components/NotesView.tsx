@@ -19,6 +19,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
+        // If the selected note is deleted from the list, deselect it.
         if (selectedNote && !notes.find(n => n.id === selectedNote.id)) {
             setSelectedNote(null);
             setIsEditMode(false);
@@ -38,34 +39,34 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     };
 
     const handleAddNewNote = async () => {
-        const fullNewNote: Note = {
-            id: crypto.randomUUID(),
-            date: new Date().toISOString(),
-            content: 'New Note...',
-        };
-
         if (isGuest) {
-            dispatch({ type: 'UPDATE_NOTES', payload: [fullNewNote, ...notes] });
-            setSelectedNote(fullNewNote);
-            setIsEditMode(true);
-            showToast('Note created locally.');
+            showToast("This feature is disabled in guest mode.");
             return;
         }
-
         if (!currentUser) return;
+
+        const newNoteData = {
+            content: 'New Note...',
+            user_id: currentUser.id
+        };
 
         try {
             const { data, error } = await supabase
                 .from('notes')
-                .insert({ content: 'New Note...', user_id: currentUser.id })
+                .insert(newNoteData)
                 .select()
                 .single();
 
             if (error) throw error;
             
-            const dbNote: Note = { id: data.id, date: data.created_at, content: data.content };
-            dispatch({ type: 'UPDATE_NOTES', payload: [dbNote, ...notes] });
-            setSelectedNote(dbNote);
+            const fullNewNote: Note = {
+                id: data.id,
+                date: data.created_at,
+                content: data.content,
+            };
+
+            dispatch({ type: 'UPDATE_NOTES', payload: [fullNewNote, ...notes] });
+            setSelectedNote(fullNewNote);
             setIsEditMode(true);
             showToast('Note created.');
         } catch (error) {
@@ -75,22 +76,26 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     };
 
     const handleUpdateNote = async (id: string, content: string) => {
-        const updatedNotes = notes.map(n => n.id === id ? { ...n, content } : n);
-
         if (isGuest) {
-            dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            setSelectedNote(prev => prev ? {...prev, content} : null);
+            showToast("This feature is disabled in guest mode.");
             setIsEditMode(false);
-            showToast('Note updated locally.');
             return;
         }
-        
         if (!currentUser) return;
         
         try {
-            await supabase.from('notes').update({ content }).eq('id', id);
+            const { data, error } = await supabase
+                .from('notes')
+                .update({ content })
+                .eq('id', id)
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            const updatedNotes = notes.map(n => n.id === id ? { ...n, content: data.content } : n);
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            setSelectedNote(prev => prev ? {...prev, content} : null);
+            setSelectedNote(prev => prev ? {...prev, content: data.content} : null);
             setIsEditMode(false);
             showToast('Note updated.');
         } catch (error) {
@@ -100,26 +105,18 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     };
     
     const handleDeleteNote = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this note?')) return;
-        
-        const updatedNotes = notes.filter(n => n.id !== id);
-
         if (isGuest) {
-            dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            showToast('Note deleted locally.');
-            if (selectedNote?.id === id) {
-                setSelectedNote(null);
-                setIsEditMode(false);
-            }
+            showToast("This feature is disabled in guest mode.");
             return;
         }
-
         if (!currentUser) return;
+        if (!confirm('Are you sure you want to delete this note?')) return;
         
         try {
             const { error } = await supabase.from('notes').delete().eq('id', id);
             if (error) throw error;
             
+            const updatedNotes = notes.filter(n => n.id !== id);
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
             showToast('Note deleted.');
             if (selectedNote?.id === id) {
@@ -184,7 +181,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full text-gray-500">
                          <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002 2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                         <p className="mt-4 text-lg">Select a note to view or edit</p>
                         <p>Or, <button onClick={handleAddNewNote} className="text-[#3B82F6] hover:underline">create a new note</button>.</p>
