@@ -3,6 +3,7 @@ import { useAppContext } from '../services/appState';
 import { Account, Currency, UserData, DefaultSettings } from '../types';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
+import { ICONS } from '../constants';
 
 interface DataViewProps {
     onInitiateDeleteAccount: () => void;
@@ -77,7 +78,6 @@ const EditableTagList: React.FC<{
         const trimmedValue = editingValue.trim();
         const originalValue = items[editingIndex];
 
-        // Do nothing if value is unchanged or empty
         if (trimmedValue === '' || String(originalValue) === trimmedValue) {
             setEditingIndex(null);
             return;
@@ -85,9 +85,8 @@ const EditableTagList: React.FC<{
 
         const finalValue = inputType === 'number' ? parseFloat(trimmedValue) : trimmedValue;
         
-        // Prevent saving if the new value already exists (excluding the original value itself)
         if (items.filter((_, i) => i !== editingIndex).map(String).includes(String(finalValue))) {
-            setEditingIndex(null); // Just cancel edit
+            setEditingIndex(null);
             return;
         }
 
@@ -96,48 +95,65 @@ const EditableTagList: React.FC<{
         setEditingIndex(null);
     };
     
+    const handleEditCancel = () => {
+        setEditingIndex(null);
+    };
+
     const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             handleEditSave();
         } else if (e.key === 'Escape') {
-            setEditingIndex(null);
+            handleEditCancel();
         }
     };
-
 
     return (
         <div>
             <h3 className="text-base font-semibold text-[#8A91A8] mb-2">{title}</h3>
             <div className="flex flex-wrap gap-2 mb-3 min-h-[34px] items-center">
                 {items.map((item, index) => (
-                    editingIndex === index ? (
-                        <input
-                            key={index}
-                            type={inputType}
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            onBlur={handleEditSave}
-                            onKeyDown={handleEditKeyDown}
-                            className={inputType === 'number' ? numberInputClasses : textInputClasses}
-                            autoFocus
-                        />
-                    ) : (
-                    <div 
-                        key={index} 
-                        className="flex items-center bg-gray-600 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full cursor-pointer hover:bg-gray-500 transition-colors"
-                        onClick={() => handleEditStart(index, item)}
-                    >
-                        <span>{item}</span>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleRemoveItem(item); }} 
-                            className="ml-2 text-gray-400 hover:text-white rounded-full w-4 h-4 flex items-center justify-center transition-colors text-base"
-                            aria-label={`Remove ${item}`}
-                        >
-                            &times;
-                        </button>
+                    <div key={index}>
+                        {editingIndex === index ? (
+                            <div className="flex items-center bg-gray-700 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full ring-2 ring-blue-500">
+                                <input
+                                    type={inputType}
+                                    value={editingValue}
+                                    onChange={(e) => setEditingValue(e.target.value)}
+                                    onKeyDown={handleEditKeyDown}
+                                    className="bg-transparent focus:outline-none w-auto text-sm p-0"
+                                    style={{ width: `${Math.max(String(editingValue).length, 5)}ch` }}
+                                    autoFocus
+                                />
+                                <button 
+                                    onClick={handleEditSave} 
+                                    className="ml-2 text-green-400 hover:text-green-300 transition-colors"
+                                    aria-label="Save changes"
+                                >
+                                    <span className="w-5 h-5 block">{ICONS.save}</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <div 
+                                className="group relative flex items-center bg-gray-600 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full cursor-pointer hover:bg-gray-500 transition-colors"
+                                onClick={() => handleEditStart(index, item)}
+                            >
+                                <span>{item}</span>
+                                <div className="flex items-center ml-1">
+                                    <span className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+                                        <span className="w-4 h-4 block">{ICONS.pencil}</span>
+                                    </span>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); handleRemoveItem(item); }} 
+                                        className="ml-1 text-gray-400 hover:text-white rounded-full w-4 h-4 flex items-center justify-center transition-colors text-base"
+                                        aria-label={`Remove ${item}`}
+                                    >
+                                        &times;
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                    )
                 ))}
                 {items.length === 0 && <p className="text-sm text-gray-500 italic">No items added yet.</p>}
             </div>
@@ -154,6 +170,7 @@ const EditableTagList: React.FC<{
         </div>
     );
 };
+
 
 // --- Main DataView Component ---
 
