@@ -464,8 +464,14 @@ function AppContent() {
         
         const fullUserData: UserData = {
           ...baseUserData,
-          accounts: (accountsData || []).map(a => ({...a, accountId: a.id})),
-          trades: (tradesData || []).map(t => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result })),
+          accounts: (accountsData || []).map((a: any) => ({
+              id: a.id,
+              name: a.name,
+              initialBalance: a.initial_balance,
+              currency: a.currency,
+              isArchived: a.is_archived
+          })),
+          trades: (tradesData || []).map((t: any) => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result })),
           notes: notesData || []
         };
         

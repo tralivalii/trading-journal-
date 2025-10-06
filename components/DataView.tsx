@@ -124,30 +124,52 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
         }
         if (!currentUser) return;
         
+        // Map to snake_case for DB
+        const dbPayload = {
+            name: accountData.name,
+            initial_balance: accountData.initialBalance,
+            currency: accountData.currency,
+        };
+
         try {
+            let savedData;
             if (accountToEdit) {
                 const { data, error } = await supabase
                     .from('accounts')
-                    .update({ ...accountData })
+                    .update(dbPayload)
                     .eq('id', accountToEdit.id)
                     .select()
                     .single();
-                
                 if (error) throw error;
-                const updatedAccounts = accounts.map(a => a.id === data.id ? { ...a, ...data} : a);
-                dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-                showToast('Account updated successfully.');
+                savedData = data;
             } else {
                 const { data, error } = await supabase
                     .from('accounts')
-                    .insert({ ...accountData, user_id: currentUser.id })
+                    .insert({ ...dbPayload, user_id: currentUser.id })
                     .select()
                     .single();
-
                 if (error) throw error;
-                dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...accounts, data] });
+                savedData = data;
+            }
+            
+            // Map from snake_case from DB to camelCase for app state
+            const appAccount: Account = {
+                id: savedData.id,
+                name: savedData.name,
+                initialBalance: savedData.initial_balance,
+                currency: savedData.currency,
+                isArchived: savedData.is_archived
+            };
+
+            if (accountToEdit) {
+                const updatedAccounts = accounts.map(a => a.id === appAccount.id ? appAccount : a);
+                dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+                showToast('Account updated successfully.');
+            } else {
+                dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...accounts, appAccount] });
                 showToast('Account added successfully.');
             }
+            
             setIsAccountModalOpen(false);
             setAccountToEdit(null);
         } catch (error) {
@@ -166,15 +188,15 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
         try {
             const { data, error } = await supabase
                 .from('accounts')
-                .update({ isArchived: !account.isArchived })
+                .update({ is_archived: !account.isArchived })
                 .eq('id', account.id)
                 .select()
                 .single();
 
             if (error) throw error;
-            const updatedAccounts = accounts.map(a => a.id === data.id ? {...a, isArchived: data.isArchived} : a);
+            const updatedAccounts = accounts.map(a => a.id === data.id ? {...a, isArchived: data.is_archived} : a);
             dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-            showToast(`Account ${data.isArchived ? 'archived' : 'unarchived'}.`);
+            showToast(`Account ${data.is_archived ? 'archived' : 'unarchived'}.`);
         } catch (error) {
             console.error('Failed to update account status:', error);
             showToast('Failed to update account status.');
