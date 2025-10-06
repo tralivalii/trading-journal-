@@ -79,8 +79,13 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             const { data: { publicUrl } } = supabase.storage
                 .from('screenshots')
                 .getPublicUrl(filePath);
+            
+            // Add a cache-busting parameter. This helps prevent browsers from showing an old,
+            // cached version of the image (or a cached 404 error) if there's a small delay
+            // in the image being available on the CDN.
+            const finalUrl = `${publicUrl}?t=${new Date().getTime()}`;
 
-            const finalMarkdown = `\n![${file.name}](${publicUrl})\n`;
+            const finalMarkdown = `\n![${file.name}](${finalUrl})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
             showToast('Image uploaded successfully', 'success');
         } catch (error) {
@@ -116,13 +121,18 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         
         let html = markdown;
         
+        // Convert #hashtags to links
         html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
         
+        // Convert Markdown images to HTML img tags
         html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
 
+        // Sanitize the HTML to prevent XSS attacks, while allowing our specific image URLs
         const clean = DOMPurify.sanitize(html, {
             ADD_TAGS: ['a', 'img'],
-            ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt']
+            ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt'],
+            // Explicitly allow URLs from our Supabase storage bucket to prevent incorrect stripping
+            ALLOWED_URI_REGEXP: /^https:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co\//
         });
 
         return { __html: clean };
