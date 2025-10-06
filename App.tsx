@@ -353,44 +353,50 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     );
 }
 
-// Fetches user settings from the 'user_data' table, or creates them if they don't exist.
+// A more resilient function to get or create user settings.
+// It prioritizes returning valid settings over throwing an error, to prevent the app from getting stuck.
 const getUserSettings = async (userId: string): Promise<Omit<UserData, 'trades'|'accounts'|'notes'>> => {
-  const { data, error } = await supabase
-    .from('user_data')
-    .select('data')
-    .eq('user_id', userId)
-    .single();
+    const defaultSettings = {
+        pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
+        entries: ['2.0', 'Market', 'Order block', 'FVG', 'IDM'],
+        risks: [0.5, 1, 1.5, 2, 2.5, 3, 4, 5],
+        defaultSettings: { accountId: '', pair: 'EUR/USD', entry: '2.0', risk: 1 },
+        stoplosses: ['Session High/Low', 'FVG', 'Order block'],
+        takeprofits: ['Session High/Low', 'FVG', 'Order block'],
+        closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
+    };
 
-  if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
-    console.error('Error fetching user settings:', error);
-    throw error;
-  }
+    // 1. Try to fetch existing settings
+    const { data, error } = await supabase
+        .from('user_data')
+        .select('data')
+        .eq('user_id', userId)
+        .single();
 
-  if (data) {
-    return data.data;
-  }
+    // 2. If data is successfully fetched, return it
+    if (data) {
+        return data.data;
+    }
 
-  // If no settings found, create and return default ones
-  const defaultSettings = {
-    pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
-    entries: ['2.0', 'Market', 'Order block', 'FVG', 'IDM'],
-    risks: [0.5, 1, 1.5, 2, 2.5, 3, 4, 5],
-    defaultSettings: { accountId: '', pair: 'EUR/USD', entry: '2.0', risk: 1 },
-    stoplosses: ['Session High/Low', 'FVG', 'Order block'],
-    takeprofits: ['Session High/Low', 'FVG', 'Order block'],
-    closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
-  };
-  
-  const { error: insertError } = await supabase
-    .from('user_data')
-    .insert({ user_id: userId, data: defaultSettings });
+    // 3. If there was an error, but it's NOT "no rows found", log it and return defaults as a fallback.
+    // This handles network errors or RLS issues without crashing the app.
+    if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user settings, falling back to defaults:', error);
+        return defaultSettings;
+    }
 
-  if (insertError) {
-    console.error('Error creating default user data:', insertError);
-    throw insertError;
-  }
+    // 4. If no settings were found (PGRST116), try to create them.
+    const { error: insertError } = await supabase
+        .from('user_data')
+        .insert({ user_id: userId, data: defaultSettings });
 
-  return defaultSettings;
+    // 5. If the insert fails, log the error but still return defaults so the app can load.
+    if (insertError) {
+        console.error('Error creating default user data, falling back to defaults:', insertError);
+    }
+    
+    // 6. Return defaults in all failure or creation scenarios.
+    return defaultSettings;
 };
 
 function AppContent() {
