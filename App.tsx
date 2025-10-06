@@ -353,42 +353,31 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     );
 }
 
-// Default user data for new users, fetched from the 'user_data' table
-const getDefaultUserData = async (userId: string): Promise<UserData> => {
+// Fetches user settings from the 'user_data' table, or creates them if they don't exist.
+const getUserSettings = async (userId: string): Promise<Omit<UserData, 'trades'|'accounts'|'notes'>> => {
   const { data, error } = await supabase
     .from('user_data')
-    .select('*')
+    .select('data')
     .eq('user_id', userId)
     .single();
 
   if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
-    console.error('Error fetching user data:', error);
+    console.error('Error fetching user settings:', error);
     throw error;
   }
 
   if (data) {
-    // Convert snake_case from DB to camelCase for the app
-    return {
-        ...data.data, // assuming settings are in a jsonb column 'data'
-        trades: [],
-        accounts: [],
-        notes: [],
-    };
+    return data.data;
   }
 
-  // If no settings found, create default ones
+  // If no settings found, create and return default ones
   const defaultSettings = {
     pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
-    entries: ['2.0', 'IDM', 'Market', 'FVG', 'Order block'],
-    risks: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5],
-    defaultSettings: {
-      accountId: '',
-      pair: 'EUR/USD',
-      entry: '2.0',
-      risk: 1,
-    },
-    stoplosses: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
-    takeprofits: ['Sessions Bottom', 'Sessions Top', 'Order block', 'FVG', 'Fractal'],
+    entries: ['2.0', 'Market', 'Order block', 'FVG', 'IDM'],
+    risks: [0.5, 1, 1.5, 2, 2.5, 3, 4, 5],
+    defaultSettings: { accountId: '', pair: 'EUR/USD', entry: '2.0', risk: 1 },
+    stoplosses: ['Session High/Low', 'FVG', 'Order block'],
+    takeprofits: ['Session High/Low', 'FVG', 'Order block'],
     closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
   };
   
@@ -401,12 +390,7 @@ const getDefaultUserData = async (userId: string): Promise<UserData> => {
     throw insertError;
   }
 
-  return {
-    ...defaultSettings,
-    trades: [],
-    accounts: [],
-    notes: [],
-  };
+  return defaultSettings;
 };
 
 function AppContent() {
@@ -434,49 +418,45 @@ function AppContent() {
       const fetchUserData = async () => {
         dispatch({ type: 'SET_IS_LOADING', payload: true });
         
-        // Fetch all data in parallel
-        const [
-          { data: accountsData, error: accountsError },
-          { data: tradesData, error: tradesError },
-          { data: notesData, error: notesError }
-        ] = await Promise.all([
-          supabase.from('accounts').select('*').eq('user_id', currentUser.id),
-          supabase.from('trades').select('*').eq('user_id', currentUser.id),
-          supabase.from('notes').select('*').eq('user_id', currentUser.id)
-        ]);
+        try {
+            // Fetch all data in parallel
+            const [
+              userSettings,
+              { data: accountsData, error: accountsError },
+              { data: tradesData, error: tradesError },
+              { data: notesData, error: notesError }
+            ] = await Promise.all([
+              getUserSettings(currentUser.id),
+              supabase.from('accounts').select('*').eq('user_id', currentUser.id),
+              supabase.from('trades').select('*').eq('user_id', currentUser.id),
+              supabase.from('notes').select('*').eq('user_id', currentUser.id)
+            ]);
 
-        if (accountsError || tradesError || notesError) {
-          console.error('Error fetching data:', accountsError || tradesError || notesError);
-          dispatch({ type: 'SET_IS_LOADING', payload: false });
-          return;
+            if (accountsError || tradesError || notesError) {
+              throw accountsError || tradesError || notesError;
+            }
+            
+            const fullUserData: UserData = {
+              ...userSettings,
+              accounts: (accountsData || []).map((a: any) => ({
+                  id: a.id,
+                  name: a.name,
+                  initialBalance: a.initial_balance,
+                  currency: a.currency,
+                  isArchived: a.is_archived
+              })),
+              trades: (tradesData || []).map((t: any) => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result })),
+              notes: notesData || []
+            };
+            
+            dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
+
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            // Optional: show a toast message to the user
+        } finally {
+            dispatch({ type: 'SET_IS_LOADING', payload: false });
         }
-
-        // A placeholder for user-specific settings, if you add them later
-        const baseUserData = {
-            pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
-            entries: ['2.0', 'Market', 'Order block', 'FVG', 'IDM'],
-            risks: [0.5, 1, 1.5, 2, 2.5, 3, 4, 5],
-            defaultSettings: { accountId: '', pair: 'EUR/USD', entry: '2.0', risk: 1 },
-            stoplosses: ['Session High/Low', 'FVG', 'Order block'],
-            takeprofits: ['Session High/Low', 'FVG', 'Order block'],
-            closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
-        };
-        
-        const fullUserData: UserData = {
-          ...baseUserData,
-          accounts: (accountsData || []).map((a: any) => ({
-              id: a.id,
-              name: a.name,
-              initialBalance: a.initial_balance,
-              currency: a.currency,
-              isArchived: a.is_archived
-          })),
-          trades: (tradesData || []).map((t: any) => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result })),
-          notes: notesData || []
-        };
-        
-        dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
-        dispatch({ type: 'SET_IS_LOADING', payload: false });
       };
       
       fetchUserData();

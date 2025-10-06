@@ -124,33 +124,32 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
         }
         if (!currentUser) return;
         
-        // Map to snake_case for DB
-        const dbPayload = {
-            name: accountData.name,
-            initial_balance: accountData.initialBalance,
-            currency: accountData.currency,
-        };
-
         try {
-            let savedData;
+            // Map to snake_case for DB
+            const dbPayload = {
+                name: accountData.name,
+                initial_balance: accountData.initialBalance,
+                currency: accountData.currency,
+            };
+
+            let response;
             if (accountToEdit) {
-                const { data, error } = await supabase
+                response = await supabase
                     .from('accounts')
                     .update(dbPayload)
                     .eq('id', accountToEdit.id)
                     .select()
                     .single();
-                if (error) throw error;
-                savedData = data;
             } else {
-                const { data, error } = await supabase
+                response = await supabase
                     .from('accounts')
                     .insert({ ...dbPayload, user_id: currentUser.id })
                     .select()
                     .single();
-                if (error) throw error;
-                savedData = data;
             }
+
+            const { data: savedData, error } = response;
+            if (error) throw error;
             
             // Map from snake_case from DB to camelCase for app state
             const appAccount: Account = {
@@ -172,9 +171,9 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             
             setIsAccountModalOpen(false);
             setAccountToEdit(null);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to save account:', error);
-            showToast('Failed to save account.');
+            showToast(`Failed to save account: ${error.message}`);
         }
     };
     
