@@ -127,12 +127,13 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         // Convert Markdown images to HTML img tags
         html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
 
-        // Sanitize the HTML to prevent XSS attacks, while allowing our specific image URLs
+        // Sanitize the HTML to prevent XSS attacks.
+        // This regex is now more specific to prevent incorrect stripping of valid image URLs.
         const clean = DOMPurify.sanitize(html, {
             ADD_TAGS: ['a', 'img'],
             ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt'],
-            // Explicitly allow URLs from our Supabase storage bucket to prevent incorrect stripping
-            ALLOWED_URI_REGEXP: /^https:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co\//
+            // Explicitly allow URLs from our Supabase storage bucket, including the full path.
+            ALLOWED_URI_REGEXP: /^https:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co\/storage\/v1\/object\/public\/screenshots\/.*/
         });
 
         return { __html: clean };
