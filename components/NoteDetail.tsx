@@ -13,20 +13,40 @@ interface NoteDetailProps {
     onSetEditMode: (isEditing: boolean) => void;
     onUpdate: (id: string, content: string) => void;
     onDelete: (id: string) => void;
+    onTagClick: (tag: string) => void;
     showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
-const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete, showToast }) => {
+const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete, onTagClick, showToast }) => {
     const { state } = useAppContext();
     const { currentUser, isGuest } = state;
 
     const [content, setContent] = useState(note.content);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const viewRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         setContent(note.content);
     }, [note]);
+
+    useEffect(() => {
+        const viewEl = viewRef.current;
+        if (!viewEl || isEditMode) return;
+
+        const handleTagClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'A' && target.dataset.tag) {
+                e.preventDefault();
+                onTagClick(target.dataset.tag);
+            }
+        };
+
+        viewEl.addEventListener('click', handleTagClick);
+        return () => {
+            viewEl.removeEventListener('click', handleTagClick);
+        };
+    }, [note.content, isEditMode, onTagClick]);
     
     const handleSave = () => {
         onUpdate(note.id, content);
@@ -47,8 +67,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            // FIX: Flattened the storage path to avoid potential issues with nested folder policies.
-            const imageKey = `notes/${note.id}-${crypto.randomUUID()}-${file.name}`;
+            const imageKey = `note-${note.id}-${crypto.randomUUID()}-${file.name}`;
             const { error: uploadError } = await supabase.storage
                 .from('screenshots')
                 .upload(`${currentUser.id}/${imageKey}`, file);
@@ -72,7 +91,6 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         const files = e.target.files;
         if (files) {
             Array.from(files).forEach(uploadAndInsertImage);
-            // Reset file input to allow selecting the same file again
             e.target.value = ''; 
         }
     };
@@ -95,15 +113,13 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         
         let html = markdown;
         
-        // Process hashtags with Unicode support and simplified styling
-        html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<span class="text-blue-400">#$1</span>');
+        html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
         
-        // Process images
         html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
 
         const clean = DOMPurify.sanitize(html, {
-            ADD_TAGS: ['span'],
-            ADD_ATTR: ['class']
+            ADD_TAGS: ['a', 'img'],
+            ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt']
         });
 
         return { __html: clean };
@@ -149,6 +165,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     return (
         <div className="flex flex-col h-full">
             <div 
+                 ref={viewRef}
                  className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto"
                  dangerouslySetInnerHTML={createSanitizedMarkup(note.content)}
             >

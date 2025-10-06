@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAppContext } from '../services/appState';
 import { Note } from '../types';
@@ -271,6 +272,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                         onSetEditMode={setIsEditMode}
                         onUpdate={handleUpdateNote}
                         onDelete={handleDeleteNote}
+                        onTagClick={handleTagClick}
                         showToast={showToast}
                     />
                 ) : (

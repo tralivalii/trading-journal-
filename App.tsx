@@ -452,7 +452,10 @@ function AppContent() {
                   isArchived: a.is_archived
               })),
               trades: (tradesData || []).map((t: any) => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result })),
-              notes: notesData || []
+              notes: (notesData || []).map((n: any) => ({
+                ...n,
+                tags: Array.isArray(n.tags) ? n.tags : (typeof n.tags === 'string' && n.tags.startsWith('[')) ? JSON.parse(n.tags) : []
+              }))
             };
             
             dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
