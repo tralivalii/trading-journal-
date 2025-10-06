@@ -282,7 +282,8 @@ const SettingsForm: React.FC<{
             <div className="space-y-6">
             {fields.map(field => (
                 <div key={field}>
-                    <FormField label={field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1')}>
+                    {/* FIX: Cast `field` to a string before using string methods `charAt` and `slice` to resolve TypeScript errors. */}
+                    <FormField label={String(field).charAt(0).toUpperCase() + String(field).slice(1).replace(/([A-Z])/g, ' $1')}>
                         <textarea
                             name={field}
                             value={settings[field]}

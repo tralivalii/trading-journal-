@@ -37,6 +37,20 @@ const Auth: React.FC = () => {
     setLoading(false);
   };
 
+  const handleGuestLogin = async () => {
+    setError('');
+    setMessage('');
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+        email: 'guest@example.com',
+        password: 'guestpassword',
+    });
+    if (error) {
+        setError('Guest login failed. The guest account might not be set up.');
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
       <div className="w-full max-w-md bg-gray-800 p-8 rounded-lg shadow-lg border border-gray-700">
@@ -79,6 +93,26 @@ const Auth: React.FC = () => {
             {loading ? 'Processing...' : (isLoginView ? 'Sign In' : 'Sign Up')}
           </button>
         </form>
+
+        <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-gray-600" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-gray-800 text-gray-400">Or</span>
+            </div>
+        </div>
+
+        <div>
+            <button
+                type="button"
+                onClick={handleGuestLogin}
+                disabled={loading}
+                className="w-full flex justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm text-sm font-medium text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                Continue as Guest
+            </button>
+        </div>
         
         <p className="mt-6 text-center text-sm text-gray-400">
           {isLoginView ? "Don't have an account?" : "Already have an account?"}{' '}
