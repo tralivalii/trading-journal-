@@ -81,13 +81,13 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                 });
             if (uploadError) throw uploadError;
 
-            const { data: { publicUrl } } = supabase.storage
+            const { data: signedUrlData, error: signedUrlError } = await supabase.storage
                 .from('screenshots')
-                .getPublicUrl(filePath);
-            
-            const finalUrl = `${publicUrl}?t=${new Date().getTime()}`;
+                .createSignedUrl(filePath, 3600); // Signed URL valid for 1 hour
 
-            const finalMarkdown = `\n![${file.name}](${finalUrl})\n`;
+            if (signedUrlError) throw signedUrlError;
+
+            const finalMarkdown = `\n![${file.name}](${signedUrlData.signedUrl})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
             showToast('Image uploaded successfully', 'success');
         } catch (error) {
