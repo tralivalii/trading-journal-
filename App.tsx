@@ -646,15 +646,17 @@ function AppContent() {
         </main>
       </div>
 
-      <button
-          onClick={handleAddTrade}
-          className={`fixed bottom-6 right-6 w-14 h-14 bg-[#3B82F6] rounded-full text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.2)] transform transition-transform duration-300 ease-in-out ${showFab ? 'scale-100' : 'scale-0'}`}
-          aria-label="Add New Trade"
-      >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-      </button>
+      {activeView === 'journal' && (
+        <button
+            onClick={handleAddTrade}
+            className={`fixed bottom-6 right-6 w-14 h-14 bg-[#3B82F6] rounded-full text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.2)] transform transition-transform duration-300 ease-in-out ${showFab ? 'scale-100' : 'scale-0'}`}
+            aria-label="Add New Trade"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+        </button>
+      )}
 
       {toast && (
         <div key={toast.id} className={`fixed top-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg animate-fade-in-out z-50 ${toast.type === 'success' ? 'bg-green-600 border border-green-500' : 'bg-red-600 border border-red-500'}`}>

@@ -213,8 +213,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             >
             </div>
             <div className="flex justify-end gap-3 pt-4 flex-shrink-0">
-                <button onClick={() => onSetEditMode(true)} className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-500 transition-colors text-sm">Edit</button>
-                <button onClick={() => onDelete(note.id)} className="px-4 py-2 bg-[#EF4444] text-white rounded-lg hover:bg-red-700 transition-colors text-sm">Delete</button>
+                <button onClick={() => onSetEditMode(true)} className="px-4 py-2 bg-transparent text-blue-400 rounded-lg border border-blue-500 hover:bg-blue-500/20 transition-colors text-sm">Edit</button>
+                <button onClick={() => onDelete(note.id)} className="px-4 py-2 bg-transparent text-red-400 rounded-lg border border-red-500 hover:bg-red-500/20 transition-colors text-sm">Delete</button>
             </div>
         </div>
     );

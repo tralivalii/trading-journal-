@@ -1,11 +1,11 @@
 
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAppContext } from '../services/appState';
 import { Note } from '../types';
 import NoteDetail from './NoteDetail';
 import { ICONS } from '../constants';
 import { supabase } from '../services/supabase';
+import Modal from './ui/Modal';
 
 interface NotesViewProps {
     showToast: (message: string, type?: 'success' | 'error') => void;
@@ -33,7 +33,7 @@ const NotesSidebar: React.FC<{
     }, [notes]);
 
     return (
-        <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col h-full">
+        <div className="bg-[#232733] rounded-lg flex flex-col h-full">
             <div className="p-4 border-b border-gray-700/50">
                 <h3 className="text-lg font-semibold text-white mb-3">Search Tags</h3>
                 <input 
@@ -86,6 +86,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTag, setActiveTag] = useState<string | null>(null);
+    const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
     useEffect(() => {
         // If the selected note is deleted from the list, deselect it.
@@ -148,9 +149,8 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     };
     
     const parseTags = (content: string): string[] => {
-        // Use matchAll with a Unicode-aware regex to correctly capture non-latin characters.
         const tags = [...content.matchAll(/#(\p{L}[\p{L}\p{N}_]*)/gu)].map(match => match[1].toLowerCase());
-        return [...new Set(tags)]; // Return unique tags
+        return [...new Set(tags)];
     };
 
     const handleUpdateNote = async (id: string, content: string) => {
@@ -220,6 +220,11 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
         setSearchQuery('');
         setActiveTag(prev => prev === tag ? null : tag);
     };
+    
+    const handleBackToList = () => {
+        setSelectedNote(null);
+        setIsEditMode(false);
+    };
 
     const filteredNotes = useMemo(() => {
         let notesToFilter = [...notes];
@@ -238,64 +243,104 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     }, [notes, searchQuery, activeTag]);
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[75vh]">
-            {/* Note List */}
-            <div className="lg:col-span-3 bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col">
-                <div className="p-4 border-b border-gray-700/50 flex-shrink-0">
-                    <h2 className="text-xl font-semibold text-white">All Notes ({filteredNotes.length})</h2>
-                </div>
-                <div className="overflow-y-auto flex-grow">
-                    {filteredNotes.map(note => (
-                        <div 
-                            key={note.id}
-                            onClick={() => handleSelectNote(note)}
-                            className={`p-4 cursor-pointer border-l-4 ${selectedNote?.id === note.id ? 'border-[#3B82F6] bg-gray-700/50' : 'border-transparent hover:bg-gray-800/50'}`}
+        <div>
+            {/* --- MOBILE-ONLY HEADER --- */}
+            <div className="lg:hidden flex justify-between items-center mb-4">
+                {!selectedNote ? (
+                    <>
+                        <h2 className="text-xl font-semibold text-white">All Notes ({filteredNotes.length})</h2>
+                        <button 
+                            onClick={() => setIsSearchModalOpen(true)} 
+                            className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                            aria-label="Search and filter tags"
                         >
-                            <p className="text-white font-medium truncate">{note.content.split('\n')[0] || 'Untitled Note'}</p>
-                            <p className="text-xs text-gray-400 mt-1">{new Date(note.date).toLocaleDateString()}</p>
-                        </div>
-                    ))}
-                </div>
-                <div className="p-4 border-t border-gray-700/50 flex-shrink-0">
-                    <button onClick={handleAddNewNote} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors">
-                        <span className="w-5 h-5">{ICONS.plus}</span> New Note
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>
+                            Tags
+                        </button>
+                    </>
+                ) : (
+                    <button onClick={handleBackToList} className="flex items-center gap-2 text-white hover:text-blue-400 transition-colors font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                        <span>Back to Notes</span>
                     </button>
+                )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[75vh]">
+                {/* Note List */}
+                <div className={`lg:col-span-3 bg-[#232733] rounded-lg border border-gray-700/50 flex-col ${selectedNote ? 'hidden' : 'flex'} lg:flex`}>
+                    <div className="p-4 border-b border-gray-700/50 flex-shrink-0 hidden lg:block">
+                        <h2 className="text-xl font-semibold text-white">All Notes ({filteredNotes.length})</h2>
+                    </div>
+                    <div className="overflow-y-auto flex-grow">
+                        {filteredNotes.map(note => (
+                            <div 
+                                key={note.id}
+                                onClick={() => handleSelectNote(note)}
+                                className={`p-4 cursor-pointer border-l-4 ${selectedNote?.id === note.id ? 'border-[#3B82F6] bg-gray-700/50' : 'border-transparent hover:bg-gray-800/50'}`}
+                            >
+                                <p className="text-white font-medium truncate">{note.content.split('\n')[0] || 'Untitled Note'}</p>
+                                <p className="text-xs text-gray-400 mt-1">{new Date(note.date).toLocaleDateString()}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-4 border-t border-gray-700/50 flex-shrink-0">
+                        <button onClick={handleAddNewNote} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors">
+                            <span className="w-5 h-5">{ICONS.plus}</span> New Note
+                        </button>
+                    </div>
+                </div>
+
+                {/* Note Detail */}
+                <div className={`lg:col-span-6 bg-[#232733] rounded-lg border border-gray-700/50 p-4 ${selectedNote ? 'block' : 'hidden'} lg:block`}>
+                    {selectedNote ? (
+                        <NoteDetail 
+                            note={selectedNote}
+                            isEditMode={isEditMode}
+                            onSetEditMode={setIsEditMode}
+                            onUpdate={handleUpdateNote}
+                            onDelete={handleDeleteNote}
+                            onTagClick={handleTagClick}
+                            showToast={showToast}
+                        />
+                    ) : (
+                        <div className="hidden lg:flex flex-col items-center justify-center h-full text-gray-500">
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            <p className="mt-4 text-lg">Select a note to view or edit</p>
+                            <p>Or, <button onClick={handleAddNewNote} className="text-[#3B82F6] hover:underline">create a new note</button>.</p>
+                        </div>
+                    )}
+                </div>
+                
+                {/* Sidebar (desktop-only) */}
+                <div className="lg:col-span-3 hidden lg:block">
+                    <NotesSidebar 
+                        notes={notes} 
+                        searchQuery={searchQuery}
+                        onSearchChange={setSearchQuery}
+                        onTagClick={handleTagClick}
+                        activeTag={activeTag}
+                    />
                 </div>
             </div>
 
-            {/* Note Detail */}
-            <div className="lg:col-span-6 bg-[#232733] rounded-lg border border-gray-700/50 p-4">
-                {selectedNote ? (
-                    <NoteDetail 
-                        note={selectedNote}
-                        isEditMode={isEditMode}
-                        onSetEditMode={setIsEditMode}
-                        onUpdate={handleUpdateNote}
-                        onDelete={handleDeleteNote}
-                        onTagClick={handleTagClick}
-                        showToast={showToast}
+            {/* --- SEARCH MODAL for mobile --- */}
+            <Modal isOpen={isSearchModalOpen} onClose={() => setIsSearchModalOpen(false)} title="Search & Discover Tags">
+                 <div className="lg:col-span-3">
+                    <NotesSidebar 
+                        notes={notes} 
+                        searchQuery={searchQuery}
+                        onSearchChange={setSearchQuery}
+                        onTagClick={(tag) => {
+                            handleTagClick(tag);
+                            setIsSearchModalOpen(false);
+                        }}
+                        activeTag={activeTag}
                     />
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        <p className="mt-4 text-lg">Select a note to view or edit</p>
-                        <p>Or, <button onClick={handleAddNewNote} className="text-[#3B82F6] hover:underline">create a new note</button>.</p>
-                    </div>
-                )}
-            </div>
-            
-            {/* Sidebar */}
-            <div className="lg:col-span-3">
-                <NotesSidebar 
-                    notes={notes} 
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onTagClick={handleTagClick}
-                    activeTag={activeTag}
-                />
-            </div>
+                </div>
+            </Modal>
         </div>
     );
 };
