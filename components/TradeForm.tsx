@@ -95,7 +95,7 @@ const AnalysisSection: React.FC<{
                         />
                     </FormField>
                     {imageUrl && (
-                        <div className="mt-3 relative">
+                        <div className="mt-3 relative inline-block">
                            <img src={imageUrl} alt={`${title} preview`} className="rounded-md max-h-40 border border-gray-700" />
                            <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none" aria-label="Remove image">&times;</button>
                         </div>
