@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAppContext } from '../services/appState';
 import { Note } from '../types';
@@ -269,8 +268,13 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-[75vh]">
                 {/* Note List */}
                 <div className={`lg:col-span-3 bg-[#232733] rounded-lg border border-gray-700/50 flex-col ${selectedNote ? 'hidden' : 'flex'} lg:flex`}>
-                    <div className="p-4 border-b border-gray-700/50 flex-shrink-0 hidden lg:block">
+                    <div className="p-4 flex-shrink-0 hidden lg:block">
                         <h2 className="text-xl font-semibold text-white">All Notes ({filteredNotes.length})</h2>
+                    </div>
+                    <div className="p-4 border-b border-t lg:border-t-0 border-gray-700/50 flex-shrink-0">
+                        <button onClick={handleAddNewNote} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors">
+                            <span className="w-5 h-5">{ICONS.plus}</span> New Note
+                        </button>
                     </div>
                     <div className="overflow-y-auto flex-grow">
                         {filteredNotes.map(note => (
@@ -283,11 +287,6 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                                 <p className="text-xs text-gray-400 mt-1">{new Date(note.date).toLocaleDateString()}</p>
                             </div>
                         ))}
-                    </div>
-                    <div className="p-4 border-t border-gray-700/50 flex-shrink-0">
-                        <button onClick={handleAddNewNote} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors">
-                            <span className="w-5 h-5">{ICONS.plus}</span> New Note
-                        </button>
                     </div>
                 </div>
 
@@ -306,7 +305,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                     ) : (
                         <div className="hidden lg:flex flex-col items-center justify-center h-full text-gray-500">
                              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002 2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                             <p className="mt-4 text-lg">Select a note to view or edit</p>
                             <p>Or, <button onClick={handleAddNewNote} className="text-[#3B82F6] hover:underline">create a new note</button>.</p>
