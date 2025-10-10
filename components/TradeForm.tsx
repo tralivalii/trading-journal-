@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
@@ -161,7 +162,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
       if (file) {
         try {
             const imageKey = `${crypto.randomUUID()}-${file.name}`;
-            const { error } = await supabase.storage.from('screenshots').upload(`${currentUser!.id}/${imageKey}`, file);
+            const { error } = await supabase.storage.from('screenshots').upload(`${currentUser!.id}/${imageKey}`, file, { contentType: file.type });
             if (error) throw error;
             handleAnalysisChange(section, 'image', imageKey);
         } catch (error) {

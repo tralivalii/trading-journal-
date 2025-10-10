@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Note } from '../types';
 import { useAppContext } from '../services/appState';
@@ -22,6 +23,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     const { currentUser, isGuest } = state;
 
     const [content, setContent] = useState(note.content);
+    const [renderedContent, setRenderedContent] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const viewRef = useRef<HTMLDivElement>(null);
@@ -29,6 +31,58 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     useEffect(() => {
         setContent(note.content);
     }, [note]);
+
+    useEffect(() => {
+        const processContent = async () => {
+            if (isEditMode || !note.content) {
+                setRenderedContent('');
+                return;
+            }
+
+            let processed = note.content;
+
+            // Regex to find custom storage links: ![alt text](storage://filepath)
+            const storageRegex = /!\[(.*?)\]\(storage:\/\/(.*?)\)/g;
+            const matches = [...processed.matchAll(storageRegex)];
+
+            if (matches.length > 0) {
+                const replacements = await Promise.all(matches.map(async (match) => {
+                    const alt = match[1];
+                    const path = match[2];
+                    try {
+                        const { data, error } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600);
+                        if (error) throw error;
+                        return { original: match[0], replacement: `![${alt}](${data.signedUrl})` };
+                    } catch (e) {
+                        console.error("Failed to create signed URL for", path, e);
+                        return { original: match[0], replacement: `![${alt} (Error: Could not load image)]()` };
+                    }
+                }));
+
+                for (const { original, replacement } of replacements) {
+                    processed = processed.replace(original, replacement);
+                }
+            }
+            
+            // --- Sanitation and final HTML conversion ---
+            let html = processed;
+            // Hashtags
+            html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
+            // Images (now with signed URLs)
+            html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
+
+            const clean = DOMPurify.sanitize(html, {
+                ADD_TAGS: ['a', 'img'],
+                ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt'],
+                ALLOWED_URI_REGEXP: /^https\:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co\/.*/
+            });
+
+            setRenderedContent(clean);
+        };
+
+        processContent();
+    }, [note.content, isEditMode]);
+
 
     useEffect(() => {
         const viewEl = viewRef.current;
@@ -46,7 +100,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         return () => {
             viewEl.removeEventListener('click', handleTagClick);
         };
-    }, [note.content, isEditMode, onTagClick]);
+    }, [renderedContent, isEditMode, onTagClick]);
     
     const handleSave = () => {
         onUpdate(note.id, content);
@@ -71,7 +125,6 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             const fileName = `${crypto.randomUUID()}.${fileExtension}`;
             const filePath = `${currentUser.id}/${fileName}`;
             
-            // Read the file into an ArrayBuffer first for a more robust upload.
             const buffer = await file.arrayBuffer();
 
             const { error: uploadError } = await supabase.storage
@@ -80,14 +133,9 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                     contentType: file.type
                 });
             if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('screenshots')
-                .getPublicUrl(filePath);
             
-            const finalUrl = `${publicUrl}?t=${new Date().getTime()}`;
+            const finalMarkdown = `\n![${file.name}](storage://${filePath})\n`;
 
-            const finalMarkdown = `\n![${file.name}](${finalUrl})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
             showToast('Image uploaded successfully', 'success');
         } catch (error) {
@@ -118,23 +166,6 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         }
     };
     
-    const createSanitizedMarkup = (markdown: string) => {
-        if (!markdown) return { __html: '' };
-        
-        let html = markdown;
-        
-        html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-        
-        html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
-
-        const clean = DOMPurify.sanitize(html, {
-            ADD_TAGS: ['a', 'img'],
-            ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt'],
-            ALLOWED_URI_REGEXP: /^https:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co\/storage\/v1\/object\/public\/screenshots\/.*/
-        });
-
-        return { __html: clean };
-    };
 
     if (isEditMode) {
         return (
@@ -175,10 +206,10 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
 
     return (
         <div className="flex flex-col h-full">
-            <div 
+             <div 
                  ref={viewRef}
                  className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto"
-                 dangerouslySetInnerHTML={createSanitizedMarkup(note.content)}
+                 dangerouslySetInnerHTML={{ __html: renderedContent || (note.content ? '<p class="animate-pulse">Loading images...</p>' : '') }}
             >
             </div>
             <div className="flex justify-end gap-3 pt-4 flex-shrink-0">
