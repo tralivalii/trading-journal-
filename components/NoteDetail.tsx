@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Note } from '../types';
 import { useAppContext } from '../services/appState';
@@ -18,6 +16,45 @@ interface NoteDetailProps {
     showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
+const KebabMenu: React.FC<{
+    onEdit: () => void;
+    onDelete: () => void;
+}> = ({ onEdit, onDelete }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div className="relative" ref={menuRef}>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Note options"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" /></svg>
+            </button>
+            {isOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-md shadow-lg border border-gray-700/50 z-20">
+                    <ul className="py-1">
+                        <li><button onClick={() => { onEdit(); setIsOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3">Edit</button></li>
+                        <li><button onClick={() => { onDelete(); setIsOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 flex items-center gap-3">Delete</button></li>
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete, onTagClick, showToast }) => {
     const { state } = useAppContext();
     const { currentUser, isGuest } = state;
@@ -30,7 +67,10 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
 
     useEffect(() => {
         setContent(note.content);
-    }, [note]);
+        if(isEditMode && textareaRef.current) {
+            textareaRef.current.focus();
+        }
+    }, [note, isEditMode]);
 
     useEffect(() => {
         const processContent = async () => {
@@ -40,8 +80,6 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             }
 
             let processed = note.content;
-
-            // Regex to find custom storage links: ![alt text](storage://filepath)
             const storageRegex = /!\[(.*?)\]\(storage:\/\/(.*?)\)/g;
             const matches = [...processed.matchAll(storageRegex)];
 
@@ -64,11 +102,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                 }
             }
             
-            // --- Sanitation and final HTML conversion ---
             let html = processed;
-            // Hashtags
             html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-            // Images (now with signed URLs)
             html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
 
             const clean = DOMPurify.sanitize(html, {
@@ -97,9 +132,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         };
 
         viewEl.addEventListener('click', handleTagClick);
-        return () => {
-            viewEl.removeEventListener('click', handleTagClick);
-        };
+        return () => viewEl.removeEventListener('click', handleTagClick);
     }, [renderedContent, isEditMode, onTagClick]);
     
     const handleSave = () => {
@@ -124,14 +157,9 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             const fileExtension = file.name.split('.').pop();
             const fileName = `${crypto.randomUUID()}.${fileExtension}`;
             const filePath = `${currentUser.id}/${fileName}`;
-            
             const buffer = await file.arrayBuffer();
 
-            const { error: uploadError } = await supabase.storage
-                .from('screenshots')
-                .upload(filePath, buffer, {
-                    contentType: file.type
-                });
+            const { error: uploadError } = await supabase.storage.from('screenshots').upload(filePath, buffer, { contentType: file.type });
             if (uploadError) throw uploadError;
             
             const finalMarkdown = `\n![${file.name}](storage://${filePath})\n`;
@@ -165,12 +193,10 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             }
         }
     };
-    
 
     if (isEditMode) {
         return (
             <div className="flex flex-col h-full">
-                <h2 className="text-xl font-semibold text-white mb-4">Edit Note</h2>
                 <textarea 
                     ref={textareaRef}
                     value={content}
@@ -180,19 +206,9 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                     className="w-full bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white flex-grow"
                     style={{ minHeight: '300px' }}
                 />
-                 <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    multiple
-                    hidden
-                />
+                 <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" multiple hidden />
                 <div className="flex justify-between items-center gap-3 mt-4">
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm"
-                    >
+                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm">
                         <span className="w-5 h-5">{ICONS.plus}</span> Add Photo
                     </button>
                     <div className="flex gap-3">
@@ -206,15 +222,14 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
 
     return (
         <div className="flex flex-col h-full">
+             <div className="absolute top-4 right-4 z-10">
+                <KebabMenu onEdit={() => onSetEditMode(true)} onDelete={() => onDelete(note.id)} />
+             </div>
              <div 
                  ref={viewRef}
                  className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto"
-                 dangerouslySetInnerHTML={{ __html: renderedContent || (note.content ? '<p class="animate-pulse">Loading images...</p>' : '') }}
+                 dangerouslySetInnerHTML={{ __html: renderedContent || (note.content ? '<p class="animate-pulse">Loading content...</p>' : '<p class="text-gray-500">This note is empty.</p>') }}
             >
-            </div>
-            <div className="flex justify-end gap-3 pt-4 flex-shrink-0">
-                <button onClick={() => onSetEditMode(true)} className="px-4 py-2 bg-transparent text-blue-400 rounded-lg border border-blue-500 hover:bg-blue-500/20 transition-colors text-sm">Edit</button>
-                <button onClick={() => onDelete(note.id)} className="px-4 py-2 bg-transparent text-red-400 rounded-lg border border-red-500 hover:bg-red-500/20 transition-colors text-sm">Delete</button>
             </div>
         </div>
     );
