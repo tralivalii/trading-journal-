@@ -79,7 +79,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                 return;
             }
 
-            let processed = note.content;
+            let processed = note.content.trim();
             const storageRegex = /!\[(.*?)\]\(storage:\/\/(.*?)\)/g;
             const matches = [...processed.matchAll(storageRegex)];
 

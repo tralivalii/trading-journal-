@@ -399,6 +399,25 @@ const getUserSettings = async (userId: string): Promise<Omit<UserData, 'trades'|
     return defaultSettings;
 };
 
+const TOAST_ICONS = {
+  success: (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  error: (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  close: (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
+};
+
+
 function AppContent() {
   const { state, dispatch } = useAppContext();
   const { session, currentUser, userData, isLoading, isGuest } = state;
@@ -418,7 +437,24 @@ function AppContent() {
 
   const [toast, setToast] = useState<{ message: string; id: number; type: 'success' | 'error' } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+
+  const closeToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToast(null);
+  }, []);
   
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToast({ message, id: Date.now(), type });
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  }, []);
+
   useEffect(() => {
     if (currentUser && !userData && !isGuest) {
       const fetchUserData = async () => {
@@ -473,16 +509,6 @@ function AppContent() {
        dispatch({ type: 'SET_USER_DATA', payload: null });
     }
   }, [currentUser, userData, dispatch, isGuest]);
-
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    setToast({ message, id: Date.now(), type });
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-    }, 3000);
-  }, []);
 
   const controlFabVisibility = useCallback(() => {
       if (window.scrollY > lastScrollY.current && window.scrollY > 100) {
@@ -659,19 +685,32 @@ function AppContent() {
       )}
 
       {toast && (
-        <div key={toast.id} className={`fixed top-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg animate-fade-in-out z-50 ${toast.type === 'success' ? 'bg-green-600 border border-green-500' : 'bg-red-600 border border-red-500'}`}>
-            {toast.message}
+        <div key={toast.id} className="fixed top-5 right-5 w-full max-w-sm z-[100] animate-toast-in-out">
+            <div className="bg-[#2A2F3B] rounded-lg shadow-2xl border border-gray-700/50 flex overflow-hidden">
+                <div className={`w-1.5 flex-shrink-0 ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div className="p-4 flex items-start gap-3 flex-grow">
+                    <div className={`w-6 h-6 flex-shrink-0 ${toast.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                        {toast.type === 'success' ? TOAST_ICONS.success : TOAST_ICONS.error}
+                    </div>
+                    <div className="flex-grow text-sm text-gray-200 pt-0.5">
+                        <p>{toast.message}</p>
+                    </div>
+                    <button onClick={closeToast} className="text-gray-500 hover:text-white transition-colors flex-shrink-0 -mr-1 -mt-1 p-1 rounded-full" aria-label="Close notification">
+                        <span className="w-5 h-5 block">{TOAST_ICONS.close}</span>
+                    </button>
+                </div>
+            </div>
         </div>
       )}
       <style>{`
-        @keyframes fade-in-out {
-          0% { opacity: 0; transform: translateY(-20px); }
-          15% { opacity: 1; transform: translateY(0); }
-          85% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-20px); }
+        @keyframes toast-in-out {
+          0% { opacity: 0; transform: translateX(100%); }
+          15% { opacity: 1; transform: translateX(0); }
+          85% { opacity: 1; transform: translateX(0); }
+          100% { opacity: 0; transform: translateX(100%); }
         }
-        .animate-fade-in-out {
-          animation: fade-in-out 3s ease-in-out forwards;
+        .animate-toast-in-out {
+          animation: toast-in-out 4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
       `}</style>
 
