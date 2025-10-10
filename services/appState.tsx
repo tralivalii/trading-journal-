@@ -237,15 +237,41 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
     const account = accounts.find(a => a.id === tradeToSave.accountId);
     if (!account) throw new Error("Account not found");
 
+    // --- ROBUST CALCULATION LOGIC ---
+    // 1. Calculate the balance based on other trades in the account, safely handling non-numeric PnL values.
     const accountTrades = trades.filter(t => t.accountId === account.id && t.id !== tradeToSave.id);
-    const accountPnl = accountTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+    const accountPnl = accountTrades.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
     const currentBalance = account.initialBalance + accountPnl;
     
-    const riskAmount = currentBalance * (tradeToSave.risk / 100);
-    const commission = tradeToSave.commission || 0;
+    // 2. Safely convert form inputs to numbers.
+    const riskPercent = Number(tradeToSave.risk);
+    const rr = Number(tradeToSave.rr);
+    const commission = Number(tradeToSave.commission || 0);
+
+    // 3. Validate that all calculation inputs are valid numbers.
+    if (isNaN(riskPercent) || isNaN(rr) || isNaN(commission) || isNaN(currentBalance)) {
+        console.error("Calculation input error:", {riskPercent, rr, commission, currentBalance});
+        throw new Error("Calculation error: Invalid numeric input detected.");
+    }
+    
+    // 4. Perform the calculations.
+    const riskAmount = currentBalance * (riskPercent / 100);
     let pnl = 0;
-    if (tradeToSave.result === 'Win') pnl = riskAmount * tradeToSave.rr;
-    else if (tradeToSave.result === 'Loss') pnl = -riskAmount;
+    if (tradeToSave.result === 'Win') {
+        pnl = riskAmount * rr;
+    } else if (tradeToSave.result === 'Loss') {
+        pnl = -riskAmount;
+    }
+
+    const finalPnl = pnl - commission;
+    
+    // 5. Final validation of calculated values before sending to DB.
+    if (isNaN(riskAmount) || isNaN(finalPnl)) {
+        console.error("Calculation output error:", {riskAmount, finalPnl});
+        throw new Error("Calculation error: Final PnL or Risk Amount is not a number.");
+    }
+    // --- END OF ROBUST CALCULATION LOGIC ---
+
 
     // Supabase requires snake_case for column names if they are multi-word
     const tradeForDb = {
@@ -255,11 +281,11 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
         pair: tradeToSave.pair,
         direction: tradeToSave.direction,
         entry: tradeToSave.entry,
-        risk: tradeToSave.risk,
-        rr: tradeToSave.rr,
+        risk: riskPercent, // Use the sanitized number
+        rr: rr, // Use the sanitized number
         risk_amount: riskAmount,
-        pnl: pnl - commission,
-        commission: commission,
+        pnl: finalPnl,
+        commission: commission, // Use the sanitized number
         stoploss: tradeToSave.stoploss,
         takeprofit: tradeToSave.takeprofit,
         result: tradeToSave.result,
@@ -277,17 +303,20 @@ export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppStat
         const { data, error } = await supabase.from('trades').update(tradeForDb).eq('id', tradeToSave.id).select().single();
         if (error) throw error;
         
-        const updatedTrades = trades.map(t => t.id === data.id ? { ...t, ...tradeToSave, riskAmount, pnl: pnl - commission } : t);
+        const updatedTrades = trades.map(t => t.id === data.id ? { ...t, ...tradeToSave, riskAmount, pnl: finalPnl, risk: riskPercent, rr, commission } : t);
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
     } else {
         const { data, error } = await supabase.from('trades').insert(tradeForDb).select().single();
         if (error) throw error;
 
         const newTrade: Trade = {
-            id: data.id,
             ...tradeToSave,
+            id: data.id,
+            risk: riskPercent,
+            rr,
+            commission,
             riskAmount,
-            pnl: pnl - commission
+            pnl: finalPnl
         };
         dispatch({ type: 'UPDATE_TRADES', payload: [...trades, newTrade] });
     }
