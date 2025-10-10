@@ -4,6 +4,7 @@ import { Account, Currency, UserData, DefaultSettings } from '../types';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
+import AccountForm from './AccountForm';
 
 interface DataViewProps {
     onInitiateDeleteAccount: () => void;
@@ -431,43 +432,6 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                 </Modal>
             )}
         </div>
-    );
-};
-
-// --- Local AccountForm Component ---
-
-const AccountForm: React.FC<{ onSave: (data: Omit<Account, 'id'>) => void; onCancel: () => void; accountToEdit: Account | null }> = ({ onSave, onCancel, accountToEdit }) => {
-    const [name, setName] = useState(accountToEdit?.name || '');
-    const [initialBalance, setInitialBalance] = useState(accountToEdit?.initialBalance || 10000);
-    const [currency, setCurrency] = useState(accountToEdit?.currency || Currency.USD);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!name.trim() || initialBalance <= 0) {
-            alert("Please provide a valid name and initial balance.");
-            return;
-        }
-        onSave({ name: name.trim(), initialBalance, currency });
-    };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <FormField label="Account Name">
-                <input type="text" value={name} onChange={e => setName(e.target.value)} required className={textInputClasses} />
-            </FormField>
-            <FormField label="Initial Balance">
-                <input type="number" value={initialBalance} onChange={e => setInitialBalance(parseFloat(e.target.value) || 0)} required className={numberInputClasses} />
-            </FormField>
-             <FormField label="Currency">
-                <select value={currency} onChange={e => setCurrency(e.target.value as Currency)} className={selectClasses}>
-                    {Object.values(Currency).map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-            </FormField>
-            <div className="flex justify-end gap-4 pt-4">
-                <button type="button" onClick={onCancel} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
-                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors">{accountToEdit ? 'Update' : 'Save'}</button>
-            </div>
-        </form>
     );
 };
 

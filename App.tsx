@@ -5,6 +5,7 @@ import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction } from '
 import TradesList from './components/TradesList';
 import Modal from './components/ui/Modal';
 import TradeForm from './components/TradeForm';
+import AccountForm from './components/AccountForm';
 import TradeDetail from './components/TradeDetail';
 // FIX: Changed import to be a relative path
 import DataView from './components/DataView';
@@ -426,6 +427,7 @@ function AppContent() {
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
   const [isDeleteConfirmModalOpen, setDeleteConfirmModalOpen] = useState(false);
   const [isDeleteTradeModalOpen, setDeleteTradeModalOpen] = useState(false);
+  const [isFirstAccountModalOpen, setFirstAccountModalOpen] = useState(false);
   const [tradeIdToDelete, setTradeIdToDelete] = useState<string | null>(null);
   const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
   const [tradeToView, setTradeToView] = useState<Trade | null>(null);
@@ -533,8 +535,12 @@ function AppContent() {
         showToast("This feature is disabled in guest mode.", 'error');
         return;
     }
-    setTradeToEdit(null);
-    setFormModalOpen(true);
+    if (activeAccounts.length === 0) {
+      setFirstAccountModalOpen(true);
+    } else {
+      setTradeToEdit(null);
+      setFormModalOpen(true);
+    }
   };
 
   const handleEditTrade = (trade: Trade) => {
@@ -595,6 +601,49 @@ function AppContent() {
     }
   };
   
+  const handleSaveFirstAccount = async (accountData: Omit<Account, 'id'>) => {
+    if (isGuest || !currentUser) {
+        return;
+    }
+    try {
+        const dbPayload = {
+            name: accountData.name,
+            initial_balance: accountData.initialBalance,
+            currency: accountData.currency,
+            user_id: currentUser.id,
+        };
+
+        const { data: savedData, error } = await supabase
+            .from('accounts')
+            .insert(dbPayload)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        const appAccount: Account = {
+            id: savedData.id,
+            name: savedData.name,
+            initialBalance: savedData.initial_balance,
+            currency: savedData.currency,
+            isArchived: savedData.is_archived
+        };
+        
+        dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...(userData?.accounts || []), appAccount] });
+        showToast('Account created! Now you can add your first trade.', 'success');
+        setFirstAccountModalOpen(false);
+        
+        setTimeout(() => {
+            setTradeToEdit(null);
+            setFormModalOpen(true);
+        }, 150);
+
+    } catch (error: any) {
+        console.error('Failed to save first account:', error);
+        showToast(`Failed to save account: ${error.message}`, 'error');
+    }
+  };
+
   const handleLogout = () => {
     if (isGuest) {
         window.location.reload();
@@ -724,6 +773,16 @@ function AppContent() {
             account={userData.accounts.find(a => a.id === tradeToView.accountId)} 
             onEdit={handleEditFromDetail}
         />}
+      </Modal>
+
+      <Modal isOpen={isFirstAccountModalOpen} onClose={() => setFirstAccountModalOpen(false)} title="Create Your First Account">
+        <div>
+            <div className="text-center text-gray-300 mb-6">
+                <p>To log a trade, you first need an account.</p>
+                <p className="text-sm text-gray-500 mt-1">This represents your trading account with its starting balance.</p>
+            </div>
+            <AccountForm onSave={handleSaveFirstAccount} onCancel={() => setFirstAccountModalOpen(false)} accountToEdit={null} />
+        </div>
       </Modal>
 
       <Modal isOpen={isDeleteConfirmModalOpen} onClose={() => setDeleteConfirmModalOpen(false)} title="Confirm Account Deletion">
