@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useAppContext } from '../services/appState';
 import { Note } from '../types';
 import NoteDetail from './NoteDetail';
@@ -94,23 +94,92 @@ const NewNoteCreator: React.FC<{
     onSave: (content: string) => void;
     onCancel: () => void;
     isSaving: boolean;
-}> = ({ onSave, onCancel, isSaving }) => {
+    showToast: (message: string, type?: 'success' | 'error') => void;
+}> = ({ onSave, onCancel, isSaving, showToast }) => {
+    const { state } = useAppContext();
+    const { currentUser, isGuest } = state;
     const [content, setContent] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const uploadAndInsertImage = async (file: File) => {
+        if (isGuest || !currentUser) {
+            showToast("Image upload is disabled in guest mode.", 'error');
+            return;
+        }
+
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        const cursorPosition = textarea.selectionStart;
+        const placeholder = `\n![Uploading ${file.name}...]()\n`;
+        const newContent = content.slice(0, cursorPosition) + placeholder + content.slice(cursorPosition);
+        setContent(newContent);
+
+        try {
+            const fileExtension = file.name.split('.').pop();
+            const fileName = `${crypto.randomUUID()}.${fileExtension}`;
+            const filePath = `${currentUser.id}/${fileName}`;
+            const buffer = await file.arrayBuffer();
+
+            const { error: uploadError } = await supabase.storage.from('screenshots').upload(filePath, buffer, { contentType: file.type });
+            if (uploadError) throw uploadError;
+            
+            const finalMarkdown = `\n![${file.name}](storage://${filePath})\n`;
+
+            setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
+            showToast('Image uploaded successfully', 'success');
+        } catch (error) {
+            setContent(currentContent => currentContent.replace(placeholder, '\n[Upload failed]\n'));
+            showToast('Image upload failed.', 'error');
+            console.error(error);
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files) {
+            Array.from(files).forEach(uploadAndInsertImage);
+            e.target.value = ''; 
+        }
+    };
+
+    const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile();
+                if (file) {
+                    e.preventDefault();
+                    uploadAndInsertImage(file);
+                }
+            }
+        }
+    };
+
     return (
         <div className="flex flex-col h-full">
              <textarea 
+                ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
+                onPaste={handlePaste}
                 placeholder="Write your thoughts... #hashtags will be automatically detected."
                 className="w-full bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white flex-grow"
                 style={{ minHeight: '300px' }}
                 autoFocus
             />
-            <div className="flex justify-end gap-3 mt-4">
-                <button onClick={onCancel} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm">Cancel</button>
-                <button onClick={() => onSave(content)} disabled={isSaving || !content.trim()} className="px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors text-sm disabled:bg-gray-500 disabled:cursor-not-allowed">
-                    {isSaving ? 'Creating...' : 'Create Note'}
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" multiple hidden />
+            <div className="flex justify-between items-center gap-3 mt-4">
+                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm">
+                    <span className="w-5 h-5">{ICONS.plus}</span> Add Photo
                 </button>
+                <div className="flex gap-3">
+                    <button onClick={onCancel} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm">Cancel</button>
+                    <button onClick={() => onSave(content)} disabled={isSaving || !content.trim()} className="px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors text-sm disabled:bg-gray-500 disabled:cursor-not-allowed">
+                        {isSaving ? 'Creating...' : 'Create Note'}
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -332,7 +401,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                     </div>
                     <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col flex-grow p-6 relative min-h-[65vh]">
                         {isCreatingNewNote ? (
-                           <NewNoteCreator onSave={handleCreateNote} onCancel={() => setIsCreatingNewNote(false)} isSaving={isSavingNote} />
+                           <NewNoteCreator onSave={handleCreateNote} onCancel={() => setIsCreatingNewNote(false)} isSaving={isSavingNote} showToast={showToast} />
                         ) : selectedNote ? (
                             <NoteDetail note={selectedNote} isEditMode={isEditMode} onSetEditMode={setIsEditMode} onUpdate={handleUpdateNote} onDelete={handleDeleteNote} onTagClick={handleTagClick} showToast={showToast} />
                         ) : (
