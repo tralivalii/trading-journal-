@@ -12,9 +12,18 @@ interface TradeFormProps {
   accounts: Account[];
 }
 
+const getLocalDateTimeString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 const emptyAnalysis: Analysis = { image: undefined, notes: '' };
 const initialTradeState = {
-  date: new Date().toISOString().slice(0, 16), // Format for datetime-local
+  date: getLocalDateTimeString(new Date()), // Format for datetime-local
   accountId: '',
   pair: '',
   entry: '',
@@ -58,6 +67,20 @@ const AnalysisSection: React.FC<{
         onFileChange(null);
     }
     
+    const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.startsWith('image/')) {
+                const file = items[i].getAsFile();
+                if (file) {
+                    e.preventDefault();
+                    onFileChange(file);
+                    return; // Process only the first image found
+                }
+            }
+        }
+    };
+
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
             <h3 className="text-lg font-semibold text-white mb-3">{title}</h3>
@@ -83,7 +106,9 @@ const AnalysisSection: React.FC<{
                         <textarea
                             value={analysis.notes || ''}
                             onChange={(e) => onNotesChange(e.target.value)}
+                            onPaste={handlePaste}
                             rows={5}
+                            placeholder="Type notes or paste a screenshot..."
                             className={textInputClasses}
                         ></textarea>
                     </FormField>
@@ -112,7 +137,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
      
      const stateToEdit = tradeToEdit ? {
         ...tradeToEdit,
-        date: tradeToEdit.date ? new Date(tradeToEdit.date).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
+        date: tradeToEdit.date ? getLocalDateTimeString(new Date(tradeToEdit.date)) : getLocalDateTimeString(new Date())
      } : null;
 
      const { riskAmount, ...restOfTradeToEdit } = stateToEdit || {};
