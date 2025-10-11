@@ -18,6 +18,7 @@ import Auth from './components/Auth';
 import { ICONS } from './constants';
 import { supabase } from './services/supabase';
 import { getTable, bulkPut, getSyncQueue, clearSyncQueue } from './services/offlineService';
+import DropdownMenu from './components/ui/DropdownMenu';
 
 declare const Chart: any;
 
@@ -713,12 +714,28 @@ function AppContent() {
                 <NavItem view="data" label="Settings" />
             </div>
             <div className="flex items-center gap-4 w-full justify-center md:w-auto mt-4 md:mt-0">
-                <div className="flex items-center gap-4">
-                    <span className="text-sm text-[#8A91A8] hidden sm:inline">{currentUser?.email}</span>
-                    <button onClick={handleLogout} className="text-sm font-medium text-[#8A91A8] hover:text-[#3B82F6] transition-colors">
-                        Logout
-                    </button>
-                </div>
+                <DropdownMenu 
+                    trigger={
+                        <button className="w-10 h-10 flex items-center justify-center bg-gray-700 rounded-full hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                        </button>
+                    }
+                >
+                    <div className="p-2">
+                        <div className="px-2 py-1 text-sm text-gray-400 truncate">
+                            {isGuest ? 'Guest Mode' : currentUser?.email}
+                        </div>
+                        <div className="my-1 border-t border-gray-700/50"></div>
+                        <button 
+                            onClick={handleLogout} 
+                            className="w-full text-left px-2 py-1.5 text-sm text-red-400 hover:bg-gray-700 rounded-md transition-colors"
+                        >
+                           {isGuest ? 'Login or Sign Up' : 'Logout'}
+                        </button>
+                    </div>
+                </DropdownMenu>
             </div>
         </header>
 
@@ -742,7 +759,7 @@ function AppContent() {
       {activeView === 'journal' && (
         <button
             onClick={handleAddTrade}
-            className={`fixed bottom-6 right-6 w-14 h-14 bg-[#3B82F6] rounded-full text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.2)] transform transition-transform duration-300 ease-in-out ${showFab ? 'scale-100' : 'scale-0'}`}
+            className={`fixed bottom-6 right-6 w-14 h-14 bg-[#3B82F6] rounded-full text-white flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.2)] transform transition-transform duration-300 ease-in-out lg:hidden ${showFab ? 'scale-100' : 'scale-0'}`}
             aria-label="Add New Trade"
         >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>

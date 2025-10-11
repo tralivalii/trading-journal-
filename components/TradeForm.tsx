@@ -397,10 +397,18 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             
             {/* --- Actions --- */}
             <div className="flex justify-end gap-4 pt-4">
-                <button type="button" onClick={handleCloseRequest} className="px-6 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium">
+                <button 
+                    type="button" 
+                    onClick={handleCloseRequest} 
+                    className="px-6 py-2.5 bg-transparent border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors font-medium"
+                >
                     Cancel
                 </button>
-                <button type="submit" disabled={isUploading} className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
+                <button 
+                    type="submit" 
+                    disabled={isUploading} 
+                    className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium"
+                >
                     {isUploading ? 'Uploading...' : (tradeToEdit ? 'Update Trade' : 'Add Trade')}
                 </button>
             </div>
