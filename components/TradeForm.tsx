@@ -153,9 +153,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const { userData, currentUser, isGuest } = state;
   const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes, analysisTimeframes } = userData!;
   
-  const initialTradeStateRef = useRef<Omit<Trade, 'id' | 'pnl' | 'riskAmount'>>();
+  const initialTradeStateRef = useRef<any>();
   const [isDirty, setIsDirty] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [trade, setTrade] = useState(() => {
      const initialTradeState = {
@@ -165,8 +166,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         entry: defaultSettings.entry || '',
         direction: Direction.Long,
         risk: typeof defaultSettings.risk === 'number' ? defaultSettings.risk : (risks.length > 0 ? risks[0] : 1),
-        rr: 1.2,
-        commission: 0,
+        rr: '1.2',
+        commission: '0',
         stoploss: defaultSettings.stoploss || '',
         takeprofit: defaultSettings.takeprofit || '',
         result: Result.InProgress,
@@ -179,7 +180,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
      const stateToEdit = tradeToEdit ? {
         ...tradeToEdit,
-        date: tradeToEdit.date ? getLocalDateTimeString(new Date(tradeToEdit.date)) : getLocalDateTimeString(new Date())
+        date: tradeToEdit.date ? getLocalDateTimeString(new Date(tradeToEdit.date)) : getLocalDateTimeString(new Date()),
+        rr: String(tradeToEdit.rr),
+        commission: String(tradeToEdit.commission || 0),
      } : null;
 
      const { id, riskAmount, pnl, ...restOfTradeToEdit } = stateToEdit || {};
@@ -220,13 +223,28 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    const isNumberInput = type === 'number';
-    
-    let updatedValue: any = isNumberInput ? parseFloat(value) || 0 : value;
+    const { name, value } = e.target;
 
+    if (errors[name]) {
+        setErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors[name];
+            return newErrors;
+        });
+    }
+
+    if (name === 'rr' || name === 'commission') {
+        const normalizedValue = value.replace(',', '.');
+        if (normalizedValue === '' || /^[0-9]*\.?[0-9]*$/.test(normalizedValue)) {
+            setTrade(prev => ({ ...prev, [name]: normalizedValue }));
+        }
+        return;
+    }
+    
     setTrade(prev => {
-        let newState = {...prev, [name]: updatedValue};
+        const isNumericSelect = name === 'risk';
+        const updatedValue = isNumericSelect ? parseFloat(value) || 0 : value;
+        let newState = { ...prev, [name]: updatedValue };
         if (name === 'result' && value === Result.InProgress) {
             newState.closeType = undefined;
         }
@@ -281,15 +299,32 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    const newErrors: Record<string, string> = {};
+    if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.')) {
+        newErrors.rr = "This field is required.";
+    }
+    if (trade.commission.trim() === '' || isNaN(parseFloat(trade.commission)) || trade.commission.trim().endsWith('.')) {
+        newErrors.commission = "This field is required.";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        return;
+    }
+
     if (!trade.accountId || !trade.pair) {
       alert("Please select an account and a pair.");
       return;
     }
-    const { riskAmount, pnl, ...tradeData } = trade as any; // Cast to avoid TS errors on extra fields
+
+    const { riskAmount, pnl, ...tradeData } = trade as any;
     onSave({
         ...tradeData,
         id: tradeToEdit?.id,
         date: new Date(trade.date).toISOString(),
+        rr: parseFloat(trade.rr),
+        commission: parseFloat(trade.commission)
     });
   };
   
@@ -337,7 +372,15 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                         </select>
                     </FormField>
                     <FormField label="R:R Ratio">
-                        <input type="number" name="rr" value={trade.rr} onChange={handleChange} required step="any" className={numberInputClasses} />
+                        <input 
+                            type="text"
+                            inputMode="decimal"
+                            name="rr"
+                            value={trade.rr}
+                            onChange={handleChange}
+                            className={`${numberInputClasses} ${errors.rr ? 'border-red-500 focus:ring-red-500' : ''}`}
+                        />
+                        {errors.rr && <p className="text-red-500 text-xs mt-1">{errors.rr}</p>}
                     </FormField>
                     <FormField label="SL Type">
                         <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
@@ -362,7 +405,15 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                         </select>
                     </FormField>
                     <FormField label="Commission ($)">
-                        <input type="number" name="commission" value={trade.commission || 0} onChange={handleChange} step="any" className={numberInputClasses} />
+                        <input
+                            type="text"
+                            inputMode="decimal"
+                            name="commission"
+                            value={trade.commission}
+                            onChange={handleChange}
+                            className={`${numberInputClasses} ${errors.commission ? 'border-red-500 focus:ring-red-500' : ''}`}
+                        />
+                        {errors.commission && <p className="text-red-500 text-xs mt-1">{errors.commission}</p>}
                     </FormField>
                     <FormField label="Close Type">
                         <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
