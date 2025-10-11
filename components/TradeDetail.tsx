@@ -10,6 +10,8 @@ interface TradeDetailProps {
   onEdit: (trade: Trade) => void;
 }
 
+type AnalysisTab = 'D1' | '1h' | '5m' | 'Result';
+
 const DetailItem: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({ label, value, className }) => (
     <div>
         <p className="text-sm text-[#8A91A8] uppercase tracking-wider">{label}</p>
@@ -18,21 +20,19 @@ const DetailItem: React.FC<{ label: string; value: React.ReactNode; className?: 
 );
 
 const AnalysisDetailSection: React.FC<{ 
-    title: string; 
     analysis: Analysis;
     onImageClick: (src: string | null) => void;
-}> = ({ title, analysis, onImageClick }) => {
+}> = ({ analysis, onImageClick }) => {
     const imageUrl = useImageBlobUrl(analysis.image, { transform: { width: 600, quality: 80 } });
     
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
-            <h3 className="text-lg font-semibold text-white mb-3">{title}</h3>
             <div className="space-y-4">
                  <div className="w-full">
                     {imageUrl ? (
                         <img 
                             src={imageUrl} 
-                            alt={`${title} chart`} 
+                            alt={`Analysis chart`} 
                             className="rounded-md border border-gray-700 w-full cursor-pointer hover:opacity-90 transition-opacity object-contain"
                             onClick={() => onImageClick(imageUrl)}
                         />
@@ -51,6 +51,7 @@ const AnalysisDetailSection: React.FC<{
 
 const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => {
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('D1');
 
   const getResultClasses = (result: Result) => {
     switch (result) {
@@ -71,6 +72,13 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
           <p className={`font-bold text-2xl ${className}`}>{value}</p>
       </div>
   );
+
+  const analysisContent: Record<AnalysisTab, Analysis> = {
+    'D1': trade.analysisD1,
+    '1h': trade.analysis1h,
+    '5m': trade.analysis5m,
+    'Result': trade.analysisResult,
+  };
 
   return (
     <div className="space-y-6">
@@ -118,12 +126,29 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
       
         {/* --- ANALYSIS NOTES & CHARTS --- */}
         <div>
-             <h3 className="text-xl font-semibold text-white mb-4">Analysis Breakdown</h3>
-             <div className="space-y-4">
-                <AnalysisDetailSection title="D1 Analysis" analysis={trade.analysisD1} onImageClick={setFullscreenImage} />
-                <AnalysisDetailSection title="1h Analysis" analysis={trade.analysis1h} onImageClick={setFullscreenImage} />
-                <AnalysisDetailSection title="5m Analysis" analysis={trade.analysis5m} onImageClick={setFullscreenImage} />
-                <AnalysisDetailSection title="Result Analysis" analysis={trade.analysisResult} onImageClick={setFullscreenImage} />
+            <h3 className="text-xl font-semibold text-white mb-4">Analysis Breakdown</h3>
+            <div className="mb-4 border-b border-gray-700/50">
+                <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                    {(Object.keys(analysisContent) as AnalysisTab[]).map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`${
+                                activeTab === tab
+                                    ? 'border-blue-500 text-blue-400'
+                                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                            } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors focus:outline-none`}
+                        >
+                            {tab} Analysis
+                        </button>
+                    ))}
+                </nav>
+            </div>
+            <div>
+                <AnalysisDetailSection 
+                    analysis={analysisContent[activeTab]}
+                    onImageClick={setFullscreenImage}
+                />
             </div>
         </div>
       

@@ -6,9 +6,7 @@ import { ICONS } from '../constants';
 import { supabase } from '../services/supabase';
 import Modal from './ui/Modal';
 
-interface NotesViewProps {
-    showToast: (message: string, type?: 'success' | 'error') => void;
-}
+interface NotesViewProps {}
 
 const generateNoteTitle = (note: Note, allNotes: Note[]): string => {
     const noteDate = new Date(note.date);
@@ -94,9 +92,8 @@ const NewNoteCreator: React.FC<{
     onSave: (content: string) => void;
     onCancel: () => void;
     isSaving: boolean;
-    showToast: (message: string, type?: 'success' | 'error') => void;
-}> = ({ onSave, onCancel, isSaving, showToast }) => {
-    const { state } = useAppContext();
+}> = ({ onSave, onCancel, isSaving }) => {
+    const { state, dispatch } = useAppContext();
     const { currentUser, isGuest } = state;
     const [content, setContent] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,7 +101,7 @@ const NewNoteCreator: React.FC<{
 
     const uploadAndInsertImage = async (file: File) => {
         if (isGuest || !currentUser) {
-            showToast("Image upload is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "Image upload is disabled in guest mode.", type: 'error' } });
             return;
         }
 
@@ -128,10 +125,10 @@ const NewNoteCreator: React.FC<{
             const finalMarkdown = `\n![${file.name}](storage://${filePath})\n`;
 
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
-            showToast('Image uploaded successfully', 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded successfully', type: 'success' } });
         } catch (error) {
             setContent(currentContent => currentContent.replace(placeholder, '\n[Upload failed]\n'));
-            showToast('Image upload failed.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image upload failed.', type: 'error' } });
             console.error(error);
         }
     };
@@ -186,7 +183,7 @@ const NewNoteCreator: React.FC<{
 }
 
 
-const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
+const NotesView: React.FC<NotesViewProps> = () => {
     const { state, dispatch } = useAppContext();
     const { userData, currentUser, isGuest } = state;
     const notes = userData?.notes || [];
@@ -222,7 +219,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     const handleInitiateNewNote = () => {
         if (isSavingNote) return;
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
         setSelectedNote(null);
@@ -238,7 +235,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     const handleCreateNote = async (content: string) => {
         if (isGuest || !currentUser) return;
         if (!content.trim()) {
-            showToast("Note cannot be empty.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "Note cannot be empty.", type: 'error' } });
             return;
         }
         setIsSavingNote(true);
@@ -260,10 +257,10 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
             setSelectedNote(fullNewNote);
             setIsCreatingNewNote(false);
-            showToast('Note created.', 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note created.', type: 'success' } });
         } catch (error) {
             console.error('Failed to create note:', error);
-            showToast('Failed to create note.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to create note.', type: 'error' } });
         } finally {
             setIsSavingNote(false);
         }
@@ -271,7 +268,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
 
     const handleUpdateNote = async (id: string, content: string) => {
         if (isGuest || !currentUser) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             setIsEditMode(false);
             return;
         }
@@ -287,10 +284,10 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
             setSelectedNote(updatedNote);
             setIsEditMode(false);
-            showToast('Note updated.', 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note updated.', type: 'success' } });
         } catch (error) {
              console.error('Failed to update note:', error);
-            showToast('Failed to update note.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to update note.', type: 'error' } });
         } finally {
             setIsSavingNote(false);
         }
@@ -298,7 +295,7 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
     
     const handleDeleteNote = async (id: string) => {
         if (isGuest || !currentUser) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
         if (!confirm('Are you sure you want to delete this note?')) return;
@@ -309,14 +306,14 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
             
             const updatedNotes = notes.filter(n => n.id !== id);
             dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            showToast('Note deleted.', 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted.', type: 'success' } });
             if (selectedNote?.id === id) {
                 setSelectedNote(null);
                 setIsEditMode(false);
             }
         } catch (error) {
             console.error('Failed to delete note:', error);
-            showToast('Failed to delete note.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to delete note.', type: 'error' } });
         }
     };
     
@@ -401,9 +398,9 @@ const NotesView: React.FC<NotesViewProps> = ({ showToast }) => {
                     </div>
                     <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col flex-grow p-6 relative min-h-[65vh]">
                         {isCreatingNewNote ? (
-                           <NewNoteCreator onSave={handleCreateNote} onCancel={() => setIsCreatingNewNote(false)} isSaving={isSavingNote} showToast={showToast} />
+                           <NewNoteCreator onSave={handleCreateNote} onCancel={() => setIsCreatingNewNote(false)} isSaving={isSavingNote} />
                         ) : selectedNote ? (
-                            <NoteDetail note={selectedNote} isEditMode={isEditMode} onSetEditMode={setIsEditMode} onUpdate={handleUpdateNote} onDelete={handleDeleteNote} onTagClick={handleTagClick} showToast={showToast} />
+                            <NoteDetail note={selectedNote} isEditMode={isEditMode} onSetEditMode={setIsEditMode} onUpdate={handleUpdateNote} onDelete={handleDeleteNote} onTagClick={handleTagClick} />
                         ) : (
                             <div className="hidden lg:flex flex-col items-center justify-center h-full text-gray-500">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>

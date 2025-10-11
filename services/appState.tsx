@@ -8,6 +8,12 @@ import { supabase } from './supabase';
 
 // --- STATE AND ACTION TYPES ---
 
+interface Toast {
+    message: string;
+    type: 'success' | 'error';
+    id: number;
+}
+
 interface AppState {
   session: Session | null;
   currentUser: SupabaseUser | null;
@@ -16,6 +22,7 @@ interface AppState {
   isGuest: boolean;
   hasMoreTrades: boolean;
   isFetchingMore: boolean;
+  toast: Toast | null;
 }
 
 type Action =
@@ -28,7 +35,9 @@ type Action =
   | { type: 'UPDATE_NOTES'; payload: Note[] }
   | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>; value: any } }
   | { type: 'FETCH_MORE_TRADES_START' }
-  | { type: 'FETCH_MORE_TRADES_SUCCESS'; payload: { trades: Trade[]; hasMore: boolean } };
+  | { type: 'FETCH_MORE_TRADES_SUCCESS'; payload: { trades: Trade[]; hasMore: boolean } }
+  | { type: 'SHOW_TOAST'; payload: Omit<Toast, 'id'> }
+  | { type: 'HIDE_TOAST' };
 
 
 // --- REDUCER ---
@@ -41,6 +50,7 @@ const initialState: AppState = {
   isGuest: false,
   hasMoreTrades: false,
   isFetchingMore: false,
+  toast: null,
 };
 
 const appReducer = (state: AppState, action: Action): AppState => {
@@ -114,6 +124,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
             isFetchingMore: false,
             hasMoreTrades: action.payload.hasMore,
         };
+    case 'SHOW_TOAST':
+        return { ...state, toast: { ...action.payload, id: Date.now() } };
+    case 'HIDE_TOAST':
+        return { ...state, toast: null };
     default:
       return state;
   }
@@ -171,8 +185,7 @@ export const saveTradeAction = async (
   dispatch: Dispatch<Action>,
   state: AppState,
   tradeData: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string },
-  isEditing: boolean,
-  showToast: (message: string, type?: 'success' | 'error') => void,
+  isEditing: boolean
 ) => {
     const { userData, currentUser, isGuest } = state;
     if (!userData || !currentUser) throw new Error('User data not available');
@@ -192,7 +205,7 @@ export const saveTradeAction = async (
             ? userData.trades.map(t => t.id === tradeData.id ? { ...finalTradeData, id: tradeData.id! } : t)
             : [...userData.trades, { ...finalTradeData, id: `guest-${crypto.randomUUID()}` }];
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-        showToast(isEditing ? 'Trade updated (Guest Mode).' : 'Trade added (Guest Mode).', 'success');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: isEditing ? 'Trade updated (Guest Mode).' : 'Trade added (Guest Mode).', type: 'success' } });
         return;
     }
 
@@ -239,8 +252,7 @@ export const saveTradeAction = async (
 export const deleteTradeAction = async (
   dispatch: Dispatch<Action>,
   state: AppState,
-  tradeId: string,
-  showToast: (message: string, type?: 'success' | 'error') => void,
+  tradeId: string
 ) => {
     const { userData, isGuest } = state;
     if (!userData) throw new Error('User data not available');
@@ -248,7 +260,7 @@ export const deleteTradeAction = async (
     if (isGuest) {
         const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-        showToast('Trade deleted (Guest Mode).', 'success');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted (Guest Mode).', type: 'success' } });
         return;
     }
 

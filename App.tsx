@@ -12,7 +12,7 @@ import DataView from './components/DataView';
 // FIX: Changed import to be a relative path
 import NotesView from './components/NotesView';
 import { calculateStats, filterTradesByPeriod } from './services/statisticsService';
-import { analyzeTradeGroups, calculateStreaks } from './services/analysisService';
+import { analyzeTradeGroups, calculateStreaks, generateTemporalData } from './services/analysisService';
 import Auth from './components/Auth';
 import { ICONS } from './constants';
 import { supabase } from './services/supabase';
@@ -64,6 +64,106 @@ const NoData: React.FC<{ message?: string, onAction?: () => void, actionText?: s
         )}
     </div>
 );
+
+const EquityChart: React.FC<{ trades: Trade[] }> = ({ trades }) => {
+    const chartRef = useRef<HTMLCanvasElement>(null);
+    const chartInstance = useRef<any>(null);
+
+    useEffect(() => {
+        if (!chartRef.current || trades.length < 2) {
+             if (chartInstance.current) {
+                chartInstance.current.destroy();
+                chartInstance.current = null;
+            }
+            return;
+        }
+
+        const chartData = generateTemporalData(trades);
+        
+        if (chartInstance.current) {
+            chartInstance.current.data = {
+                labels: chartData.labels,
+                datasets: [{
+                    data: chartData.data,
+                    borderColor: '#3B82F6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    pointBackgroundColor: chartData.pointColors,
+                    fill: true,
+                    tension: 0.2,
+                    borderWidth: 2,
+                }]
+            };
+            chartInstance.current.update();
+        } else {
+            const ctx = chartRef.current.getContext('2d');
+            if (ctx) {
+                 chartInstance.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.labels,
+                        datasets: [{
+                            label: 'Equity Curve',
+                            data: chartData.data,
+                            borderColor: '#3B82F6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            pointBackgroundColor: chartData.pointColors,
+                            fill: true,
+                            tension: 0.2,
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                backgroundColor: '#2A2F3B',
+                                titleFont: { size: 14, weight: 'bold' },
+                                bodyFont: { size: 12 },
+                                padding: 10,
+                                cornerRadius: 4,
+                                displayColors: false,
+                            },
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(138, 145, 168, 0.1)' },
+                                ticks: { color: '#8A91A8', maxRotation: 0, autoSkip: true, maxTicksLimit: 7 },
+                            },
+                            y: {
+                                grid: { color: 'rgba(138, 145, 168, 0.1)' },
+                                ticks: { color: '#8A91A8' },
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        return () => {
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+                chartInstance.current = null;
+            }
+        };
+
+    }, [trades]);
+
+    return (
+        <div className="relative h-64 md:h-80">
+            {trades.length < 2 ? (
+                <NoData message="At least 2 trades are needed to show the equity curve." />
+            ) : (
+                <canvas ref={chartRef}></canvas>
+            )}
+        </div>
+    );
+};
 
 
 const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
@@ -220,6 +320,12 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                  <StatCard label="Avg R:R" value={formatRR(stats.averageRR)} className="text-[#F0F0F0]"/>
                  <StatCard label="Total RR" value={formatRR(stats.totalRR)} className="text-[#F0F0F0]"/>
                  <StatCard label="W/L/B/M" value={`${stats.wins}/${stats.losses}/${stats.breakevens}/${stats.missed}`} className="text-[#F0F0F0]"/>
+            </div>
+
+             <div className="mb-8">
+                <DataCard title="Equity Curve">
+                    <EquityChart trades={filteredTrades} />
+                </DataCard>
             </div>
 
             <div className="mt-12 space-y-8">
@@ -423,7 +529,7 @@ const TOAST_ICONS = {
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { session, currentUser, userData, isLoading, isGuest, hasMoreTrades, isFetchingMore } = state;
+  const { session, currentUser, userData, isLoading, isGuest, hasMoreTrades, isFetchingMore, toast } = state;
 
   const [isFormModalOpen, setFormModalOpen] = useState(false);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
@@ -438,26 +544,31 @@ function AppContent() {
   
   const [showFab, setShowFab] = useState(true);
   const lastScrollY = useRef(0);
-
-  const [toast, setToast] = useState<{ message: string; id: number; type: 'success' | 'error' } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  
+  // Effect to handle toast visibility and timeout
+  useEffect(() => {
+    if (toast) {
+        if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current);
+        }
+        toastTimerRef.current = window.setTimeout(() => {
+            dispatch({ type: 'HIDE_TOAST' });
+        }, 4000);
+    }
+    return () => {
+        if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current);
+        }
+    };
+  }, [toast, dispatch]);
 
   const closeToast = useCallback(() => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
     }
-    setToast(null);
-  }, []);
-  
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    setToast({ message, id: Date.now(), type });
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-    }, 4000);
-  }, []);
+    dispatch({ type: 'HIDE_TOAST' });
+  }, [dispatch]);
 
   useEffect(() => {
     if (currentUser && !userData && !isGuest) {
@@ -509,7 +620,7 @@ function AppContent() {
 
         } catch (error) {
             console.error('Error fetching data:', error);
-            showToast('Failed to load your journal. Please refresh.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to load your journal. Please refresh.', type: 'error' } });
         } finally {
             dispatch({ type: 'SET_IS_LOADING', payload: false });
         }
@@ -519,7 +630,71 @@ function AppContent() {
     } else if (!currentUser && !isGuest) {
        dispatch({ type: 'SET_USER_DATA', payload: null });
     }
-  }, [currentUser, userData, dispatch, isGuest, showToast]);
+  }, [currentUser, userData, dispatch, isGuest]);
+
+  // Supabase Realtime Subscriptions
+  useEffect(() => {
+    if (isGuest || !currentUser) return;
+
+    const handleRealtimeUpdate = (payload: any, table: 'trades' | 'accounts' | 'notes') => {
+        const { eventType, new: newRecord, old: oldRecord } = payload;
+        const currentData = state.userData;
+        if (!currentData) return;
+
+        let updatedItems;
+        let actionType: 'UPDATE_TRADES' | 'UPDATE_ACCOUNTS' | 'UPDATE_NOTES' = 'UPDATE_TRADES';
+        let currentItems: any[] = [];
+        
+        // Map snake_case to camelCase for app state
+        const mapRecord = (record: any) => {
+            if (table === 'trades') return {...record, accountId: record.account_id, riskAmount: record.risk_amount, closeType: record.close_type, analysisD1: record.analysis_d1, analysis1h: record.analysis_1h, analysis5m: record.analysis_5m, analysisResult: record.analysis_result };
+            if (table === 'accounts') return {...record, initialBalance: record.initial_balance, isArchived: record.is_archived };
+            return record;
+        };
+
+        switch (table) {
+            case 'trades': actionType = 'UPDATE_TRADES'; currentItems = currentData.trades; break;
+            case 'accounts': actionType = 'UPDATE_ACCOUNTS'; currentItems = currentData.accounts; break;
+            case 'notes': actionType = 'UPDATE_NOTES'; currentItems = currentData.notes; break;
+        }
+
+        switch (eventType) {
+            case 'INSERT':
+                updatedItems = [mapRecord(newRecord), ...currentItems.filter(item => item.id !== newRecord.id)];
+                break;
+            case 'UPDATE':
+                updatedItems = currentItems.map(item => item.id === newRecord.id ? mapRecord(newRecord) : item);
+                break;
+            case 'DELETE':
+                updatedItems = currentItems.filter(item => item.id !== oldRecord.id);
+                break;
+            default:
+                return;
+        }
+        dispatch({ type: actionType, payload: updatedItems });
+    };
+
+    const tradesChannel = supabase.channel('public:trades')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trades', filter: `user_id=eq.${currentUser.id}` }, 
+      (payload) => handleRealtimeUpdate(payload, 'trades'))
+      .subscribe();
+      
+    const accountsChannel = supabase.channel('public:accounts')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'accounts', filter: `user_id=eq.${currentUser.id}` }, 
+      (payload) => handleRealtimeUpdate(payload, 'accounts'))
+      .subscribe();
+
+    const notesChannel = supabase.channel('public:notes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `user_id=eq.${currentUser.id}` }, 
+      (payload) => handleRealtimeUpdate(payload, 'notes'))
+      .subscribe();
+
+    return () => {
+        supabase.removeChannel(tradesChannel);
+        supabase.removeChannel(accountsChannel);
+        supabase.removeChannel(notesChannel);
+    };
+  }, [currentUser, isGuest, dispatch, state.userData]);
   
   const handleLoadMore = useCallback(async () => {
     if (isGuest || !currentUser || !userData || isFetchingMore) return;
@@ -551,11 +726,11 @@ function AppContent() {
         });
     } catch (error) {
         console.error('Error fetching more trades:', error);
-        showToast('Failed to load more trades.', 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to load more trades.', type: 'error' } });
         // Reset loading state on error
         dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: state.hasMoreTrades } });
     }
-  }, [currentUser, userData, isGuest, dispatch, showToast, isFetchingMore, state.hasMoreTrades]);
+  }, [currentUser, userData, isGuest, dispatch, isFetchingMore, state.hasMoreTrades]);
 
 
   const controlFabVisibility = useCallback(() => {
@@ -578,7 +753,7 @@ function AppContent() {
 
   const handleAddTrade = () => {
     if (isGuest) {
-        showToast("This feature is disabled in guest mode.", 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
         return;
     }
     if (activeAccounts.length === 0) {
@@ -591,7 +766,7 @@ function AppContent() {
 
   const handleEditTrade = (trade: Trade) => {
     if (isGuest) {
-        showToast("This feature is disabled in guest mode.", 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
         return;
     }
     setTradeToEdit(trade);
@@ -612,7 +787,7 @@ function AppContent() {
 
   const handleDeleteTrade = (id: string) => {
     if (isGuest) {
-        showToast("This feature is disabled in guest mode.", 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
         return;
     }
     setTradeIdToDelete(id);
@@ -622,11 +797,11 @@ function AppContent() {
   const handleConfirmDeleteTrade = async () => {
     if (tradeIdToDelete) {
         try {
-            await deleteTradeAction(dispatch, state, tradeIdToDelete, showToast);
-            showToast('Trade deleted successfully.', 'success');
+            await deleteTradeAction(dispatch, state, tradeIdToDelete);
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted successfully.', type: 'success' } });
         } catch (error) {
             console.error(error);
-            showToast('Failed to delete trade.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to delete trade.', type: 'error' } });
         }
     }
     setDeleteTradeModalOpen(false);
@@ -635,15 +810,15 @@ function AppContent() {
 
   const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'>) => {
     try {
-        await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit, showToast);
+        await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
         if (!isGuest) {
-            showToast(tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.', 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: tradeToEdit ? 'Trade updated successfully.' : 'Trade added successfully.', type: 'success' } });
         }
         setFormModalOpen(false);
         setTradeToEdit(null);
     } catch(error) {
         console.error(error);
-        showToast('Failed to save trade.', 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to save trade.', type: 'error' } });
     }
   };
   
@@ -676,7 +851,7 @@ function AppContent() {
         };
         
         dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...(userData?.accounts || []), appAccount] });
-        showToast('Account created! Now you can add your first trade.', 'success');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account created! Now you can add your first trade.', type: 'success' } });
         setFirstAccountModalOpen(false);
         
         setTimeout(() => {
@@ -686,7 +861,7 @@ function AppContent() {
 
     } catch (error: any) {
         console.error('Failed to save first account:', error);
-        showToast(`Failed to save account: ${error.message}`, 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to save account: ${error.message}`, type: 'error' } });
     }
   };
 
@@ -706,7 +881,7 @@ function AppContent() {
   
   const handleDeleteUserAccount = async () => {
     if (isGuest) {
-        showToast("This feature is not available in guest mode.", 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is not available in guest mode.", type: 'error' } });
         setDeleteConfirmModalOpen(false);
         return;
     }
@@ -723,7 +898,7 @@ function AppContent() {
 
     } catch (error: any) {
         console.error('Failed to delete user account:', error);
-        showToast(`Failed to delete account: ${error.message}. This may require a database function to be set up.`, 'error');
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to delete account: ${error.message}. This may require a database function to be set up.`, type: 'error' } });
     } finally {
         setDeleteConfirmModalOpen(false);
     }
@@ -782,8 +957,8 @@ function AppContent() {
         <main>
           {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade} onLoadMore={handleLoadMore} hasMore={hasMoreTrades} isFetchingMore={isFetchingMore} />}
           {activeView === 'dashboard' && <Dashboard onAddTrade={handleAddTrade} />}
-          {activeView === 'notes' && <NotesView showToast={showToast} />}
-          {activeView === 'data' && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} showToast={showToast} />}
+          {activeView === 'notes' && <NotesView />}
+          {activeView === 'data' && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} />}
         </main>
       </div>
 

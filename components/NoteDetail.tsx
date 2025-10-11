@@ -13,7 +13,6 @@ interface NoteDetailProps {
     onUpdate: (id: string, content: string) => void;
     onDelete: (id: string) => void;
     onTagClick: (tag: string) => void;
-    showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
 const KebabMenu: React.FC<{
@@ -55,8 +54,8 @@ const KebabMenu: React.FC<{
 };
 
 
-const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete, onTagClick, showToast }) => {
-    const { state } = useAppContext();
+const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete, onTagClick }) => {
+    const { state, dispatch } = useAppContext();
     const { currentUser, isGuest } = state;
 
     const [content, setContent] = useState(note.content);
@@ -143,7 +142,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
 
     const uploadAndInsertImage = async (file: File) => {
         if (isGuest || !currentUser) {
-            showToast("Image upload is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "Image upload is disabled in guest mode.", type: 'error' } });
             return;
         }
 
@@ -167,10 +166,10 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             const finalMarkdown = `\n![${file.name}](storage://${filePath})\n`;
 
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
-            showToast('Image uploaded successfully', 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded successfully', type: 'success' } });
         } catch (error) {
             setContent(currentContent => currentContent.replace(placeholder, '\n[Upload failed]\n'));
-            showToast('Image upload failed.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image upload failed.', type: 'error' } });
             console.error(error);
         }
     };

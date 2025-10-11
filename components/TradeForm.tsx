@@ -55,27 +55,6 @@ const selectClasses = `${baseControlClasses} pl-3 pr-10 py-2 appearance-none bg-
 const textInputClasses = `${baseControlClasses} px-3 py-2`;
 const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
 
-const Accordion: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = false }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    return (
-        <div className="bg-[#232733] rounded-lg border border-gray-700/50">
-            <button
-                type="button"
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex justify-between items-center p-4 text-left font-semibold text-white text-xl"
-                aria-expanded={isOpen}
-            >
-                {title}
-                <span className={`transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>
-                    {ICONS.chevronDown}
-                </span>
-            </button>
-            {isOpen && <div className="p-6 pt-2">{children}</div>}
-        </div>
-    );
-};
-
-
 const AnalysisSection: React.FC<{
     title: string;
     analysis: Analysis;
@@ -140,11 +119,54 @@ const AnalysisSection: React.FC<{
     )
 };
 
+// Client-side image compression utility
+const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const scale = maxWidth / img.width;
+                canvas.width = scale < 1 ? maxWidth : img.width;
+                canvas.height = scale < 1 ? img.height * scale : img.height;
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    return reject(new Error('Failed to get canvas context'));
+                }
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            const newFile = new File([blob], file.name, {
+                                type: 'image/jpeg',
+                                lastModified: Date.now(),
+                            });
+                            resolve(newFile);
+                        } else {
+                            reject(new Error('Canvas toBlob failed'));
+                        }
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            img.onerror = reject;
+        };
+        reader.onerror = reject;
+    });
+};
 
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts }) => {
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const { userData, currentUser, isGuest } = state;
   const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = userData!;
+  const [step, setStep] = useState(1);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [trade, setTrade] = useState(() => {
      const defaults = {
@@ -193,28 +215,33 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
 
   const handleFileChange = async (section: keyof Omit<typeof trade, 'id' | 'pnl' | 'riskAmount'>, file: File | null) => {
       if (isGuest) {
-        alert("Image uploads are disabled in guest mode.");
+        dispatch({ type: 'SHOW_TOAST', payload: { message: "Image uploads are disabled in guest mode.", type: 'error' } });
         return;
       }
       const currentImageKey = (trade[section] as Analysis).image;
 
       if (currentImageKey) {
           try {
-              await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);
+              const { error } = await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);
+              if (error) throw error;
           } catch (e) {
               console.error("Failed to delete old image from Supabase Storage", e);
           }
       }
 
       if (file) {
+        setIsUploading(true);
         try {
-            const imageKey = `${crypto.randomUUID()}-${file.name}`;
-            const { error } = await supabase.storage.from('screenshots').upload(`${currentUser!.id}/${imageKey}`, file, { contentType: file.type });
+            const compressedFile = await compressImage(file);
+            const imageKey = `${crypto.randomUUID()}-${compressedFile.name}`;
+            const { error } = await supabase.storage.from('screenshots').upload(`${currentUser!.id}/${imageKey}`, compressedFile, { contentType: compressedFile.type });
             if (error) throw error;
             handleAnalysisChange(section, 'image', imageKey);
         } catch (error) {
             console.error("Error saving image to Supabase Storage:", error);
-            alert("Could not save image.");
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not save image.", type: 'error' } });
+        } finally {
+            setIsUploading(false);
         }
       } else {
         handleAnalysisChange(section, 'image', undefined);
@@ -235,91 +262,134 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
     });
   };
 
-  const isFormValid = trade.accountId && trade.pair;
+  const isStep1Valid = trade.accountId && trade.pair;
   const isClosedTrade = trade.result !== Result.InProgress;
+  
+  const ProgressBar = () => (
+    <div className="flex items-center justify-center mb-6">
+      {['Setup', 'Management', 'Analysis'].map((name, index) => (
+        <React.Fragment key={name}>
+          <div className="flex flex-col items-center">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                step >= index + 1 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400'
+              }`}
+            >
+              {index + 1}
+            </div>
+            <p className={`mt-2 text-xs ${step >= index + 1 ? 'text-white' : 'text-gray-400'}`}>{name}</p>
+          </div>
+          {index < 2 && <div className={`flex-auto h-0.5 mx-4 transition-colors ${step > index + 1 ? 'bg-blue-600' : 'bg-gray-700'}`}></div>}
+        </React.Fragment>
+      ))}
+    </div>
+  );
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
-        <Accordion title="Trade Setup" defaultOpen={true}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
-                <FormField label="Date">
-                    <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
-                </FormField>
-                <FormField label="Account">
-                    <select name="accountId" value={trade.accountId} onChange={handleChange} required className={selectClasses}>
-                        <option value="">Select Account</option>
-                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                    </select>
-                </FormField>
-                <FormField label="Pair">
-                    <select name="pair" value={trade.pair} onChange={handleChange} required className={selectClasses}>
-                        <option value="">Select Pair</option>
-                        {pairs.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                </FormField>
-                <FormField label="Direction">
-                    <select name="direction" value={trade.direction} onChange={handleChange} required className={selectClasses}>
-                        <option value={Direction.Long}>Long</option>
-                        <option value={Direction.Short}>Short</option>
-                    </select>
-                </FormField>
-                <FormField label="Entry Type">
-                    <select name="entry" value={trade.entry} onChange={handleChange} className={selectClasses}>
-                        <option value="">Select Entry</option>
-                        {entries.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                </FormField>
-                <FormField label="R:R Ratio">
-                    <input type="number" name="rr" value={trade.rr} onChange={handleChange} required step="any" className={numberInputClasses} />
-                </FormField>
-                <FormField label="SL Type">
-                    <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
-                        <option value="">Select Stoploss</option>
-                        {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                </FormField>
-                <FormField label="TP Type">
-                    <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={selectClasses}>
-                        <option value="">Select Take Profit</option>
-                        {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                </FormField>
-                <FormField label="Result">
-                    <select name="result" value={trade.result} onChange={handleChange} required className={selectClasses}>
-                        {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
-                    </select>
-                </FormField>
-                <FormField label="Risk (%)">
-                    <select name="risk" value={trade.risk} onChange={handleChange} className={selectClasses}>
-                        {risks.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                </FormField>
-                <FormField label="Commission ($)">
-                    <input type="number" name="commission" value={trade.commission || 0} onChange={handleChange} step="any" className={numberInputClasses} />
-                </FormField>
-                <FormField label="Close Type">
-                    <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
-                        <option value="">Select Type</option>
-                        {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
-                    </select>
-                </FormField>
-            </div>
-        </Accordion>
-      
-      <Accordion title="Analysis Breakdown">
-        <div className="space-y-4">
-            <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
-            <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
-            <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
-            <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
-        </div>
-      </Accordion>
+        <ProgressBar />
 
-      <div className="flex justify-end pt-4">
-        <button type="submit" disabled={!isFormValid} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
-            {tradeToEdit ? 'Update Trade' : 'Add Trade'}
-        </button>
-      </div>
+        {step === 1 && (
+            <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
+                <h3 className="text-xl font-semibold mb-4 text-white">Trade Setup</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                    <FormField label="Date">
+                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
+                    </FormField>
+                    <FormField label="Account">
+                        <select name="accountId" value={trade.accountId} onChange={handleChange} required className={selectClasses}>
+                            <option value="">Select Account</option>
+                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="Pair">
+                        <select name="pair" value={trade.pair} onChange={handleChange} required className={selectClasses}>
+                            <option value="">Select Pair</option>
+                            {pairs.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="Direction">
+                        <select name="direction" value={trade.direction} onChange={handleChange} required className={selectClasses}>
+                            <option value={Direction.Long}>Long</option>
+                            <option value={Direction.Short}>Short</option>
+                        </select>
+                    </FormField>
+                </div>
+            </div>
+        )}
+        
+        {step === 2 && (
+             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
+                <h3 className="text-xl font-semibold mb-4 text-white">Risk & Management</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                     <FormField label="Entry Type">
+                        <select name="entry" value={trade.entry} onChange={handleChange} className={selectClasses}>
+                            <option value="">Select Entry</option>
+                            {entries.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="R:R Ratio">
+                        <input type="number" name="rr" value={trade.rr} onChange={handleChange} required step="any" className={numberInputClasses} />
+                    </FormField>
+                    <FormField label="SL Type">
+                        <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
+                            <option value="">Select Stoploss</option>
+                            {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="TP Type">
+                        <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={selectClasses}>
+                            <option value="">Select Take Profit</option>
+                            {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="Result">
+                        <select name="result" value={trade.result} onChange={handleChange} required className={selectClasses}>
+                            {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="Risk (%)">
+                        <select name="risk" value={trade.risk} onChange={handleChange} className={selectClasses}>
+                            {risks.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="Commission ($)">
+                        <input type="number" name="commission" value={trade.commission || 0} onChange={handleChange} step="any" className={numberInputClasses} />
+                    </FormField>
+                    <FormField label="Close Type">
+                        <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
+                            <option value="">Select Type</option>
+                            {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                        </select>
+                    </FormField>
+                </div>
+            </div>
+        )}
+
+        {step === 3 && (
+            <div className="space-y-4">
+                <h3 className="text-xl font-semibold mb-4 text-white">Analysis Breakdown</h3>
+                <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
+                <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
+                <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
+                <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+            </div>
+        )}
+
+        <div className="flex justify-between pt-4">
+            <button type="button" onClick={() => setStep(s => s - 1)} disabled={step === 1} className="px-6 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium">
+                Back
+            </button>
+            {step < 3 ? (
+                <button type="button" onClick={() => setStep(s => s + 1)} disabled={!isStep1Valid} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
+                    Next
+                </button>
+            ) : (
+                <button type="submit" disabled={!isStep1Valid || isUploading} className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
+                    {isUploading ? 'Uploading...' : (tradeToEdit ? 'Update Trade' : 'Add Trade')}
+                </button>
+            )}
+        </div>
     </form>
   );
 };

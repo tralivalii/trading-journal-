@@ -8,7 +8,6 @@ import AccountForm from './AccountForm';
 
 interface DataViewProps {
     onInitiateDeleteAccount: () => void;
-    showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
 // --- Local UI Components ---
@@ -179,7 +178,7 @@ const EditableTagList: React.FC<{
 
 // --- Main DataView Component ---
 
-const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast }) => {
+const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
     const { state, dispatch } = useAppContext();
     const { userData, currentUser, isGuest } = state;
     const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings, trades } = userData!;
@@ -203,7 +202,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleOpenAccountModal = (account: Account | null = null) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
         setAccountToEdit(account);
@@ -212,7 +211,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleSaveAccount = async (accountData: Omit<Account, 'id'>) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             setIsAccountModalOpen(false);
             return;
         }
@@ -257,23 +256,23 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             if (accountToEdit) {
                 const updatedAccounts = accounts.map(a => a.id === appAccount.id ? appAccount : a);
                 dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-                showToast('Account updated successfully.', 'success');
+                dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account updated successfully.', type: 'success' } });
             } else {
                 dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...accounts, appAccount] });
-                showToast('Account added successfully.', 'success');
+                dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account added successfully.', type: 'success' } });
             }
             
             setIsAccountModalOpen(false);
             setAccountToEdit(null);
         } catch (error: any) {
             console.error('Failed to save account:', error);
-            showToast(`Failed to save account: ${error.message}`, 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to save account: ${error.message}`, type: 'error' } });
         }
     };
     
     const handleToggleArchiveAccount = async (account: Account) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
         if (!currentUser) return;
@@ -289,16 +288,16 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             if (error) throw error;
             const updatedAccounts = accounts.map(a => a.id === data.id ? {...a, isArchived: data.is_archived} : a);
             dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-            showToast(`Account ${data.is_archived ? 'archived' : 'unarchived'}.`, 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${data.is_archived ? 'archived' : 'unarchived'}.`, type: 'success' } });
         } catch (error) {
             console.error('Failed to update account status:', error);
-            showToast('Failed to update account status.', 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to update account status.', type: 'error' } });
         }
     };
     
     const handleConfirmDeleteAccount = async () => {
         if (!accountToDelete || isGuest || !currentUser) {
-            showToast("Cannot delete account.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "Cannot delete account.", type: 'error' } });
             return;
         }
     
@@ -312,11 +311,11 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
     
             const updatedAccounts = accounts.filter(a => a.id !== accountToDelete.id);
             dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-            showToast('Account deleted successfully.', 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted successfully.', type: 'success' } });
     
         } catch (error: any) {
             console.error('Failed to delete account:', error);
-            showToast(`Failed to delete account: ${error.message}`, 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to delete account: ${error.message}`, type: 'error' } });
         } finally {
             setAccountToDelete(null); 
         }
@@ -324,7 +323,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
         if (!currentUser || !userData) return;
@@ -338,12 +337,12 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             .select();
 
         if (error) {
-            showToast(`Error saving settings: ${error.message}`, 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving settings: ${error.message}`, type: 'error' } });
             console.error(error);
         } else {
             dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
             const friendlyFieldName = (field as string).charAt(0).toUpperCase() + (field as string).slice(1);
-            showToast(`${friendlyFieldName} updated successfully.`, 'success');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: `${friendlyFieldName} updated successfully.`, type: 'success' } });
         }
     };
 
@@ -365,10 +364,65 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
 
     const handleInitiateDelete = () => {
         if (isGuest) {
-            showToast("This feature is disabled in guest mode.", 'error');
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
         onInitiateDeleteAccount();
+    };
+
+    const handleExportCSV = () => {
+        if (trades.length === 0) {
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "No trades to export.", type: 'error' } });
+            return;
+        }
+
+        const headers = [
+            'id', 'date', 'accountId', 'pair', 'direction', 'result', 'pnl', 'risk', 'rr', 
+            'riskAmount', 'commission', 'entry', 'stoploss', 'takeprofit', 'closeType',
+            'analysisD1_notes', 'analysis1h_notes', 'analysis5m_notes', 'analysisResult_notes'
+        ];
+
+        const replacer = (key: string, value: any) => value === null || value === undefined ? '' : value;
+
+        const csv = [
+            headers.join(','),
+            ...trades.map(trade => [
+                trade.id,
+                `"${new Date(trade.date).toISOString()}"`,
+                trade.accountId,
+                trade.pair,
+                trade.direction,
+                trade.result,
+                trade.pnl,
+                trade.risk,
+                trade.rr,
+                trade.riskAmount,
+                trade.commission,
+                trade.entry,
+                trade.stoploss,
+                trade.takeprofit,
+                trade.closeType,
+                `"${(trade.analysisD1?.notes || '').replace(/"/g, '""')}"`,
+                `"${(trade.analysis1h?.notes || '').replace(/"/g, '""')}"`,
+                `"${(trade.analysis5m?.notes || '').replace(/"/g, '""')}"`,
+                `"${(trade.analysisResult?.notes || '').replace(/"/g, '""')}"`,
+            ].join(','))
+        ].join('\r\n');
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            const formattedDate = new Date().toISOString().slice(0, 10);
+            link.setAttribute('download', `trading_journal_export_${formattedDate}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade data exported successfully.', type: 'success' } });
     };
 
     return (
@@ -467,9 +521,18 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                         </div>
                     </DataCard>
 
-                    <DataCard title="Danger Zone">
-                        <p className="text-sm text-gray-400 mb-4">Permanently delete your account and all associated data. This action cannot be undone.</p>
-                        <button onClick={handleInitiateDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors self-start text-sm">Delete My Account</button>
+                    <DataCard title="Data Management">
+                         <div className="space-y-4">
+                            <div>
+                                <p className="text-sm text-gray-400 mb-2">Export all of your trade data to a CSV file for backup or external analysis.</p>
+                                <button onClick={handleExportCSV} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors self-start text-sm">Export All Trades (CSV)</button>
+                            </div>
+                            <div className="pt-4 border-t border-gray-700/50">
+                                <h3 className="text-base text-red-400 font-semibold mb-2">Danger Zone</h3>
+                                <p className="text-sm text-gray-400 mb-2">Permanently delete your account and all associated data. This action cannot be undone.</p>
+                                <button onClick={handleInitiateDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors self-start text-sm">Delete My Account</button>
+                            </div>
+                        </div>
                     </DataCard>
                 </div>
             </div>

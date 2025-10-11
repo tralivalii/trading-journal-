@@ -1,0 +1,22 @@
+{
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        { 
+          "key": "Cache-Control", 
+          "value": "no-cache" 
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { 
+          "key": "Cache-Control", 
+          "value": "public, s-maxage=31536000, immutable" 
+        }
+      ]
+    }
+  ]
+}
