@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
@@ -151,6 +148,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   
   const initialTradeStateRef = useRef<Omit<Trade, 'id' | 'pnl' | 'riskAmount'>>();
   const [isDirty, setIsDirty] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const [trade, setTrade] = useState(() => {
      const initialTradeState = {
@@ -184,14 +182,34 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   });
 
   useEffect(() => {
-    // Simple deep comparison for object structures without functions or undefined.
     const currentStateString = JSON.stringify(trade);
     const initialStateString = JSON.stringify(initialTradeStateRef.current);
     setIsDirty(currentStateString !== initialStateString);
   }, [trade]);
   
-  const [step, setStep] = useState(1);
   const [isUploading, setIsUploading] = useState(false);
+
+  const handleCloseRequest = () => {
+    if (isDirty) {
+        if(window.confirm("You have unsaved changes. Are you sure you want to close?")) {
+            onClose();
+        }
+    } else {
+        onClose();
+    }
+  };
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (wrapper) {
+      wrapper.addEventListener('closeRequest', handleCloseRequest);
+    }
+    return () => {
+      if (wrapper) {
+        wrapper.removeEventListener('closeRequest', handleCloseRequest);
+      }
+    };
+  }, [isDirty, onClose]); // Re-attach listener if isDirty changes
 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -268,46 +286,14 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     });
   };
   
-  const handleCloseRequest = () => {
-    if (isDirty) {
-        if(window.confirm("You have unsaved changes. Are you sure you want to close?")) {
-            onClose();
-        }
-    } else {
-        onClose();
-    }
-  };
-
-  const isStep1Valid = trade.accountId && trade.pair;
   const isClosedTrade = trade.result !== Result.InProgress;
-  
-  const ProgressBar = () => (
-    <div className="flex items-center justify-center mb-6">
-      {['Setup', 'Management', 'Analysis'].map((name, index) => (
-        <React.Fragment key={name}>
-          <div className="flex flex-col items-center">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                step >= index + 1 ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400'
-              }`}
-            >
-              {index + 1}
-            </div>
-            <p className={`mt-2 text-xs ${step >= index + 1 ? 'text-white' : 'text-gray-400'}`}>{name}</p>
-          </div>
-          {index < 2 && <div className={`flex-auto h-0.5 mx-4 transition-colors ${step > index + 1 ? 'bg-blue-600' : 'bg-gray-700'}`}></div>}
-        </React.Fragment>
-      ))}
-    </div>
-  );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
-        <ProgressBar />
-
-        {step === 1 && (
+    <div ref={wrapperRef}>
+        <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
+            {/* --- Section 1: Setup --- */}
             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
-                <h3 className="text-xl font-semibold mb-4 text-white">Trade Setup</h3>
+                <h3 className="text-xl font-semibold text-white">Trade Setup</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                     <FormField label="Date">
                         <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
@@ -332,12 +318,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                     </FormField>
                 </div>
             </div>
-        )}
-        
-        {step === 2 && (
-             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
-                <h3 className="text-xl font-semibold mb-4 text-white">Risk & Management</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+
+            {/* --- Section 2: Management --- */}
+            <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
+                <h3 className="text-xl font-semibold text-white">Risk & Management</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
                      <FormField label="Entry Type">
                         <select name="entry" value={trade.entry} onChange={handleChange} className={selectClasses}>
                             <option value="">Select Entry</option>
@@ -380,42 +365,29 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                     </FormField>
                 </div>
             </div>
-        )}
 
-        {step === 3 && (
-            <div className="space-y-4">
-                <h3 className="text-xl font-semibold mb-4 text-white">Analysis Breakdown</h3>
-                <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
-                <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
-                <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
-                <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+            {/* --- Section 3: Analysis --- */}
+            <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
+                <h3 className="text-xl font-semibold text-white">Analysis Breakdown</h3>
+                <div className="space-y-4">
+                    <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
+                    <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
+                    <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
+                    <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+                </div>
             </div>
-        )}
-
-        <div className="flex justify-between pt-4">
-            <div>
-              {step > 1 ? (
-                <button type="button" onClick={() => setStep(s => s - 1)} className="px-6 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium">
-                    Back
-                </button>
-              ) : (
+            
+            {/* --- Actions --- */}
+            <div className="flex justify-end gap-4 pt-4">
                 <button type="button" onClick={handleCloseRequest} className="px-6 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium">
                     Cancel
                 </button>
-              )}
-            </div>
-
-            {step < 3 ? (
-                <button type="button" onClick={() => setStep(s => s + 1)} disabled={!isStep1Valid} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
-                    Next
-                </button>
-            ) : (
-                <button type="submit" disabled={!isStep1Valid || isUploading} className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
+                <button type="submit" disabled={isUploading} className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
                     {isUploading ? 'Uploading...' : (tradeToEdit ? 'Update Trade' : 'Add Trade')}
                 </button>
-            )}
-        </div>
-    </form>
+            </div>
+        </form>
+    </div>
   );
 };
 

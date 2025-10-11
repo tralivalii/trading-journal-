@@ -1,7 +1,7 @@
 // FIX: Added full content for App.tsx
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
-import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus } from './services/appState';
+import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
 import TradesList from './components/TradesList';
 import Modal from './components/ui/Modal';
 import TradeForm from './components/TradeForm';
@@ -301,10 +301,22 @@ async function processSyncQueue(userId: string) {
         try {
             switch (item.type) {
                 case 'trade': {
-                    const payload = { ...item.payload, user_id: userId, account_id: item.payload.accountId, close_type: item.payload.closeType, analysis_d1: item.payload.analysisD1, analysis_1h: item.payload.analysis1h, analysis_5m: item.payload.analysis5m, analysis_result: item.payload.analysisResult, ai_analysis: item.payload.aiAnalysis };
-                    delete (payload as any).accountId;
+                    const { accountId, riskAmount, closeType, analysisD1, analysis1h, analysis5m, analysisResult, aiAnalysis, ...rest } = item.payload;
+                    const supabasePayload = {
+                        ...rest,
+                        user_id: userId,
+                        account_id: accountId,
+                        risk_amount: riskAmount,
+                        close_type: closeType,
+                        analysis_d1: analysisD1,
+                        analysis_1h: analysis1h,
+                        analysis_5m: analysis5m,
+                        analysis_result: analysisResult,
+                        ai_analysis: aiAnalysis
+                    };
+                    
                     if (item.action === 'create' || item.action === 'update') {
-                        const { error } = await supabase.from('trades').upsert(payload);
+                        const { error } = await supabase.from('trades').upsert(supabasePayload);
                         if (error) throw error;
                     } else if (item.action === 'delete') {
                         const { error } = await supabase.from('trades').delete().eq('id', item.payload.id);
@@ -313,9 +325,15 @@ async function processSyncQueue(userId: string) {
                     break;
                 }
                 case 'account': {
-                    const payload = { ...item.payload, user_id: userId, initial_balance: item.payload.initialBalance, is_archived: item.payload.isArchived };
+                    const { initialBalance, isArchived, ...rest } = item.payload;
+                    const supabasePayload = {
+                        ...rest,
+                        user_id: userId,
+                        initial_balance: initialBalance,
+                        is_archived: isArchived
+                    };
                     if (item.action === 'create' || item.action === 'update') {
-                        const { error } = await supabase.from('accounts').upsert(payload);
+                        const { error } = await supabase.from('accounts').upsert(supabasePayload);
                         if (error) throw error;
                     } else if (item.action === 'delete') {
                         const { error } = await supabase.from('accounts').delete().eq('id', item.payload.id);
@@ -430,8 +448,9 @@ function AppContent() {
 
   // Effect to listen for custom sync requests
   useEffect(() => {
-      window.addEventListener('sync-request', handleSync);
-      return () => window.removeEventListener('sync-request', handleSync);
+      const doSync = () => handleSync();
+      window.addEventListener('sync-request', doSync);
+      return () => window.removeEventListener('sync-request', doSync);
   }, [handleSync]);
 
   // Effect to trigger sync when coming back online
@@ -600,15 +619,18 @@ function AppContent() {
     setTradeIdToDelete(null);
   };
 
-  const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'>) => {
+  const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => {
     await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
     setFormModalOpen(false);
     setTradeToEdit(null);
   };
   
   const handleSaveFirstAccount = async (accountData: Omit<Account, 'id'>) => {
-    // This needs offline handling as well
-    // ...
+    await saveAccountAction(dispatch, state, accountData, false);
+    setFirstAccountModalOpen(false);
+    setTimeout(() => {
+        handleAddTrade();
+    }, 150);
   };
 
   const handleLogout = () => {
@@ -623,7 +645,18 @@ function AppContent() {
   };
   
   const handleDeleteUserAccount = async () => {
-    // ...
+     if (isGuest || !currentUser) return;
+     const { error } = await supabase.rpc('delete_user_account');
+     if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error deleting account: ${error.message}`, type: 'error' } });
+     } else {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Account deletion initiated. You will be logged out.`, type: 'success' } });
+        setTimeout(async () => {
+             await supabase.auth.signOut();
+             dispatch({ type: 'SET_SESSION', payload: null });
+        }, 3000);
+     }
+     setDeleteConfirmModalOpen(false);
   };
 
   const NavItem: React.FC<{view: View, label: string}> = ({view, label}) => (
@@ -636,14 +669,6 @@ function AppContent() {
       </button>
   );
   
-  const handleTradeFormCloseRequest = () => {
-    // This logic is now inside TradeForm.tsx
-    const form = document.querySelector('form'); // Simplified, better with refs
-    // Check if form is dirty
-    // if dirty, confirm, else close
-    setFormModalOpen(false);
-  };
-
 
   if (!session && !isGuest) {
     return <Auth />;
@@ -749,7 +774,14 @@ function AppContent() {
       <Modal 
         isOpen={isFormModalOpen} 
         onClose={() => setFormModalOpen(false)}
-        onCloseRequest={handleTradeFormCloseRequest} 
+        onCloseRequest={() => {
+            // Forward the close request to the form component itself to handle dirty state
+            const tradeForm = document.getElementById('trade-form-wrapper');
+            if (tradeForm) {
+                 const event = new CustomEvent('closeRequest');
+                 tradeForm.dispatchEvent(event);
+            }
+        }}
         title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} 
         size="4xl"
       >
