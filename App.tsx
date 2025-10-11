@@ -383,6 +383,7 @@ function AppContent() {
   const [showFab, setShowFab] = useState(true);
   const lastScrollY = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
+  const prevSyncStatusRef = useRef(syncStatus);
   
   useEffect(() => {
     if (toast) {
@@ -407,29 +408,44 @@ function AppContent() {
     dispatch({ type: 'HIDE_TOAST' });
   }, [dispatch]);
 
-  // Sync effect
-  useEffect(() => {
-    const handleSync = async () => {
-        if (syncStatus === 'online' && currentUser && !isGuest) {
-            dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-            const success = await processSyncQueue(currentUser.id);
-            if (success) {
-                // Optionally re-fetch data from server to ensure consistency
-                 dispatch({ type: 'SHOW_TOAST', payload: { message: 'Data synced successfully.', type: 'success' } });
-            } else {
-                 dispatch({ type: 'SHOW_TOAST', payload: { message: 'Sync failed. Your changes are still saved locally.', type: 'error' } });
-            }
-            dispatch({ type: 'SET_SYNC_STATUS', payload: 'online' });
-        }
-    };
-    
-    window.addEventListener('sync-request', handleSync);
-    if (syncStatus === 'online') {
-        handleSync();
-    }
+  // Stable sync handler
+  const handleSync = useCallback(async () => {
+      if (syncStatus === 'online' && currentUser && !isGuest) {
+          const queue = await getSyncQueue();
+          if (queue.length === 0) {
+              return; // Nothing to sync
+          }
 
-    return () => window.removeEventListener('sync-request', handleSync);
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+          const success = await processSyncQueue(currentUser.id);
+
+          if (success) {
+              dispatch({ type: 'SHOW_TOAST', payload: { message: 'Data synced successfully.', type: 'success' } });
+          } else {
+              dispatch({ type: 'SHOW_TOAST', payload: { message: 'Sync failed. Your changes are still saved locally.', type: 'error' } });
+          }
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'online' });
+      }
   }, [syncStatus, currentUser, isGuest, dispatch]);
+
+  // Effect to listen for custom sync requests
+  useEffect(() => {
+      window.addEventListener('sync-request', handleSync);
+      return () => window.removeEventListener('sync-request', handleSync);
+  }, [handleSync]);
+
+  // Effect to trigger sync when coming back online
+  useEffect(() => {
+      const wasOffline = prevSyncStatusRef.current === 'offline';
+      const isOnlineNow = syncStatus === 'online';
+
+      if (wasOffline && isOnlineNow) {
+          console.log("App came back online. Triggering sync.");
+          handleSync();
+      }
+
+      prevSyncStatusRef.current = syncStatus;
+  }, [syncStatus, handleSync]);
 
 
   useEffect(() => {
