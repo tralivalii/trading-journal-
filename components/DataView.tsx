@@ -1,156 +1,194 @@
 // FIX: Provided full content for missing DataView.tsx file.
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useAppContext } from '../services/appState';
-import { calculateStats, filterTradesByPeriod } from '../services/statisticsService';
-import { Trade, Account } from '../types';
-import Chart from 'chart.js/auto';
-import Skeleton from './ui/Skeleton';
+import React, { useState, useMemo } from 'react';
+import { useAppContext, saveTradeAction, deleteTradeAction, fetchMoreTradesAction } from '../services/appState';
+import { Trade } from '../types';
+import TradesList from './TradesList';
+import AnalysisView from './AnalysisView';
+import NotesView from './NotesView';
+import Modal from './ui/Modal';
+import TradeForm from './TradeForm';
+import TradeDetail from './TradeDetail';
+import { calculateStats } from '../services/statisticsService';
+import { ICONS } from '../constants';
 
-type Period = 'week' | 'month' | 'quarter' | 'all';
+type View = 'journal' | 'analysis' | 'notes';
 
-const StatCard: React.FC<{ title: string; value: string | number; className?: string; change?: number; changeType?: 'profit' | 'rr' }> = ({ title, value, className = '', change, changeType }) => (
-    <div className="bg-[#2A2F3B] p-4 rounded-lg border border-gray-700/50">
-        <p className="text-sm text-[#8A91A8] uppercase tracking-wider">{title}</p>
-        <p className={`text-2xl font-bold text-white mt-1 ${className}`}>{value}</p>
-        {change !== undefined && change !== 0 && (
-             <p className={`text-xs mt-1 font-semibold ${change > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {change > 0 ? '+' : ''}
-                {change.toFixed(changeType === 'rr' ? 2 : 0)}
-                {changeType === 'profit' ? '' : ' R'}
-            </p>
-        )}
+const Header: React.FC<{ activeView: View; setActiveView: (view: View) => void }> = ({ activeView, setActiveView }) => {
+    const { state, dispatch } = useAppContext();
+
+    const NavButton: React.FC<{ view: View, label: string }> = ({ view, label }) => (
+        <button
+            onClick={() => setActiveView(view)}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === view ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+            }`}
+        >
+            {label}
+        </button>
+    );
+
+    return (
+        <header className="bg-[#232733] p-4 flex justify-between items-center border-b border-gray-700/50 sticky top-0 z-30">
+            <div className="text-xl font-bold text-white">
+                Trade Journal
+            </div>
+            <nav className="flex items-center gap-2 md:gap-4">
+                <NavButton view="journal" label="Journal" />
+                <NavButton view="analysis" label="Analysis" />
+                <NavButton view="notes" label="Notes" />
+            </nav>
+            <button
+                onClick={() => {
+                    if (state.isGuest) {
+                        dispatch({ type: 'LOGOUT' });
+                    } else {
+                         supabase.auth.signOut().then(() => {
+                            dispatch({ type: 'LOGOUT' });
+                         });
+                    }
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-red-500 transition-colors text-sm"
+            >
+                {state.isGuest ? 'Exit Guest Mode' : 'Logout'}
+            </button>
+        </header>
+    );
+};
+
+const StatCard: React.FC<{ label: string, value: string | number, color?: string }> = ({ label, value, color = 'text-white' }) => (
+    <div className="bg-[#2A2F3B] p-4 rounded-lg flex-1 text-center border border-gray-700/50">
+        <div className="text-sm text-[#8A91A8] uppercase tracking-wider">{label}</div>
+        <div className={`text-2xl font-bold mt-1 ${color}`}>{value}</div>
     </div>
 );
 
+
 const DataView: React.FC = () => {
-    const { state } = useAppContext();
-    const { trades, accounts } = state.userData!;
-    const [period, setPeriod] = useState<Period>('month');
-
-    const chartRef = useRef<HTMLCanvasElement>(null);
-    const chartInstance = useRef<Chart | null>(null);
-
-    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
-    const activeAccountIds = useMemo(() => new Set(activeAccounts.map(a => a.id)), [activeAccounts]);
-
-    const filteredTrades = useMemo(() => {
-        const activeTrades = trades.filter(t => activeAccountIds.has(t.accountId));
-        return filterTradesByPeriod(activeTrades, period);
-    }, [trades, period, activeAccountIds]);
+    const { state, dispatch } = useAppContext();
+    const { userData, hasMoreTrades, isFetchingMoreTrades } = state;
+    const [activeView, setActiveView] = useState<View>('journal');
     
-    const stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
-    
-    useEffect(() => {
-        if (!chartRef.current) return;
-        
-        const cumulativePnlData = filteredTrades
-            .slice()
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .reduce((acc, trade) => {
-                const newTotal = (acc.length > 0 ? acc[acc.length - 1].pnl : 0) + trade.pnl;
-                acc.push({ date: new Date(trade.date).toLocaleDateString(), pnl: newTotal });
-                return acc;
-            }, [] as { date: string; pnl: number }[]);
+    const [isTradeFormModalOpen, setIsTradeFormModalOpen] = useState(false);
+    const [isTradeDetailModalOpen, setIsTradeDetailModalOpen] = useState(false);
+    const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
 
-        const ctx = chartRef.current.getContext('2d');
-        if (!ctx) return;
-        
-        if (chartInstance.current) {
-            chartInstance.current.destroy();
+    const stats = useMemo(() => {
+        if (!userData?.trades) return null;
+        return calculateStats(userData.trades);
+    }, [userData?.trades]);
+
+    const handleSaveTrade = async (tradeData: Omit<Trade, 'id' | 'userId'>, id?: string) => {
+        const isUpdate = !!id;
+        try {
+            await saveTradeAction(dispatch, state, isUpdate ? { ...tradeData, id } : tradeData, isUpdate);
+            setIsTradeFormModalOpen(false);
+            setSelectedTrade(null);
+        } catch (error) {
+            console.error("Failed to save trade:", error);
         }
+    };
 
-        chartInstance.current = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: cumulativePnlData.map(d => d.date),
-                datasets: [{
-                    label: 'Cumulative PnL',
-                    data: cumulativePnlData.map(d => d.pnl),
-                    borderColor: '#3B82F6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.1,
-                    fill: true,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                        ticks: { color: '#8A91A8' }
-                    },
-                    x: {
-                        grid: { display: false },
-                        ticks: { color: '#8A91A8', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
-                    }
-                },
-                plugins: {
-                    legend: { display: false }
+    const handleDeleteTrade = async (id: string) => {
+        if (confirm('Are you sure you want to delete this trade?')) {
+             try {
+                await deleteTradeAction(dispatch, state, id);
+                if (selectedTrade?.id === id) {
+                    setIsTradeDetailModalOpen(false);
+                    setSelectedTrade(null);
                 }
+            } catch (error) {
+                console.error("Failed to delete trade:", error);
             }
-        });
-
-        return () => {
-            chartInstance.current?.destroy();
-        };
-
-    }, [filteredTrades]);
+        }
+    };
     
-    if (state.isLoading) {
-        return <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24" />)}
-        </div>
+    const handleAddTrade = () => {
+        setSelectedTrade(null);
+        setIsTradeFormModalOpen(true);
+    };
+    
+    const handleEditTrade = (trade: Trade) => {
+        setSelectedTrade(trade);
+        setIsTradeDetailModalOpen(false);
+        setIsTradeFormModalOpen(true);
+    };
+
+    const handleViewTrade = (trade: Trade) => {
+        setSelectedTrade(trade);
+        setIsTradeDetailModalOpen(true);
+    };
+    
+    const handleLoadMoreTrades = () => {
+        fetchMoreTradesAction(dispatch, state);
+    }
+    
+    const renderContent = () => {
+        switch(activeView) {
+            case 'journal':
+                return <TradesList 
+                    onAddTrade={handleAddTrade}
+                    onEdit={handleEditTrade}
+                    onView={handleViewTrade}
+                    onDelete={handleDeleteTrade}
+                    onLoadMore={handleLoadMoreTrades}
+                    hasMore={hasMoreTrades}
+                    isFetchingMore={isFetchingMoreTrades}
+                />;
+            case 'analysis':
+                return <AnalysisView />;
+            case 'notes':
+                return <NotesView />;
+            default:
+                return null;
+        }
+    };
+
+    if (!userData || !stats) {
+        return <div className="p-8">Loading data...</div>;
     }
 
-    const firstAccountCurrency = accounts.find(a => activeAccountIds.has(a.id))?.currency || 'USD';
-
     return (
-        <div>
-            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h1 className="text-3xl font-bold text-white flex-shrink-0">Dashboard</h1>
-                <div className="flex flex-wrap items-center gap-2">
-                    {(['week', 'month', 'quarter', 'all'] as Period[]).map(p => (
-                        <button 
-                            key={p} 
-                            onClick={() => setPeriod(p)}
-                            className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
-                        >
-                            {p === 'all' ? 'All Time' : `This ${p}`}
-                        </button>
-                    ))}
-                </div>
-            </div>
+        <div className="flex flex-col min-h-screen">
+            <Header activeView={activeView} setActiveView={setActiveView} />
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-                <StatCard 
-                    title="Net Profit" 
-                    value={stats.netProfit.toLocaleString('en-US', { style: 'currency', currency: firstAccountCurrency, minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                    className={stats.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}
-                />
-                <StatCard title="Win Rate" value={`${stats.winRate.toFixed(1)}%`} />
-                <StatCard title="Total Trades" value={stats.totalTrades} />
-                <StatCard title="Avg. R:R" value={stats.averageRR.toFixed(2)} />
-                <StatCard title="Wins / Losses" value={`${stats.wins} / ${stats.losses}`} />
-                <StatCard 
-                    title="Total R"
-                    value={stats.totalRR.toFixed(2)}
-                    className={stats.totalRR >= 0 ? 'text-green-400' : 'text-red-400'}
-                />
-            </div>
-            
-            <div className="bg-[#232733] rounded-lg p-6 border border-gray-700/50">
-                <h2 className="text-xl font-semibold text-white mb-4">Equity Curve</h2>
-                <div className="h-80 relative">
-                    {filteredTrades.length > 0 ? (
-                        <canvas ref={chartRef}></canvas>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-[#8A91A8]">No trading data for this period.</div>
-                    )}
+            <main className="flex-grow p-4 md:p-8">
+                {activeView === 'journal' && (
+                     <div className="mb-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        <StatCard label="Total Trades" value={stats.totalTrades} />
+                        <StatCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} color={stats.winRate >= 50 ? 'text-[#10B981]' : 'text-[#EF4444]'} />
+                        <StatCard label="Net Profit" value={stats.netProfit.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 })} color={stats.netProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'} />
+                        <StatCard label="Avg. R:R" value={stats.averageRR.toFixed(2)} />
+                        <StatCard label="Total Wins" value={stats.wins} color="text-[#10B981]" />
+                        <StatCard label="Total Losses" value={stats.losses} color="text-[#EF4444]" />
+                    </div>
+                )}
+                
+                <div className="relative">
+                   {activeView === 'journal' && (
+                        <button 
+                            onClick={handleAddTrade}
+                            className="fixed bottom-8 right-8 bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-500 transition-transform hover:scale-110 z-40"
+                            aria-label="Add new trade"
+                        >
+                        <span className="w-6 h-6 block">{ICONS.plus}</span>
+                        </button>
+                   )}
+                    {renderContent()}
                 </div>
-            </div>
+
+            </main>
+            
+            <Modal isOpen={isTradeFormModalOpen} onClose={() => setIsTradeFormModalOpen(false)} title={selectedTrade ? 'Edit Trade' : 'Add New Trade'}>
+                <TradeForm 
+                    onSave={handleSaveTrade}
+                    onCancel={() => setIsTradeFormModalOpen(false)}
+                    tradeToEdit={selectedTrade}
+                />
+            </Modal>
+            
+            <Modal isOpen={isTradeDetailModalOpen} onClose={() => setIsTradeDetailModalOpen(false)} title="Trade Details">
+                {selectedTrade && <TradeDetail trade={selectedTrade} onEdit={handleEditTrade} onDelete={handleDeleteTrade} />}
+            </Modal>
         </div>
     );
 };
