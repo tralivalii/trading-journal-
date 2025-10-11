@@ -12,7 +12,7 @@ interface NotesViewProps {
 
 const generateNoteTitle = (note: Note, allNotes: Note[]): string => {
     const noteDate = new Date(note.date);
-    const dateString = noteDate.toLocaleDateString(undefined, {
+    const dateString = noteDate.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../services/appState';
-import { Account, Currency, UserData, DefaultSettings } from '../types';
+import { Account, Currency, UserData } from '../types';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
@@ -182,11 +182,24 @@ const EditableTagList: React.FC<{
 const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast }) => {
     const { state, dispatch } = useAppContext();
     const { userData, currentUser, isGuest } = state;
-    const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings } = userData!;
+    const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings, trades } = userData!;
 
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountToEdit, setAccountToEdit] = useState<Account | null>(null);
+    const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
     const [currentDefaults, setCurrentDefaults] = useState(defaultSettings);
+    
+    const accountsWithTradeStatus = useMemo(() => {
+        const tradeCounts = new Map<string, number>();
+        trades.forEach(trade => {
+            tradeCounts.set(trade.accountId, (tradeCounts.get(trade.accountId) || 0) + 1);
+        });
+        return accounts.map(account => ({
+            ...account,
+            hasTrades: (tradeCounts.get(account.id) || 0) > 0,
+        }));
+    }, [accounts, trades]);
+
 
     const handleOpenAccountModal = (account: Account | null = null) => {
         if (isGuest) {
@@ -282,6 +295,32 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             showToast('Failed to update account status.', 'error');
         }
     };
+    
+    const handleConfirmDeleteAccount = async () => {
+        if (!accountToDelete || isGuest || !currentUser) {
+            showToast("Cannot delete account.", 'error');
+            return;
+        }
+    
+        try {
+            const { error } = await supabase
+                .from('accounts')
+                .delete()
+                .eq('id', accountToDelete.id);
+            
+            if (error) throw error;
+    
+            const updatedAccounts = accounts.filter(a => a.id !== accountToDelete.id);
+            dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+            showToast('Account deleted successfully.', 'success');
+    
+        } catch (error: any) {
+            console.error('Failed to delete account:', error);
+            showToast(`Failed to delete account: ${error.message}`, 'error');
+        } finally {
+            setAccountToDelete(null); 
+        }
+    };
 
     const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
         if (isGuest) {
@@ -321,8 +360,8 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
     };
 
     const sortedAccounts = useMemo(() => 
-        [...accounts].sort((a, b) => (a.isArchived ? 1 : -1) - (b.isArchived ? 1 : -1) || a.name.localeCompare(b.name)), 
-    [accounts]);
+        [...accountsWithTradeStatus].sort((a, b) => (a.isArchived ? 1 : -1) - (b.isArchived ? 1 : -1) || a.name.localeCompare(b.name)), 
+    [accountsWithTradeStatus]);
 
     const handleInitiateDelete = () => {
         if (isGuest) {
@@ -358,16 +397,25 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
                                         >
                                             Edit
                                         </button>
-                                        <button 
-                                            onClick={() => handleToggleArchiveAccount(acc)} 
-                                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                                                acc.isArchived 
-                                                    ? 'bg-green-600/20 text-green-300 hover:bg-green-600/40' 
-                                                    : 'bg-yellow-600/20 text-yellow-300 hover:bg-yellow-600/40'
-                                            }`}
-                                        >
-                                            {acc.isArchived ? 'Unarchive' : 'Archive'}
-                                        </button>
+                                        {!acc.hasTrades && !acc.isArchived ? (
+                                            <button 
+                                                onClick={() => setAccountToDelete(acc)}
+                                                className="px-3 py-1 text-xs font-medium rounded-full transition-colors bg-red-600/20 text-red-300 hover:bg-red-600/40"
+                                            >
+                                                Delete
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                onClick={() => handleToggleArchiveAccount(acc)} 
+                                                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                                    acc.isArchived 
+                                                        ? 'bg-green-600/20 text-green-300 hover:bg-green-600/40' 
+                                                        : 'bg-yellow-600/20 text-yellow-300 hover:bg-yellow-600/40'
+                                                }`}
+                                            >
+                                                {acc.isArchived ? 'Unarchive' : 'Archive'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )) : <p className="text-center text-gray-500 py-4">No accounts created yet.</p>}
@@ -429,6 +477,22 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount, showToast 
             {isAccountModalOpen && (
                 <Modal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} title={accountToEdit ? 'Edit Account' : 'Add New Account'}>
                     <AccountForm onSave={handleSaveAccount} onCancel={() => setIsAccountModalOpen(false)} accountToEdit={accountToEdit} />
+                </Modal>
+            )}
+
+            {accountToDelete && (
+                <Modal isOpen={!!accountToDelete} onClose={() => setAccountToDelete(null)} title="Confirm Account Deletion">
+                    <div className="text-center">
+                        <p className="text-gray-300 mb-6">
+                            Are you sure you want to permanently delete the account "<strong>{accountToDelete.name}</strong>"?
+                            <br />
+                            This action cannot be undone.
+                        </p>
+                        <div className="flex justify-center gap-4">
+                            <button onClick={() => setAccountToDelete(null)} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
+                            <button onClick={handleConfirmDeleteAccount} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Yes, Delete Account</button>
+                        </div>
+                    </div>
                 </Modal>
             )}
         </div>

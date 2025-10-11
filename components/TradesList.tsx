@@ -136,9 +136,11 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                         {monthTrades.map(trade => {
                                             const account = accountsMap.get(trade.accountId);
                                             const currency = account?.currency || 'USD';
+                                            const tradeDate = new Date(trade.date);
+                                            const formattedDate = tradeDate.toLocaleDateString('en-US', { year: '2-digit', month: 'short', day: 'numeric' });
                                             return (
                                         <tr key={trade.id} onPointerUp={() => onView(trade)} className="odd:bg-[#232733] even:bg-[#2A2F3B] border-b border-gray-700/50 last:border-b-0 hover:bg-gray-700/50 transition-colors cursor-pointer">
-                                            <td className="px-6 py-4 whitespace-nowrap">{new Date(trade.date).toLocaleDateString()}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap">{formattedDate}</td>
                                             <td className="px-6 py-4 font-medium text-white flex items-center gap-2 whitespace-nowrap">
                                                 {trade.pair}
                                                 {account?.isArchived && <AlertIcon message="Account Archived" />}
@@ -157,9 +159,9 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                             </td>
                                             <td className="px-6 py-4 text-center whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
                                             <div className="flex justify-center items-center gap-4">
-                                                <button onClick={() => onView(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`View trade for ${trade.pair} on ${new Date(trade.date).toLocaleDateString()}`}>{ICONS.eye} View</button>
-                                                <button onClick={() => onEdit(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`Edit trade for ${trade.pair} on ${new Date(trade.date).toLocaleDateString()}`}>{ICONS.pencil} Edit</button>
-                                                <button onClick={() => onDelete(trade.id)} className="font-medium text-[#EF4444] hover:underline flex items-center gap-1.5" aria-label={`Delete trade for ${trade.pair} on ${new Date(trade.date).toLocaleDateString()}`}>{ICONS.trash} Delete</button>
+                                                <button onClick={() => onView(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`View trade for ${trade.pair} on ${formattedDate}`}>{ICONS.eye} View</button>
+                                                <button onClick={() => onEdit(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`Edit trade for ${trade.pair} on ${formattedDate}`}>{ICONS.pencil} Edit</button>
+                                                <button onClick={() => onDelete(trade.id)} className="font-medium text-[#EF4444] hover:underline flex items-center gap-1.5" aria-label={`Delete trade for ${trade.pair} on ${formattedDate}`}>{ICONS.trash} Delete</button>
                                             </div>
                                             </td>
                                         </tr>

@@ -83,7 +83,7 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
                 </span>
             </div>
             <div className="flex items-center gap-4">
-                <span className="text-base text-[#8A91A8] hidden sm:block">{new Date(trade.date).toLocaleString()}</span>
+                <span className="text-base text-[#8A91A8] hidden sm:block">{new Date(trade.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
                 <button 
                     onClick={() => onEdit(trade)}
                     className="flex items-center gap-2 px-4 py-2 bg-[#2A2F3B] text-white rounded-lg hover:bg-[#373c49] border border-gray-600 hover:border-gray-500 transition-colors text-sm font-medium"

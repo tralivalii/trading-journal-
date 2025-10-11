@@ -659,8 +659,28 @@ function AppContent() {
   };
   
   const handleDeleteUserAccount = async () => {
-    alert("This functionality requires server-side logic to properly delete a user and is not implemented in this example.");
-    setDeleteConfirmModalOpen(false);
+    if (isGuest) {
+        showToast("This feature is not available in guest mode.", 'error');
+        setDeleteConfirmModalOpen(false);
+        return;
+    }
+
+    try {
+        // This RPC call assumes you have a `delete_user_account` function in your Supabase DB.
+        // This function should be SECURITY DEFINER and delete from auth.users where id = auth.uid().
+        const { error } = await supabase.rpc('delete_user_account');
+        if (error) throw error;
+        
+        // No success toast is needed, as the user will be logged out and redirected.
+        await supabase.auth.signOut();
+        dispatch({ type: 'SET_SESSION', payload: null });
+
+    } catch (error: any) {
+        console.error('Failed to delete user account:', error);
+        showToast(`Failed to delete account: ${error.message}. This may require a database function to be set up.`, 'error');
+    } finally {
+        setDeleteConfirmModalOpen(false);
+    }
   };
 
   const NavItem: React.FC<{view: View, label: string}> = ({view, label}) => (

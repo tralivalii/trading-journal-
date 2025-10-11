@@ -171,7 +171,7 @@ export const generateTemporalData = (trades: Trade[]) => {
         return cumulativePnl;
     });
 
-    const labels = sortedTrades.map(t => new Date(t.date).toLocaleDateString());
+    const labels = sortedTrades.map(t => new Date(t.date).toLocaleDateString('en-US'));
     
     const pointColors = sortedTrades.map(t => {
          switch (t.result) {
