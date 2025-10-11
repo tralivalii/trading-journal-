@@ -5,6 +5,7 @@ import { ICONS } from '../constants';
 import { filterTradesByPeriod } from '../services/statisticsService';
 import { useAppContext } from '../services/appState';
 import Skeleton from './ui/Skeleton';
+import DropdownMenu from './ui/DropdownMenu';
 
 interface TradesListProps {
   onEdit: (trade: Trade) => void;
@@ -92,8 +93,28 @@ const MobileTradeCard: React.FC<{
                 </span>
                 <div className="flex items-center gap-1">
                     <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="View trade"><span className="w-5 h-5 block">{ICONS.eye}</span></button>
-                    <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Edit trade"><span className="w-5 h-5 block">{ICONS.pencil}</span></button>
-                    <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Delete trade"><span className="w-5 h-5 block">{ICONS.trash}</span></button>
+                    <DropdownMenu
+                        trigger={
+                            <button className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="More actions">
+                                <span className="w-5 h-5 block">{ICONS.moreVertical}</span>
+                            </button>
+                        }
+                    >
+                        <div className="py-1">
+                            <button
+                                onClick={() => onEdit(trade)}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                            >
+                                {ICONS.pencil} Edit
+                            </button>
+                            <button
+                                onClick={() => onDelete(trade.id)}
+                                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500 hover:text-white flex items-center gap-3 transition-colors"
+                            >
+                                {ICONS.trash} Delete
+                            </button>
+                        </div>
+                    </DropdownMenu>
                 </div>
             </div>
         </div>
@@ -321,11 +342,35 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-center whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
-                                            <div className="flex justify-center items-center gap-4">
-                                                <button onClick={() => onView(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`View trade for ${trade.pair} on ${formattedDate}`}>{ICONS.eye} View</button>
-                                                <button onClick={() => onEdit(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`Edit trade for ${trade.pair} on ${formattedDate}`}>{ICONS.pencil} Edit</button>
-                                                <button onClick={() => onDelete(trade.id)} className="font-medium text-[#EF4444] hover:underline flex items-center gap-1.5" aria-label={`Delete trade for ${trade.pair} on ${formattedDate}`}>{ICONS.trash} Delete</button>
-                                            </div>
+                                                <div className="flex justify-center items-center gap-1">
+                                                    <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label={`View trade for ${trade.pair} on ${formattedDate}`}>
+                                                        <span className="w-5 h-5 block">{ICONS.eye}</span>
+                                                    </button>
+                                                    <DropdownMenu
+                                                        trigger={
+                                                            <button className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="More actions">
+                                                                <span className="w-5 h-5 block">{ICONS.moreVertical}</span>
+                                                            </button>
+                                                        }
+                                                    >
+                                                        <div className="py-1">
+                                                            <button
+                                                                onClick={() => onEdit(trade)}
+                                                                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3 transition-colors"
+                                                                aria-label={`Edit trade for ${trade.pair} on ${formattedDate}`}
+                                                            >
+                                                                {ICONS.pencil} Edit
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onDelete(trade.id)}
+                                                                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500 hover:text-white flex items-center gap-3 transition-colors"
+                                                                aria-label={`Delete trade for ${trade.pair} on ${formattedDate}`}
+                                                            >
+                                                                {ICONS.trash} Delete
+                                                            </button>
+                                                        </div>
+                                                    </DropdownMenu>
+                                                </div>
                                             </td>
                                         </tr>
                                         )})}
