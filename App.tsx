@@ -426,10 +426,58 @@ const TOAST_ICONS = {
   ),
 };
 
+const ToastComponent: React.FC<{
+  toast: { id: number; message: string; type: 'success' | 'error' };
+  onClose: (id: number) => void;
+}> = ({ toast, onClose }) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    // Animate in
+    const enterTimer = setTimeout(() => setIsVisible(true), 10);
+    
+    // Schedule animation out and removal
+    const exitTimer = setTimeout(() => {
+      setIsVisible(false);
+      const removeTimer = setTimeout(() => onClose(toast.id), 300); // Wait for animation
+      return () => clearTimeout(removeTimer);
+    }, 4000);
+
+    return () => {
+      clearTimeout(enterTimer);
+      clearTimeout(exitTimer);
+    };
+  }, [toast.id, onClose]);
+
+  const handleClose = () => {
+    setIsVisible(false);
+    setTimeout(() => onClose(toast.id), 300);
+  };
+
+  return (
+    <div className={`w-full max-w-sm transform transition-all duration-300 ease-in-out ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}>
+        <div className="bg-[#2A2F3B] rounded-lg shadow-2xl border border-gray-700/50 flex overflow-hidden">
+            <div className={`w-1.5 flex-shrink-0 ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <div className="p-4 flex items-start gap-3 flex-grow">
+                <div className={`w-6 h-6 flex-shrink-0 ${toast.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                    {toast.type === 'success' ? TOAST_ICONS.success : TOAST_ICONS.error}
+                </div>
+                <div className="flex-grow text-sm text-gray-200 pt-0.5">
+                    <p>{toast.message}</p>
+                </div>
+                <button onClick={handleClose} className="text-gray-500 hover:text-white transition-colors flex-shrink-0 -mr-1 -mt-1 p-1 rounded-full" aria-label="Close notification">
+                    <span className="w-5 h-5 block">{TOAST_ICONS.close}</span>
+                </button>
+            </div>
+        </div>
+    </div>
+  );
+};
+
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { session, currentUser, userData, isLoading, isGuest, hasMoreTrades, isFetchingMore, toast, syncStatus } = state;
+  const { session, currentUser, userData, isLoading, isGuest, hasMoreTrades, isFetchingMore, toasts, syncStatus } = state;
 
   const [isFormModalOpen, setFormModalOpen] = useState(false);
   const tradeFormRef = useRef<{ handleCloseRequest: () => void }>(null);
@@ -445,30 +493,10 @@ function AppContent() {
   
   const [showFab, setShowFab] = useState(true);
   const lastScrollY = useRef(0);
-  const toastTimerRef = useRef<number | null>(null);
   const prevSyncStatusRef = useRef(syncStatus);
   
-  useEffect(() => {
-    if (toast) {
-        if (toastTimerRef.current) {
-            clearTimeout(toastTimerRef.current);
-        }
-        toastTimerRef.current = window.setTimeout(() => {
-            dispatch({ type: 'HIDE_TOAST' });
-        }, 4000);
-    }
-    return () => {
-        if (toastTimerRef.current) {
-            clearTimeout(toastTimerRef.current);
-        }
-    };
-  }, [toast, dispatch]);
-
-  const closeToast = useCallback(() => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    dispatch({ type: 'HIDE_TOAST' });
+  const closeToast = useCallback((id: number) => {
+    dispatch({ type: 'HIDE_TOAST', payload: id });
   }, [dispatch]);
 
   // Stable sync handler
@@ -811,35 +839,11 @@ function AppContent() {
         </button>
       )}
 
-      {toast && (
-        <div key={toast.id} className="fixed top-5 right-5 w-full max-w-sm z-[100] animate-toast-in-out">
-            <div className="bg-[#2A2F3B] rounded-lg shadow-2xl border border-gray-700/50 flex overflow-hidden">
-                <div className={`w-1.5 flex-shrink-0 ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <div className="p-4 flex items-start gap-3 flex-grow">
-                    <div className={`w-6 h-6 flex-shrink-0 ${toast.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-                        {toast.type === 'success' ? TOAST_ICONS.success : TOAST_ICONS.error}
-                    </div>
-                    <div className="flex-grow text-sm text-gray-200 pt-0.5">
-                        <p>{toast.message}</p>
-                    </div>
-                    <button onClick={closeToast} className="text-gray-500 hover:text-white transition-colors flex-shrink-0 -mr-1 -mt-1 p-1 rounded-full" aria-label="Close notification">
-                        <span className="w-5 h-5 block">{TOAST_ICONS.close}</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
-      <style>{`
-        @keyframes toast-in-out {
-          0% { opacity: 0; transform: translateX(100%); }
-          15% { opacity: 1; transform: translateX(0); }
-          85% { opacity: 1; transform: translateX(0); }
-          100% { opacity: 0; transform: translateX(100%); }
-        }
-        .animate-toast-in-out {
-          animation: toast-in-out 4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-      `}</style>
+      <div className="fixed top-5 right-5 w-full max-w-sm z-[100] space-y-3">
+          {toasts.map((toast) => (
+              <ToastComponent key={toast.id} toast={toast} onClose={closeToast} />
+          ))}
+      </div>
 
       <Modal 
         isOpen={isFormModalOpen} 

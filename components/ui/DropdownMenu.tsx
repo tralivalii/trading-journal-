@@ -8,6 +8,7 @@ interface DropdownMenuProps {
 const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, children }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [positionClass, setPositionClass] = useState('origin-top-right top-full mt-2');
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -20,6 +21,20 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, children }) => {
   }, []);
 
   const handleTriggerClick = () => {
+    if (!isOpen && menuRef.current) {
+        const triggerRect = menuRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - triggerRect.bottom;
+        // Set a threshold for menu height, a 2-item menu is roughly 90px high.
+        const menuHeightThreshold = 100;
+
+        if (spaceBelow < menuHeightThreshold && triggerRect.top > menuHeightThreshold) {
+            // Not enough space below, but enough above -> open upwards
+            setPositionClass('origin-bottom-right bottom-full mb-2');
+        } else {
+            // Default -> open downwards
+            setPositionClass('origin-top-right top-full mt-2');
+        }
+    }
     setIsOpen(prev => !prev);
   };
 
@@ -30,7 +45,7 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, children }) => {
       </div>
       {isOpen && (
         <div 
-          className="absolute right-0 mt-2 w-56 origin-top-right bg-[#2A2F3B] rounded-md shadow-lg border border-gray-700/50 z-20"
+          className={`absolute right-0 w-56 bg-[#2A2F3B] rounded-md shadow-lg border border-gray-700/50 z-20 ${positionClass}`}
           onClick={() => setIsOpen(false)} // Close menu on item click
         >
           {children}

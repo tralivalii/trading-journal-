@@ -26,7 +26,7 @@ interface AppState {
   isFetchingMore: boolean;
   hasMoreNotes: boolean;
   isFetchingMoreNotes: boolean;
-  toast: Toast | null;
+  toasts: Toast[];
   syncStatus: SyncStatus;
 }
 
@@ -44,7 +44,7 @@ type Action =
   | { type: 'FETCH_MORE_NOTES_START' }
   | { type: 'FETCH_MORE_NOTES_SUCCESS'; payload: { notes: Note[]; hasMore: boolean } }
   | { type: 'SHOW_TOAST'; payload: Omit<Toast, 'id'> }
-  | { type: 'HIDE_TOAST' }
+  | { type: 'HIDE_TOAST'; payload: number }
   | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
 
 
@@ -62,7 +62,7 @@ const initialState: AppState = {
   isFetchingMore: false,
   hasMoreNotes: false,
   isFetchingMoreNotes: false,
-  toast: null,
+  toasts: [],
   syncStatus: navigator.onLine ? 'online' : 'offline',
 };
 
@@ -166,9 +166,14 @@ const appReducer = (state: AppState, action: Action): AppState => {
             hasMoreNotes: action.payload.hasMore,
         };
     case 'SHOW_TOAST':
-        return { ...state, toast: { ...action.payload, id: Date.now() } };
+        const newToast = { ...action.payload, id: Date.now() };
+        const updatedToasts = [newToast, ...state.toasts].slice(0, 5); // Keep a max of 5 toasts
+        return { ...state, toasts: updatedToasts };
     case 'HIDE_TOAST':
-        return { ...state, toast: null };
+        return { 
+            ...state, 
+            toasts: state.toasts.filter(toast => toast.id !== action.payload) 
+        };
     case 'SET_SYNC_STATUS':
         return { ...state, syncStatus: action.payload };
     default:

@@ -325,10 +325,12 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                             return (
                                         <tr key={trade.id} onPointerUp={() => onView(trade)} className="odd:bg-[#232733] even:bg-[#2A2F3B] border-b border-gray-700/50 last:border-b-0 hover:bg-gray-700/50 transition-colors cursor-pointer">
                                             <td className="px-6 py-4 whitespace-nowrap">{formattedDate}</td>
-                                            <td className="px-6 py-4 font-medium text-white flex items-center gap-2 whitespace-nowrap">
-                                                {trade.pair}
-                                                {account?.isArchived && <AlertIcon message="Account Archived" />}
-                                                {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
+                                            <td className="px-6 py-4 font-medium text-white whitespace-nowrap">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{trade.pair}</span>
+                                                    {account?.isArchived && <AlertIcon message="Account Archived" />}
+                                                    {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
+                                                </div>
                                             </td>
                                             <td className={`px-6 py-4 font-semibold ${trade.direction === 'Long' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>{trade.direction}</td>
                                             <td className="px-6 py-4">{trade.rr.toFixed(2)}</td>
