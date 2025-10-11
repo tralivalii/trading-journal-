@@ -17,7 +17,7 @@ const DataCard: React.FC<{ title: string, children: React.ReactNode }> = ({ titl
 
 const NoData: React.FC<{ message?: string }> = ({ message }) => (
     <div className="text-center py-8 text-[#8A91A8] flex-grow flex flex-col items-center justify-center gap-4">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24" stroke="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         <p>{message || "Not enough data to display."}</p>
@@ -30,7 +30,7 @@ const AnalysisView: React.FC = () => {
     const { state } = useAppContext();
     const { trades, accounts } = state.userData!;
     const [activeGroup, setActiveGroup] = useState<AnalysisGroup>(Result.Loss);
-    const [period, setPeriod] = useState<Period>('all');
+    const [period, setPeriod] = useState<Period>('month');
 
     const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
     const activeAccountIds = useMemo(() => new Set(activeAccounts.map(a => a.id)), [activeAccounts]);
@@ -109,9 +109,9 @@ const AnalysisView: React.FC = () => {
     
     return (
         <div>
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold text-white">Trade Analysis</h1>
-                <div className="flex flex-wrap items-center gap-2 mt-4">
+            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h1 className="text-3xl font-bold text-white flex-shrink-0">Trade Analysis</h1>
+                <div className="flex flex-wrap items-center gap-2">
                     {(['week', 'month', 'quarter', 'all'] as Period[]).map(p => (
                         <button 
                             key={p} 

@@ -201,9 +201,9 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
 
     return (
         <div>
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-                <div className="flex flex-wrap items-center gap-2 mt-4">
+            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h1 className="text-3xl font-bold text-white flex-shrink-0">Dashboard</h1>
+                <div className="flex flex-wrap items-center gap-2">
                     {(['week', 'month', 'quarter', 'all'] as Period[]).map(p => (
                         <button 
                             key={p} 
