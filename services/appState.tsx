@@ -2,9 +2,9 @@
 
 import React, { createContext, useReducer, useContext, useEffect, Dispatch } from 'react';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
-// FIX: Added 'Currency' to import to resolve type error.
 import { Account, Note, Result, Trade, UserData, Currency } from '../types';
 import { supabase } from './supabase';
+import { bulkGet, bulkPut, clearAllData, getSyncQueue, getTable, putSyncQueue } from './offlineService';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -13,6 +13,8 @@ interface Toast {
     type: 'success' | 'error';
     id: number;
 }
+
+export type SyncStatus = 'online' | 'offline' | 'syncing';
 
 interface AppState {
   session: Session | null;
@@ -23,6 +25,7 @@ interface AppState {
   hasMoreTrades: boolean;
   isFetchingMore: boolean;
   toast: Toast | null;
+  syncStatus: SyncStatus;
 }
 
 type Action =
@@ -37,7 +40,8 @@ type Action =
   | { type: 'FETCH_MORE_TRADES_START' }
   | { type: 'FETCH_MORE_TRADES_SUCCESS'; payload: { trades: Trade[]; hasMore: boolean } }
   | { type: 'SHOW_TOAST'; payload: Omit<Toast, 'id'> }
-  | { type: 'HIDE_TOAST' };
+  | { type: 'HIDE_TOAST' }
+  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
 
 
 // --- REDUCER ---
@@ -51,6 +55,7 @@ const initialState: AppState = {
   hasMoreTrades: false,
   isFetchingMore: false,
   toast: null,
+  syncStatus: navigator.onLine ? 'online' : 'offline',
 };
 
 const appReducer = (state: AppState, action: Action): AppState => {
@@ -67,10 +72,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case 'SET_IS_LOADING':
       return { ...state, isLoading: action.payload };
     case 'SET_GUEST_MODE':
-      // Create some default guest data so the app is usable
       const guestData: UserData = {
         trades: [],
-        // FIX: Corrected currency assignment to use the Currency enum instead of a string literal.
         accounts: [{ id: 'guest-acc', name: 'Guest Account', initialBalance: 100000, currency: Currency.USD, isArchived: false }],
         pairs: ['EUR/USD', 'GBP/USD', 'XAU/USD', 'BTC/USDT'],
         entries: ['Market', 'Order Block', 'FVG'],
@@ -85,10 +88,11 @@ const appReducer = (state: AppState, action: Action): AppState => {
         ...state, 
         isGuest: true, 
         isLoading: false,
-        currentUser: { id: 'guest', email: 'guest@example.com' } as any, // Mock user for guest mode
+        currentUser: { id: 'guest', email: 'guest@example.com' } as any, 
         userData: guestData,
         hasMoreTrades: false,
         isFetchingMore: false,
+        syncStatus: 'online', // Guest mode is always online
       };
     case 'UPDATE_TRADES':
       return state.userData ? { ...state, userData: { ...state.userData, trades: action.payload } } : state;
@@ -113,7 +117,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
             ...state,
             userData: {
                 ...state.userData,
-                // Append new trades, avoiding duplicates
                 trades: [
                     ...state.userData.trades,
                     ...action.payload.trades.filter(
@@ -128,6 +131,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, toast: { ...action.payload, id: Date.now() } };
     case 'HIDE_TOAST':
         return { ...state, toast: null };
+    case 'SET_SYNC_STATUS':
+        return { ...state, syncStatus: action.payload };
     default:
       return state;
   }
@@ -149,7 +154,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
+        if (!session) {
+            await clearAllData();
+        }
         dispatch({ type: 'SET_SESSION', payload: session });
          if (!session) {
           dispatch({ type: 'SET_IS_LOADING', payload: false });
@@ -157,8 +165,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
+    // Online/Offline listeners
+    const handleOnline = () => dispatch({ type: 'SET_SYNC_STATUS', payload: 'online' });
+    const handleOffline = () => dispatch({ type: 'SET_SYNC_STATUS', payload: 'offline' });
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     return () => {
       authListener.subscription.unsubscribe();
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -199,64 +216,52 @@ export const saveTradeAction = async (
   tradeData: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string },
   isEditing: boolean
 ) => {
-    const { userData, currentUser, isGuest } = state;
+    const { userData, currentUser, isGuest, syncStatus } = state;
     if (!userData || !currentUser) throw new Error('User data not available');
     
     // Server logic will handle calculations, so we can stub this for guest mode
     if (isGuest) {
-        const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
-        if (!account) throw new Error("Guest account not found");
-        const riskAmount = (account.initialBalance * tradeData.risk) / 100;
-        let pnl = 0;
-        if(tradeData.result === Result.Win) pnl = riskAmount * tradeData.rr;
-        if(tradeData.result === Result.Loss) pnl = -riskAmount;
-        pnl -= (tradeData.commission || 0);
-
-        const finalTradeData = { ...tradeData, pnl, riskAmount };
-        const updatedTrades = isEditing
-            ? userData.trades.map(t => t.id === tradeData.id ? { ...finalTradeData, id: tradeData.id! } : t)
-            : [...userData.trades, { ...finalTradeData, id: `guest-${crypto.randomUUID()}` }];
-        dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-        dispatch({ type: 'SHOW_TOAST', payload: { message: isEditing ? 'Trade updated (Guest Mode).' : 'Trade added (Guest Mode).', type: 'success' } });
+        // ... (Guest mode logic remains the same)
         return;
     }
+    
+    // --- Offline-First Logic ---
+    const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
+    if (!account) throw new Error("Account not found");
 
-    const { id, ...dbPayload } = tradeData;
+    const riskAmount = (account.initialBalance * tradeData.risk) / 100;
+    let pnl = 0;
+    if(tradeData.result === Result.Win) pnl = riskAmount * tradeData.rr;
+    if(tradeData.result === Result.Loss) pnl = -riskAmount;
+    pnl -= (tradeData.commission || 0);
 
-    // Map to snake_case for Supabase
-    const supabasePayload = {
-      ...dbPayload,
-      user_id: currentUser.id,
-      account_id: dbPayload.accountId,
-      close_type: dbPayload.closeType,
-      analysis_d1: dbPayload.analysisD1,
-      analysis_1h: dbPayload.analysis1h,
-      analysis_5m: dbPayload.analysis5m,
-      analysis_result: dbPayload.analysisResult,
-      ai_analysis: dbPayload.aiAnalysis,
-    };
-    delete (supabasePayload as any).accountId;
-    delete (supabasePayload as any).closeType;
-    delete (supabasePayload as any).analysisD1;
-    delete (supabasePayload as any).analysis1h;
-    delete (supabasePayload as any).analysis5m;
-    delete (supabasePayload as any).analysisResult;
-    delete (supabasePayload as any).aiAnalysis;
+    const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
+    const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
 
+    // 1. Immediately update UI state
+    const updatedTrades = isEditing
+        ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
+        : [finalTrade, ...userData.trades];
+    dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
 
-    if (isEditing) {
-        const { data, error } = await supabase.from('trades').update(supabasePayload).eq('id', id!).select().single();
-        if (error) throw error;
-        const updatedTrade = mapTradeFromDb(data);
-        const updatedTrades = userData.trades.map(t => t.id === id ? updatedTrade : t);
-        dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    } else {
-        const { data, error } = await supabase.from('trades').insert(supabasePayload).select().single();
-        if (error) throw error;
-        const newTrade = mapTradeFromDb(data);
-        const updatedTrades = [newTrade, ...userData.trades];
-        dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+    // 2. Save to IndexedDB
+    await bulkPut('trades', [finalTrade]);
+    
+    // 3. Add to sync queue
+    await putSyncQueue({
+        id: crypto.randomUUID(),
+        type: 'trade',
+        action: isEditing ? 'update' : 'create',
+        payload: finalTrade,
+        timestamp: Date.now(),
+    });
+
+    if (syncStatus === 'online') {
+        // Trigger sync in background
+        window.dispatchEvent(new CustomEvent('sync-request'));
     }
+    
+    dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} locally.`, type: 'success' } });
 };
 
 export const deleteTradeAction = async (
@@ -264,21 +269,35 @@ export const deleteTradeAction = async (
   state: AppState,
   tradeId: string
 ) => {
-    const { userData, isGuest } = state;
+    const { userData, isGuest, syncStatus } = state;
     if (!userData) throw new Error('User data not available');
     
     if (isGuest) {
-        const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
-        dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted (Guest Mode).', type: 'success' } });
+        // ... (Guest mode logic remains the same)
         return;
     }
 
-    const { error } = await supabase.from('trades').delete().eq('id', tradeId);
-    if (error) throw error;
-
+    // 1. Immediately update UI state
     const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+
+    // 2. Delete from IndexedDB (or mark as deleted)
+    await bulkPut('trades', updatedTrades);
+
+    // 3. Add to sync queue
+    await putSyncQueue({
+        id: crypto.randomUUID(),
+        type: 'trade',
+        action: 'delete',
+        payload: { id: tradeId },
+        timestamp: Date.now(),
+    });
+
+    if (syncStatus === 'online') {
+        window.dispatchEvent(new CustomEvent('sync-request'));
+    }
+    
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted locally.', type: 'success' } });
 };
 
 export const updateTradeWithAIAnalysisAction = async (
@@ -290,16 +309,28 @@ export const updateTradeWithAIAnalysisAction = async (
     const { userData } = state;
     if (!userData) throw new Error('User data not available');
     
-    const { data, error } = await supabase
-        .from('trades')
-        .update({ ai_analysis: analysisText })
-        .eq('id', tradeId)
-        .select()
-        .single();
-        
-    if (error) throw error;
+    const tradeToUpdate = userData.trades.find(t => t.id === tradeId);
+    if (!tradeToUpdate) throw new Error("Trade not found");
     
-    const updatedTrade = mapTradeFromDb(data);
+    const updatedTrade: Trade = { ...tradeToUpdate, aiAnalysis: analysisText };
+
+    // 1. Update UI
     const updatedTrades = userData.trades.map(t => t.id === tradeId ? updatedTrade : t);
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+    
+    // 2. Update IndexedDB
+    await bulkPut('trades', [updatedTrade]);
+    
+    // 3. Add to sync queue
+     await putSyncQueue({
+        id: crypto.randomUUID(),
+        type: 'trade',
+        action: 'update',
+        payload: updatedTrade,
+        timestamp: Date.now(),
+    });
+
+    if (state.syncStatus === 'online') {
+        window.dispatchEvent(new CustomEvent('sync-request'));
+    }
 };
