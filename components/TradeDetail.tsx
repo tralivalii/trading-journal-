@@ -24,20 +24,20 @@ const DetailItem: React.FC<{ label: string; value: React.ReactNode; className?: 
 
 const AnalysisDetailSection: React.FC<{ 
     analysis: Analysis;
-    onImageClick: (src: string | null) => void;
+    onImageClick: (src: string | null, notes?: string) => void;
 }> = ({ analysis, onImageClick }) => {
     const imageUrl = useImageBlobUrl(analysis.image, { transform: { width: 600, quality: 80 } });
     
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
             <div className="space-y-4">
-                 <div className="w-full">
+                 <div className="w-full flex justify-center">
                     {imageUrl ? (
                         <img 
                             src={imageUrl} 
                             alt={`Analysis chart`} 
-                            className="rounded-md border border-gray-700 w-full cursor-pointer hover:opacity-90 transition-opacity object-contain"
-                            onClick={() => onImageClick(imageUrl)}
+                            className="rounded-md border border-gray-700 max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity object-contain"
+                            onClick={() => onImageClick(imageUrl, analysis.notes)}
                         />
                     ) : (
                         <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full">No Image</div>
@@ -54,7 +54,7 @@ const AnalysisDetailSection: React.FC<{
 
 const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => {
   const { state, dispatch } = useAppContext();
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [fullscreenData, setFullscreenData] = useState<{ src: string; notes?: string } | null>(null);
   const [activeTab, setActiveTab] = useState<AnalysisTab>('D1');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -63,6 +63,14 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
   const analysis1hImageUrl = useImageBlobUrl(trade.analysis1h.image);
   const analysis5mImageUrl = useImageBlobUrl(trade.analysis5m.image);
   const analysisResultImageUrl = useImageBlobUrl(trade.analysisResult.image);
+
+  const handleImageClick = (src: string | null, notes?: string) => {
+    if (src) {
+        setFullscreenData({ src, notes });
+    } else {
+        setFullscreenData(null);
+    }
+  };
 
   const handleAiAnalysis = async () => {
     if (state.isGuest) {
@@ -180,7 +188,7 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
             <div>
                 <AnalysisDetailSection 
                     analysis={analysisContent[activeTab]}
-                    onImageClick={setFullscreenImage}
+                    onImageClick={handleImageClick}
                 />
             </div>
         </div>
@@ -213,16 +221,35 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
             </div>
         </div>
       
-      {fullscreenImage && (
+      {fullscreenData && (
         <div 
-          className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4 cursor-pointer" 
-          onClick={() => setFullscreenImage(null)}
+          className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4" 
+          onClick={() => setFullscreenData(null)}
         >
-          <img 
-            src={fullscreenImage} 
-            alt="Fullscreen view" 
-            className="max-w-full max-h-full object-contain rounded-lg"
-          />
+          <div
+            className="relative w-auto h-auto max-w-full max-h-full flex"
+            onClick={e => e.stopPropagation()}
+          >
+            <img 
+              src={fullscreenData.src} 
+              alt="Fullscreen view" 
+              className="block max-w-full max-h-[95vh] object-contain rounded-lg"
+            />
+            {fullscreenData.notes && (
+              <div
+                className="absolute bottom-0 left-0 right-0 p-4 bg-black/60 backdrop-blur-sm text-white text-sm rounded-b-lg"
+              >
+                <p className="max-w-4xl mx-auto whitespace-pre-wrap">{fullscreenData.notes}</p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setFullscreenData(null)}
+            className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-1.5 hover:bg-black/80 transition-colors"
+            aria-label="Close fullscreen view"
+          >
+            <span className="w-6 h-6 block">{ICONS.x}</span>
+          </button>
         </div>
       )}
     </div>
