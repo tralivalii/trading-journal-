@@ -1,199 +1,392 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
-import { useAppContext, deleteTradeAction, fetchMoreTradesAction } from '../services/appState';
+import React, { useState, useMemo } from 'react';
+// FIX: Changed imports to be relative paths
 import { Trade, Result, Account } from '../types';
-import Modal from './ui/Modal';
-import TradeDetail from './TradeDetail';
-import TradeForm from './TradeForm';
 import { ICONS } from '../constants';
-import CustomSelect from './ui/CustomSelect';
+import { filterTradesByPeriod } from '../services/statisticsService';
+import { useAppContext } from '../services/appState';
+import Skeleton from './ui/Skeleton';
 
-const TRADES_PAGE_SIZE = 20;
+interface TradesListProps {
+  onEdit: (trade: Trade) => void;
+  onView: (trade: Trade) => void;
+  onDelete: (id: string) => void;
+  onAddTrade: () => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  isFetchingMore: boolean;
+}
 
-const TradesList: React.FC = () => {
-    const { state, dispatch } = useAppContext();
-    const { userData, hasMoreTrades, isFetchingMore } = state;
-    const { trades, accounts } = userData!;
+type JournalPeriod = 'this-month' | 'last-month' | 'this-quarter' | 'all';
 
-    const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-    const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
-    const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
-    
-    const [searchQuery, setSearchQuery] = useState('');
-    const [sortKey, setSortKey] = useState<'date' | 'pnl' | 'rr'>('date');
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-    
-    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
-    const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc])), [accounts]);
+const AlertIcon: React.FC<{ message: string }> = ({ message }) => (
+    <div className="relative flex items-center group">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.257 3.099c.636-1.22 2.85-1.22 3.486 0l5.58 10.796c.636 1.22-.474 2.605-1.743 2.605H4.42c-1.269 0-2.379-1.385-1.743-2.605l5.58-10.796zM10 14a1 1 0 100-2 1 1 0 000 2zm-1-3a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" />
+        </svg>
+        <div className="absolute bottom-full mb-2 w-max px-2 py-1 bg-gray-900 text-white text-xs rounded-md border border-gray-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            {message}
+        </div>
+    </div>
+);
 
-    const filteredAndSortedTrades = useMemo(() => {
-        let filtered = trades.filter(trade => 
-            trade.pair.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        
-        return filtered.sort((a, b) => {
-            let valA, valB;
-            if (sortKey === 'date') {
-                valA = new Date(a.date).getTime();
-                valB = new Date(b.date).getTime();
-            } else {
-                valA = a[sortKey];
-                valB = b[sortKey];
-            }
-            return sortDir === 'asc' ? valA - valB : valB - valA;
-        });
-    }, [trades, searchQuery, sortKey, sortDir]);
-
-    const handleNewTrade = () => {
-        setTradeToEdit(null);
-        setIsFormModalOpen(true);
-    };
-
-    const handleEditTrade = (trade: Trade) => {
-        setTradeToEdit(trade);
-        setIsDetailModalOpen(false); // Close detail view if open
-        setIsFormModalOpen(true);
-    };
-    
-    const handleViewTrade = (trade: Trade) => {
-        setSelectedTrade(trade);
-        setIsDetailModalOpen(true);
-    };
-
-    const handleDeleteTrade = async (tradeId: string) => {
-        if (confirm('Are you sure you want to delete this trade?')) {
-            await deleteTradeAction(dispatch, state, tradeId);
-        }
-    };
-    
-    const handleSaveTrade = () => {
-        setIsFormModalOpen(false);
-        setTradeToEdit(null);
-    };
-    
-    const getResultClasses = (result: Result) => {
-        switch (result) {
-            case Result.Win: return 'bg-[#10B981]/10 text-[#10B981]';
-            case Result.Loss: return 'bg-[#EF4444]/10 text-[#EF4444]';
-            case Result.Breakeven: return 'bg-gray-500/10 text-[#8A91A8]';
-            case Result.InProgress: return 'bg-yellow-500/10 text-yellow-400';
-            case Result.Missed: return 'bg-blue-500/10 text-blue-400';
-            default: return 'bg-gray-700 text-white';
-        }
-    };
-    
-    const currency = (accountId: string) => accountMap.get(accountId)?.currency || 'USD';
-    
-    const handleLoadMore = () => {
-        if (!isFetchingMore) {
-            fetchMoreTradesAction(dispatch, state, TRADES_PAGE_SIZE);
-        }
+const getResultClasses = (result: Result) => {
+    switch (result) {
+      case Result.Win: return 'bg-[#10B981]/10 text-[#10B981]';
+      case Result.Loss: return 'bg-[#EF4444]/10 text-[#EF4444]';
+      case Result.Breakeven: return 'bg-gray-500/10 text-[#8A91A8]';
+      case Result.InProgress: return 'bg-yellow-500/10 text-yellow-400';
+      case Result.Missed: return 'bg-blue-500/10 text-blue-400';
+      default: return 'bg-gray-700 text-white';
     }
-    
-    if (activeAccounts.length === 0) {
-        return (
-            <div className="text-center py-10">
-                <h2 className="text-xl font-semibold text-white">No Active Accounts</h2>
-                <p className="text-[#8A91A8] mt-2">Please create an active account in Settings to start logging trades.</p>
-            </div>
-        );
-    }
-    
+};
+
+const MobileTradeCard: React.FC<{
+    trade: Trade;
+    account?: Account;
+    onView: (trade: Trade) => void;
+    onEdit: (trade: Trade) => void;
+    onDelete: (id: string) => void;
+    formattedDate: string;
+}> = ({ trade, account, onView, onEdit, onDelete, formattedDate }) => {
+    const currency = account?.currency || 'USD';
+    const hasAlerts = account?.isArchived || trade.risk > 2;
+
     return (
-        <div>
-            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                <h1 className="text-3xl font-bold text-white">Trades</h1>
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                    <input
-                        type="text"
-                        placeholder="Search by pair..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full md:w-48 bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                    />
-                    <button onClick={handleNewTrade} className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors flex items-center gap-2">
-                        <span className="w-5 h-5">{ICONS.plus}</span> New Trade
-                    </button>
-                </div>
-            </div>
-
-            <div className="bg-[#232733] rounded-lg border border-gray-700/50">
-                <div className="hidden md:grid grid-cols-12 gap-4 p-4 font-semibold text-xs text-[#8A91A8] uppercase tracking-wider border-b border-gray-700/50">
-                    <div className="col-span-2">Date</div>
-                    <div className="col-span-2">Pair</div>
-                    <div className="col-span-2">Direction</div>
-                    <div className="col-span-2">Result</div>
-                    <div className="col-span-2">PnL</div>
-                    <div className="col-span-1">R:R</div>
-                    <div className="col-span-1 text-right">Actions</div>
-                </div>
-
-                {filteredAndSortedTrades.length > 0 ? (
-                    filteredAndSortedTrades.map(trade => (
-                        <div key={trade.id} className="grid grid-cols-2 md:grid-cols-12 gap-4 p-4 border-b border-gray-700/50 items-center hover:bg-gray-800/50 transition-colors">
-                            <div className="md:col-span-2">
-                                <span className="md:hidden text-xs text-[#8A91A8] uppercase">Date: </span>
-                                <span className="text-sm font-medium text-white">{new Date(trade.date).toLocaleDateString()}</span>
-                            </div>
-                            <div className="md:col-span-2">
-                                <span className="md:hidden text-xs text-[#8A91A8] uppercase">Pair: </span>
-                                <span className="text-sm font-semibold text-white">{trade.pair}</span>
-                            </div>
-                            <div className="md:col-span-2">
-                                <span className="md:hidden text-xs text-[#8A91A8] uppercase">Direction: </span>
-                                <span className={`text-sm font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</span>
-                            </div>
-                            <div className="col-span-2 md:col-span-2 text-right md:text-left">
-                                <CustomSelect<Result>
-                                    value={trade.result}
-                                    options={Object.values(Result)}
-                                    onChange={(newResult) => {/* Quick edit could be here */}}
-                                    getDisplayClasses={getResultClasses}
-                                />
-                            </div>
-                             <div className="md:col-span-2">
-                                <span className="md:hidden text-xs text-[#8A91A8] uppercase">PnL: </span>
-                                <span className={`text-sm font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {trade.pnl.toLocaleString('en-US', { style: 'currency', currency: currency(trade.accountId) })}
-                                </span>
-                            </div>
-                            <div className="md:col-span-1">
-                                <span className="md:hidden text-xs text-[#8A91A8] uppercase">R:R: </span>
-                                <span className="text-sm font-medium text-white">{trade.rr.toFixed(2)}</span>
-                            </div>
-                            <div className="col-span-2 md:col-span-1 flex justify-end gap-2 items-center">
-                                <button onClick={() => handleViewTrade(trade)} className="p-2 text-gray-400 hover:text-white transition-colors">{ICONS.eye}</button>
-                                <button onClick={() => handleEditTrade(trade)} className="p-2 text-gray-400 hover:text-white transition-colors">{ICONS.pencil}</button>
-                                <button onClick={() => handleDeleteTrade(trade.id)} className="p-2 text-gray-400 hover:text-red-400 transition-colors">{ICONS.trash}</button>
-                            </div>
+        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors">
+            {/* Top row */}
+            <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-base">{trade.pair}</span>
+                    {hasAlerts && (
+                        <div className="flex items-center gap-1.5">
+                            {account?.isArchived && <AlertIcon message="Account Archived" />}
+                            {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
                         </div>
-                    ))
-                ) : (
-                    <div className="text-center py-10 text-[#8A91A8]">
-                        <p>No trades found. Click "New Trade" to get started.</p>
-                    </div>
-                )}
-                 {hasMoreTrades && (
-                    <div className="p-4 text-center">
-                        <button onClick={handleLoadMore} disabled={isFetchingMore} className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-800 disabled:cursor-wait font-medium text-sm">
-                            {isFetchingMore ? 'Loading...' : 'Load More Trades'}
-                        </button>
-                    </div>
-                )}
+                    )}
+                </div>
+                <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{formattedDate}</span>
             </div>
-            
-            <Modal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} size="4xl">
-                <TradeForm tradeToEdit={tradeToEdit} onSave={handleSaveTrade} onCancel={() => setIsFormModalOpen(false)} />
-            </Modal>
-            
-            {selectedTrade && (
-                <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Trade Details" size="5xl">
-                    <TradeDetail trade={selectedTrade} account={accountMap.get(selectedTrade.accountId)} onEdit={handleEditTrade} />
-                </Modal>
-            )}
+
+            {/* Middle row */}
+            <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                <div>
+                    <div className="text-xs text-gray-400">Direction</div>
+                    <div className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</div>
+                </div>
+                <div>
+                    <div className="text-xs text-gray-400">R:R</div>
+                    <div className="font-semibold text-white">{trade.rr.toFixed(2)}</div>
+                </div>
+                <div>
+                    <div className="text-xs text-gray-400">PnL</div>
+                    <div className={`font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {trade.pnl.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </div>
+                </div>
+            </div>
+
+            {/* Bottom row */}
+            <div className="flex justify-between items-center" onPointerUp={e => e.stopPropagation()}>
+                <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center w-28 inline-block ${getResultClasses(trade.result)}`}>
+                    {trade.result}
+                </span>
+                <div className="flex items-center gap-1">
+                    <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="View trade"><span className="w-5 h-5 block">{ICONS.eye}</span></button>
+                    <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Edit trade"><span className="w-5 h-5 block">{ICONS.pencil}</span></button>
+                    <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Delete trade"><span className="w-5 h-5 block">{ICONS.trash}</span></button>
+                </div>
+            </div>
         </div>
     );
+};
+
+const TradesListSkeleton: React.FC = () => (
+    <div className="space-y-8">
+        {[1, 2].map(i => (
+            <div key={i}>
+                <Skeleton className="h-7 w-48 mb-3" />
+                {/* Desktop Skeleton */}
+                <div className="hidden lg:block bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden">
+                    <table className="w-full">
+                        <thead className="text-xs text-[#8A91A8] uppercase bg-gray-800">
+                             <tr>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-16" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-24" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-20" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-12" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-10" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-20" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-28" /></th>
+                                <th className="px-6 py-3 text-center"><Skeleton className="h-4 w-32 mx-auto" /></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {[1, 2, 3].map(j => (
+                                <tr key={j} className="odd:bg-[#232733] even:bg-[#2A2F3B] border-b border-gray-700/50">
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-16" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-24" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-12" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-10" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-8" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-20" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-6 w-28 rounded-full" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-32 mx-auto" /></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                {/* Mobile Skeleton */}
+                <div className="lg:hidden space-y-2">
+                    {[1, 2, 3].map(j => (
+                        <div key={j} className="bg-[#2A2F3B] rounded-lg p-3 border border-transparent">
+                            <div className="flex justify-between items-start mb-3">
+                                <Skeleton className="h-6 w-32" />
+                                <Skeleton className="h-4 w-16" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                                <div><Skeleton className="h-4 w-12 mx-auto" /><Skeleton className="h-5 w-10 mx-auto mt-1" /></div>
+                                <div><Skeleton className="h-4 w-8 mx-auto" /><Skeleton className="h-5 w-12 mx-auto mt-1" /></div>
+                                <div><Skeleton className="h-4 w-10 mx-auto" /><Skeleton className="h-5 w-16 mx-auto mt-1" /></div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <Skeleton className="h-6 w-28 rounded-full" />
+                                <div className="flex items-center gap-1">
+                                    <Skeleton className="w-8 h-8 rounded-full" />
+                                    <Skeleton className="w-8 h-8 rounded-full" />
+                                    <Skeleton className="w-8 h-8 rounded-full" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        ))}
+    </div>
+);
+
+
+const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade, onLoadMore, hasMore, isFetchingMore }) => {
+  const { state } = useAppContext();
+  const { trades, accounts, isLoading } = state.userData!;
+  
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [period, setPeriod] = useState<JournalPeriod>('this-month');
+  
+  const accountsMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc])), [accounts]);
+  const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
+
+  const filteredTrades = useMemo(() => {
+    const accountFiltered = trades.filter(trade => selectedAccountId === 'all' || trade.accountId === selectedAccountId);
+    const periodFiltered = period === 'all' ? accountFiltered : filterTradesByPeriod(accountFiltered, period);
+    return periodFiltered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [trades, selectedAccountId, period]);
+
+  const groupedByMonthKey = useMemo(() => {
+    return filteredTrades.reduce((groups, trade) => {
+        const tradeDate = new Date(trade.date);
+        const year = tradeDate.getFullYear();
+        const month = tradeDate.getMonth();
+        const key = `${year}-${String(month).padStart(2, '0')}`; // e.g., "2024-09" for October
+
+        if (!groups[key]) {
+            groups[key] = [];
+        }
+        groups[key].push(trade);
+        return groups;
+    }, {} as Record<string, Trade[]>);
+  }, [filteredTrades]);
+
+  const sortedMonthKeys = useMemo(() => Object.keys(groupedByMonthKey).sort().reverse(), [groupedByMonthKey]);
+
+  const PeriodButton: React.FC<{p: JournalPeriod, label: string}> = ({ p, label }) => (
+    <button 
+      onClick={() => setPeriod(p)}
+      className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
+    >
+      {label}
+    </button>
+  );
+  
+  if (state.isLoading) {
+    return (
+        <div>
+             <div className="mb-6">
+                <Skeleton className="h-9 w-64" />
+                <div className="flex flex-wrap items-center gap-4 mt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Skeleton className="h-7 w-24 rounded-md" />
+                        <Skeleton className="h-7 w-24 rounded-md" />
+                        <Skeleton className="h-7 w-28 rounded-md" />
+                        <Skeleton className="h-7 w-20 rounded-md" />
+                    </div>
+                     <div>
+                        <Skeleton className="h-9 w-48 rounded-md" />
+                    </div>
+                </div>
+            </div>
+            <TradesListSkeleton />
+        </div>
+    );
+  }
+
+  return (
+    <div>
+        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <h1 className="text-3xl font-bold text-white flex-shrink-0">Trade Journal</h1>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <PeriodButton p="this-month" label="This Month" />
+                    <PeriodButton p="last-month" label="Last Month" />
+                    <PeriodButton p="this-quarter" label="This Quarter" />
+                    <PeriodButton p="all" label="All Time" />
+                </div>
+                <div>
+                    <label htmlFor="accountFilter" className="text-sm text-[#8A91A8] mr-2">Account:</label>
+                    <select 
+                        id="accountFilter"
+                        value={selectedAccountId}
+                        onChange={(e) => setSelectedAccountId(e.target.value)}
+                        className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                    >
+                        <option value="all">All Accounts</option>
+                        {activeAccounts.map(acc => (
+                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div className="space-y-8">
+            {sortedMonthKeys.length > 0 ? (
+                sortedMonthKeys.map(monthKey => {
+                    const [year, month] = monthKey.split('-');
+                    const monthName = new Date(parseInt(year), parseInt(month)).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+                    const monthTrades = groupedByMonthKey[monthKey];
+
+                    return (
+                         <div key={monthKey}>
+                            <h2 className="text-xl font-semibold text-white mb-3 pl-1">{monthName}</h2>
+                            
+                            {/* --- DESKTOP TABLE VIEW --- */}
+                            <div className="hidden lg:block bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left text-[#F0F0F0]">
+                                    <thead className="text-xs text-[#8A91A8] uppercase bg-gray-800">
+                                        <tr>
+                                        <th scope="col" className="px-6 py-3">Date</th>
+                                        <th scope="col" className="px-6 py-3">Pair</th>
+                                        <th scope="col" className="px-6 py-3">Direction</th>
+                                        <th scope="col" className="px-6 py-3">R:R</th>
+                                        <th scope="col" className="px-6 py-3">Risk</th>
+                                        <th scope="col" className="px-6 py-3">PnL</th>
+                                        <th scope="col" className="px-6 py-3">Result</th>
+                                        <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {monthTrades.map(trade => {
+                                            const account = accountsMap.get(trade.accountId);
+                                            const currency = account?.currency || 'USD';
+                                            const tradeDate = new Date(trade.date);
+                                            const formattedDate = tradeDate.toLocaleDateString('en-US', { year: '2-digit', month: 'short', day: 'numeric' });
+                                            return (
+                                        <tr key={trade.id} onPointerUp={() => onView(trade)} className="odd:bg-[#232733] even:bg-[#2A2F3B] border-b border-gray-700/50 last:border-b-0 hover:bg-gray-700/50 transition-colors cursor-pointer">
+                                            <td className="px-6 py-4 whitespace-nowrap">{formattedDate}</td>
+                                            <td className="px-6 py-4 font-medium text-white flex items-center gap-2 whitespace-nowrap">
+                                                {trade.pair}
+                                                {account?.isArchived && <AlertIcon message="Account Archived" />}
+                                                {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
+                                            </td>
+                                            <td className={`px-6 py-4 font-semibold ${trade.direction === 'Long' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>{trade.direction}</td>
+                                            <td className="px-6 py-4">{trade.rr.toFixed(2)}</td>
+                                            <td className="px-6 py-4">{trade.risk}%</td>
+                                            <td className={`px-6 py-4 font-semibold ${trade.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'} whitespace-nowrap`}>
+                                            {Math.abs(trade.pnl).toLocaleString('en-US', { style: 'currency', currency: currency })}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center w-28 inline-block ${getResultClasses(trade.result)}`}>
+                                                    {trade.result}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-center whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
+                                            <div className="flex justify-center items-center gap-4">
+                                                <button onClick={() => onView(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`View trade for ${trade.pair} on ${formattedDate}`}>{ICONS.eye} View</button>
+                                                <button onClick={() => onEdit(trade)} className="font-medium text-[#3B82F6] hover:underline flex items-center gap-1.5" aria-label={`Edit trade for ${trade.pair} on ${formattedDate}`}>{ICONS.pencil} Edit</button>
+                                                <button onClick={() => onDelete(trade.id)} className="font-medium text-[#EF4444] hover:underline flex items-center gap-1.5" aria-label={`Delete trade for ${trade.pair} on ${formattedDate}`}>{ICONS.trash} Delete</button>
+                                            </div>
+                                            </td>
+                                        </tr>
+                                        )})}
+                                    </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            {/* --- MOBILE CARD VIEW --- */}
+                            <div className="lg:hidden space-y-2">
+                                {monthTrades.map(trade => {
+                                    const account = accountsMap.get(trade.accountId);
+                                    const tradeDate = new Date(trade.date);
+                                    const formattedDate = tradeDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                    return (
+                                        <MobileTradeCard
+                                            key={trade.id}
+                                            trade={trade}
+                                            account={account}
+                                            onView={onView}
+                                            onEdit={onEdit}
+                                            onDelete={onDelete}
+                                            formattedDate={formattedDate}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })
+            ) : (
+                <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col items-center justify-center gap-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-gray-500">
+                        No trades found for the selected period.
+                    </p>
+                    <button 
+                        onClick={onAddTrade}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-[#3B82F6] text-white rounded-lg hover:bg-blue-500 transition-colors"
+                    >
+                       <span className="w-5 h-5">{ICONS.plus}</span> Add First Trade
+                    </button>
+                </div>
+            )}
+        </div>
+
+        {hasMore && period === 'all' && (
+            <div className="mt-8 text-center">
+                <button
+                    onClick={onLoadMore}
+                    disabled={isFetchingMore}
+                    className="px-6 py-2.5 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-800 disabled:cursor-wait font-medium flex items-center justify-center gap-2 mx-auto"
+                >
+                    {isFetchingMore ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Loading...
+                        </>
+                    ) : (
+                        'Load More'
+                    )}
+                </button>
+            </div>
+        )}
+    </div>
+  );
 };
 
 export default TradesList;
