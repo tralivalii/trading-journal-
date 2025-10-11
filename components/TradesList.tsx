@@ -93,28 +93,8 @@ const MobileTradeCard: React.FC<{
                 </span>
                 <div className="flex items-center gap-1">
                     <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="View trade"><span className="w-5 h-5 block">{ICONS.eye}</span></button>
-                    <DropdownMenu
-                        trigger={
-                            <button className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="More actions">
-                                <span className="w-5 h-5 block">{ICONS.moreVertical}</span>
-                            </button>
-                        }
-                    >
-                        <div className="py-1">
-                            <button
-                                onClick={() => onEdit(trade)}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3 transition-colors"
-                            >
-                                {ICONS.pencil} Edit
-                            </button>
-                            <button
-                                onClick={() => onDelete(trade.id)}
-                                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500 hover:text-white flex items-center gap-3 transition-colors"
-                            >
-                                {ICONS.trash} Delete
-                            </button>
-                        </div>
-                    </DropdownMenu>
+                    <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Edit trade"><span className="w-5 h-5 block">{ICONS.pencil}</span></button>
+                    <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Delete trade"><span className="w-5 h-5 block">{ICONS.trash}</span></button>
                 </div>
             </div>
         </div>
@@ -344,34 +324,16 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-center whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
-                                                <div className="flex justify-center items-center gap-1">
+                                                <div className="flex justify-center items-center gap-2">
                                                     <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label={`View trade for ${trade.pair} on ${formattedDate}`}>
                                                         <span className="w-5 h-5 block">{ICONS.eye}</span>
                                                     </button>
-                                                    <DropdownMenu
-                                                        trigger={
-                                                            <button className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="More actions">
-                                                                <span className="w-5 h-5 block">{ICONS.moreVertical}</span>
-                                                            </button>
-                                                        }
-                                                    >
-                                                        <div className="py-1">
-                                                            <button
-                                                                onClick={() => onEdit(trade)}
-                                                                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-3 transition-colors"
-                                                                aria-label={`Edit trade for ${trade.pair} on ${formattedDate}`}
-                                                            >
-                                                                {ICONS.pencil} Edit
-                                                            </button>
-                                                            <button
-                                                                onClick={() => onDelete(trade.id)}
-                                                                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500 hover:text-white flex items-center gap-3 transition-colors"
-                                                                aria-label={`Delete trade for ${trade.pair} on ${formattedDate}`}
-                                                            >
-                                                                {ICONS.trash} Delete
-                                                            </button>
-                                                        </div>
-                                                    </DropdownMenu>
+                                                    <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label={`Edit trade for ${trade.pair} on ${formattedDate}`}>
+                                                        <span className="w-5 h-5 block">{ICONS.pencil}</span>
+                                                    </button>
+                                                    <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label={`Delete trade for ${trade.pair} on ${formattedDate}`}>
+                                                        <span className="w-5 h-5 block">{ICONS.trash}</span>
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
