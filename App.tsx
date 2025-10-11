@@ -1,4 +1,3 @@
-// FIX: Added full content for App.tsx
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -7,9 +6,7 @@ import Modal from './components/ui/Modal';
 import TradeForm from './components/TradeForm';
 import AccountForm from './components/AccountForm';
 import TradeDetail from './components/TradeDetail';
-// FIX: Changed import to be a relative path
 import DataView from './components/DataView';
-// FIX: Changed import to be a relative path
 import NotesView from './components/NotesView';
 import AnalysisView from './components/AnalysisView';
 import { calculateStats, filterTradesByPeriod } from './services/statisticsService';
@@ -26,7 +23,7 @@ const TRADES_PAGE_SIZE = 25;
 const NOTES_PAGE_SIZE = 20;
 
 type View = 'journal' | 'dashboard' | 'analysis' | 'notes' | 'data'; 
-type Period = 'week' | 'month' | 'quarter' | 'all';
+type Period = 'week' | 'month' | 'quarter' | 'all' | 'this-month' | 'last-month' | 'this-quarter';
 
 const StatCard: React.FC<{ label: string, value: string | number, className?: string }> = ({ label, value, className }) => {
     const valueStr = String(value);
@@ -171,49 +168,87 @@ const EquityChart: React.FC<{ trades: Trade[] }> = ({ trades }) => {
 const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     const { state } = useAppContext();
     const { trades, accounts } = state.userData!;
-
+    
+    const [period, setPeriod] = useState<Period>('this-month');
+    const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+    const [isBalancesModalOpen, setIsBalancesModalOpen] = useState(false);
+    
+    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
+    
     const accountBalances = useMemo(() => {
         const balances = new Map<string, number>();
-        accounts.forEach(acc => {
-          if (!acc.isArchived) {
-            const accountTrades = trades.filter(t => t.accountId === acc.id);
-            const netPnl = accountTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
-            balances.set(acc.id, acc.initialBalance + netPnl);
-          }
+        activeAccounts.forEach(acc => {
+          const accountTrades = trades.filter(t => t.accountId === acc.id);
+          const netPnl = accountTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
+          balances.set(acc.id, acc.initialBalance + netPnl);
         });
         return balances;
-    }, [trades, accounts]);
+    }, [trades, activeAccounts]);
 
-    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
-    const activeAccountIds = useMemo(() => new Set(activeAccounts.map(a => a.id)), [activeAccounts]);
-    const tradesForStats = useMemo(() => trades.filter(t => activeAccountIds.has(t.accountId)), [trades, activeAccountIds]);
-    
-    const [period, setPeriod] = useState<Period>('month');
-    const [isBalancesModalOpen, setIsBalancesModalOpen] = useState(false);
-    const filteredTrades = useMemo(() => filterTradesByPeriod(tradesForStats, period), [tradesForStats, period]);
+    const filteredTrades = useMemo(() => {
+        const accountFiltered = trades.filter(trade =>
+            (selectedAccountId === 'all' ? activeAccounts.some(a => a.id === trade.accountId) : trade.accountId === selectedAccountId)
+        );
+        return filterTradesByPeriod(accountFiltered, period);
+    }, [trades, activeAccounts, selectedAccountId, period]);
+
     const stats: Stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
+
+    const totalBalance = useMemo(() => {
+        if (selectedAccountId !== 'all') {
+            return accountBalances.get(selectedAccountId) ?? 0;
+        }
+        return Array.from(accountBalances.values()).reduce((sum: number, balance: number) => sum + balance, 0);
+    }, [accountBalances, selectedAccountId]);
+    
+    const mainCurrency = useMemo(() => {
+        if (selectedAccountId !== 'all') {
+            return activeAccounts.find(a => a.id === selectedAccountId)?.currency || 'USD';
+        }
+        return activeAccounts.length > 0 ? (activeAccounts[0].currency || 'USD') : 'USD';
+    }, [activeAccounts, selectedAccountId]);
+
 
     const formatCurrency = (amount: number, currency: string | undefined = 'USD') => amount.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const formatPercent = (value: number) => `${value.toFixed(2)}%`;
     const formatRR = (value: number) => `${value.toFixed(2)}R`;
 
-    const mainCurrency = activeAccounts.length > 0 ? (activeAccounts[0].currency || 'USD') : 'USD';
-    const totalBalance = useMemo(() => Array.from(accountBalances.values()).reduce((sum: number, balance: number) => sum + balance, 0), [accountBalances]);
+    const PeriodButton: React.FC<{p: Period, label: string}> = ({ p, label }) => (
+        <button 
+          onClick={() => setPeriod(p)}
+          className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
+        >
+          {label}
+        </button>
+      );
 
     return (
         <div>
-            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h1 className="text-3xl font-bold text-white flex-shrink-0">Dashboard</h1>
-                <div className="flex flex-wrap items-center gap-2">
-                    {(['week', 'month', 'quarter', 'all'] as Period[]).map(p => (
-                        <button 
-                            key={p} 
-                            onClick={() => setPeriod(p)}
-                            className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
+             <div className="mb-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <h1 className="text-3xl font-bold text-white flex-shrink-0">Dashboard</h1>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <PeriodButton p="this-month" label="This Month" />
+                        <PeriodButton p="last-month" label="Last Month" />
+                        <PeriodButton p="this-quarter" label="This Quarter" />
+                        <PeriodButton p="all" label="All Time" />
+                    </div>
+                </div>
+                <div className="mt-4 flex justify-start md:justify-end">
+                    <div>
+                        <label htmlFor="accountFilterDashboard" className="text-sm text-[#8A91A8] mr-2">Account:</label>
+                        <select 
+                            id="accountFilterDashboard"
+                            value={selectedAccountId}
+                            onChange={(e) => setSelectedAccountId(e.target.value)}
+                            className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
                         >
-                            {p === 'all' ? 'All Time' : `This ${p}`}
-                        </button>
-                    ))}
+                            <option value="all">All Accounts</option>
+                            {activeAccounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>{acc.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -224,7 +259,9 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && setIsBalancesModalOpen(true)}
               >
-                <p className="text-base font-medium text-[#8A91A8] uppercase tracking-wider">Total Balance</p>
+                <p className="text-base font-medium text-[#8A91A8] uppercase tracking-wider">
+                    {selectedAccountId === 'all' ? 'Total Balance' : `${activeAccounts.find(a=>a.id === selectedAccountId)?.name} Balance`}
+                </p>
                 <p className="font-bold text-[#F0F0F0]" style={{fontSize: 'clamp(1.75rem, 5vw, 2.5rem)'}}>{formatCurrency(totalBalance, mainCurrency)}</p>
             </div>
 
@@ -684,7 +721,13 @@ function AppContent() {
   if (isLoading) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] text-white">
-            <div className="text-xl animate-pulse">Loading Your Journal...</div>
+            <div className="flex items-center gap-3">
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Loading user data...</span>
+            </div>
         </div>
     );
   }

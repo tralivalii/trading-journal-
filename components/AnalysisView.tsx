@@ -4,7 +4,7 @@ import { Result, Trade } from '../types';
 import { analyzeTradeGroups, calculateStreaks } from '../services/analysisService';
 import { filterTradesByPeriod } from '../services/statisticsService';
 
-type Period = 'week' | 'month' | 'quarter' | 'all';
+type Period = 'this-month' | 'last-month' | 'this-quarter' | 'all';
 
 const DataCard: React.FC<{ title: string, children: React.ReactNode }> = ({ title, children }) => (
     <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col">
@@ -30,15 +30,17 @@ const AnalysisView: React.FC = () => {
     const { state } = useAppContext();
     const { trades, accounts } = state.userData!;
     const [activeGroup, setActiveGroup] = useState<AnalysisGroup>(Result.Loss);
-    const [period, setPeriod] = useState<Period>('month');
-
-    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
-    const activeAccountIds = useMemo(() => new Set(activeAccounts.map(a => a.id)), [activeAccounts]);
+    const [period, setPeriod] = useState<Period>('this-month');
+    const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
     
+    const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
+
     const analysisTrades = useMemo(() => {
-        const activeTrades = trades.filter(t => activeAccountIds.has(t.accountId));
-        return filterTradesByPeriod(activeTrades, period);
-    }, [trades, activeAccountIds, period]);
+        const accountFiltered = trades.filter(trade =>
+            (selectedAccountId === 'all' ? activeAccounts.some(a => a.id === trade.accountId) : trade.accountId === selectedAccountId)
+        );
+        return filterTradesByPeriod(accountFiltered, period);
+    }, [trades, activeAccounts, selectedAccountId, period]);
     
     const analysisData = useMemo(() => analyzeTradeGroups(analysisTrades), [analysisTrades]);
     const streaks = useMemo(() => calculateStreaks(analysisTrades), [analysisTrades]);
@@ -106,21 +108,43 @@ const AnalysisView: React.FC = () => {
             </div>
         );
     };
+
+    const PeriodButton: React.FC<{p: Period, label: string}> = ({ p, label }) => (
+        <button 
+          onClick={() => setPeriod(p)}
+          className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
+        >
+          {label}
+        </button>
+      );
     
     return (
         <div>
-            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h1 className="text-3xl font-bold text-white flex-shrink-0">Trade Analysis</h1>
-                <div className="flex flex-wrap items-center gap-2">
-                    {(['week', 'month', 'quarter', 'all'] as Period[]).map(p => (
-                        <button 
-                            key={p} 
-                            onClick={() => setPeriod(p)}
-                            className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
+             <div className="mb-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <h1 className="text-3xl font-bold text-white flex-shrink-0">Trade Analysis</h1>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <PeriodButton p="this-month" label="This Month" />
+                        <PeriodButton p="last-month" label="Last Month" />
+                        <PeriodButton p="this-quarter" label="This Quarter" />
+                        <PeriodButton p="all" label="All Time" />
+                    </div>
+                </div>
+                <div className="mt-4 flex justify-start md:justify-end">
+                    <div>
+                        <label htmlFor="accountFilterAnalysis" className="text-sm text-[#8A91A8] mr-2">Account:</label>
+                        <select 
+                            id="accountFilterAnalysis"
+                            value={selectedAccountId}
+                            onChange={(e) => setSelectedAccountId(e.target.value)}
+                            className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
                         >
-                            {p === 'all' ? 'All Time' : `This ${p}`}
-                        </button>
-                    ))}
+                            <option value="all">All Accounts</option>
+                            {activeAccounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>{acc.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
             
