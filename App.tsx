@@ -223,11 +223,13 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         
         const accountsMap = new Map(accounts.map(acc => [acc.id, acc]));
     
-        return filteredTrades.reduce((acc, trade) => {
-            const currency = accountsMap.get(trade.accountId)?.currency || 'USD';
-            acc[currency] = (acc[currency] || 0) + trade.pnl;
-            return acc;
-        }, {} as Record<string, number>);
+        // FIX: Explicitly type the accumulator in Array.prototype.reduce to prevent `unknown` type inference.
+        return filteredTrades.reduce((summary: Record<string, number>, trade) => {
+            const account = accountsMap.get(trade.accountId);
+            const currency = account?.currency || 'USD';
+            summary[currency] = (summary[currency] || 0) + trade.pnl;
+            return summary;
+        }, {});
     }, [filteredTrades, accounts]);
 
 
@@ -958,8 +960,8 @@ function AppContent() {
         <div className="text-center">
             <p className="text-gray-300 mb-6">Are you sure you want to log out?</p>
             <div className="flex justify-center gap-4">
-                <button onClick={() => setLogoutConfirmModalOpen(false)} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
-                <button onClick={handleConfirmLogout} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Logout</button>
+                <button onClick={() => setLogoutConfirmModalOpen(false)} className="px-6 py-2 bg-transparent border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors font-medium">Cancel</button>
+                <button onClick={handleConfirmLogout} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">Logout</button>
             </div>
         </div>
       </Modal>
