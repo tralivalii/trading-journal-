@@ -26,18 +26,21 @@ const AnalysisDetailSection: React.FC<{
     analysis: Analysis;
     onImageClick: (src: string | null, notes?: string) => void;
 }> = ({ analysis, onImageClick }) => {
-    const imageUrl = useImageBlobUrl(analysis.image, { transform: { width: 600, quality: 80, resize: 'contain' } });
+    // Get a URL for the preview image, resized for performance
+    const previewUrl = useImageBlobUrl(analysis.image, { transform: { width: 800, quality: 85, resize: 'contain' } });
+    // Get a separate URL for the full-resolution image for the modal
+    const fullscreenUrl = useImageBlobUrl(analysis.image);
     
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
             <div className="space-y-4">
-                 <div className="w-full flex justify-center">
-                    {imageUrl ? (
+                 <div className="w-full">
+                    {previewUrl ? (
                         <img 
-                            src={imageUrl} 
+                            src={previewUrl} 
                             alt={`Analysis chart`} 
-                            className="rounded-md border border-gray-700 max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity object-contain"
-                            onClick={() => onImageClick(imageUrl, analysis.notes)}
+                            className="rounded-md border border-gray-700 w-full h-auto cursor-pointer hover:opacity-90 transition-opacity object-contain"
+                            onClick={() => onImageClick(fullscreenUrl, analysis.notes)}
                         />
                     ) : (
                         <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full">No Image</div>
