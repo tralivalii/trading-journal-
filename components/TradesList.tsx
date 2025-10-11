@@ -232,23 +232,25 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
 
   return (
     <div>
-        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center gap-4">
-                <h1 className="text-3xl font-bold text-white flex-shrink-0">Trade Journal</h1>
-                <button 
-                    onClick={onAddTrade}
-                    className="hidden lg:flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors text-sm"
-                >
-                   <span className="w-4 h-4">{ICONS.plus}</span> Add New Trade
-                </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="mb-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <h1 className="text-3xl font-bold text-white flex-shrink-0">Trade Journal</h1>
+                    <button 
+                        onClick={onAddTrade}
+                        className="hidden lg:flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors text-sm"
+                    >
+                       <span className="w-4 h-4">{ICONS.plus}</span> Add New Trade
+                    </button>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <PeriodButton p="this-month" label="This Month" />
                     <PeriodButton p="last-month" label="Last Month" />
                     <PeriodButton p="this-quarter" label="This Quarter" />
                     <PeriodButton p="all" label="All Time" />
                 </div>
+            </div>
+            <div className="mt-4 flex justify-start md:justify-end">
                 <div>
                     <label htmlFor="accountFilter" className="text-sm text-[#8A91A8] mr-2">Account:</label>
                     <select 
