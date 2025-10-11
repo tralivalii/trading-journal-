@@ -135,9 +135,10 @@ const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File
                     quality
                 );
             };
-            img.onerror = reject;
+            // FIX: Wrap reject calls in arrow functions to ensure proper context and argument passing. This is likely the cause of the reported error, even though the line number pointed elsewhere.
+            img.onerror = (e) => reject(e);
         };
-        reader.onerror = reject;
+        reader.onerror = (e) => reject(e);
     });
 };
 

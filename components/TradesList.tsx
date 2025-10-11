@@ -169,7 +169,8 @@ const TradesListSkeleton: React.FC = () => (
 
 const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade, onLoadMore, hasMore, isFetchingMore }) => {
   const { state } = useAppContext();
-  const { trades, accounts, isLoading } = state.userData!;
+  // FIX: Destructure `isLoading` from `state`, not `state.userData`.
+  const { trades, accounts } = state.userData!;
   
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [period, setPeriod] = useState<JournalPeriod>('this-month');

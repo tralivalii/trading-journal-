@@ -60,6 +60,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
 
     const [content, setContent] = useState(note.content);
     const [renderedContent, setRenderedContent] = useState('');
+    const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const viewRef = useRef<HTMLDivElement>(null);
@@ -87,11 +88,22 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                     const alt = match[1];
                     const path = match[2];
                     try {
-                        const { data, error } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600, {
-                            transform: { width: 600, quality: 80, resize: 'contain' }
+                         const { data: previewData, error: previewError } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600, {
+                            transform: { width: 800, quality: 85, resize: 'contain' }
                         });
-                        if (error) throw error;
-                        return { original: match[0], replacement: `![${alt}](${data.signedUrl})` };
+                        if (previewError) throw previewError;
+
+                        const { data: fullscreenData, error: fullscreenError } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600);
+                        if (fullscreenError) throw fullscreenError;
+
+                        const imgTag = `<img 
+                            src="${previewData.signedUrl}" 
+                            alt="${alt}" 
+                            data-fullscreen-src="${fullscreenData.signedUrl}"
+                            class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" 
+                        />`;
+
+                        return { original: match[0], replacement: imgTag };
                     } catch (e) {
                         console.error("Failed to create signed URL for", path, e);
                         return { original: match[0], replacement: `![${alt} (Error: Could not load image)]()` };
@@ -105,12 +117,13 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             
             let html = processed;
             html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-            html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg max-w-full h-auto border border-gray-700" />');
+            // Handle external images without breaking Supabase ones
+            html = html.replace(/!\[(.*?)\]\((?!https:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co)(.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block" />');
 
             const clean = DOMPurify.sanitize(html, {
                 ADD_TAGS: ['a', 'img'],
-                ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt'],
-                ALLOWED_URI_REGEXP: /^https\:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co\/.*/
+                ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt', 'data-fullscreen-src'],
+                ALLOWED_URI_REGEXP: /.*/ // Allow all URIs for images after processing
             });
 
             setRenderedContent(clean);
@@ -124,16 +137,19 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         const viewEl = viewRef.current;
         if (!viewEl || isEditMode) return;
 
-        const handleTagClick = (e: MouseEvent) => {
+        const handleContentClick = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
             if (target.tagName === 'A' && target.dataset.tag) {
                 e.preventDefault();
                 onTagClick(target.dataset.tag);
+            } else if (target.tagName === 'IMG' && target.dataset.fullscreenSrc) {
+                e.preventDefault();
+                setFullscreenSrc(target.dataset.fullscreenSrc);
             }
         };
 
-        viewEl.addEventListener('click', handleTagClick);
-        return () => viewEl.removeEventListener('click', handleTagClick);
+        viewEl.addEventListener('click', handleContentClick);
+        return () => viewEl.removeEventListener('click', handleContentClick);
     }, [renderedContent, isEditMode, onTagClick]);
     
     const handleSave = () => {
@@ -228,10 +244,34 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
              </div>
              <div 
                  ref={viewRef}
-                 className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto"
+                 className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto prose prose-invert prose-img:rounded-lg"
                  dangerouslySetInnerHTML={{ __html: renderedContent || (note.content ? '<p class="animate-pulse">Loading content...</p>' : '<p class="text-gray-500">This note is empty.</p>') }}
             >
             </div>
+            {fullscreenSrc && (
+                <div 
+                  className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4" 
+                  onClick={() => setFullscreenSrc(null)}
+                >
+                  <div
+                    className="relative w-auto h-auto max-w-full max-h-full flex"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <img 
+                      src={fullscreenSrc} 
+                      alt="Fullscreen view" 
+                      className="block max-w-full max-h-[95vh] object-contain rounded-lg"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setFullscreenSrc(null)}
+                    className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-1.5 hover:bg-black/80 transition-colors"
+                    aria-label="Close fullscreen view"
+                  >
+                    <span className="w-6 h-6 block">{ICONS.x}</span>
+                  </button>
+                </div>
+            )}
         </div>
     );
 };
