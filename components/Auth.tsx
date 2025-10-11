@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
-// FIX: Corrected module import path to be relative.
 import { useAppContext } from '../services/appState';
 
 const Auth: React.FC = () => {

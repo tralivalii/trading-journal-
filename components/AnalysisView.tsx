@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-// FIX: Corrected module import paths to be relative.
 import { useAppContext } from '../services/appState';
 import { Result, Trade } from '../types';
 import { analyzeTradeGroups, calculateStreaks } from '../services/analysisService';

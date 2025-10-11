@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-// FIX: Corrected module import paths to be relative.
 import { useAppContext, saveNoteAction, deleteNoteAction, fetchMoreNotesAction } from '../services/appState';
 import { Note } from '../types';
 import NoteDetail from './NoteDetail';
@@ -323,8 +322,7 @@ const NotesView: React.FC<NotesViewProps> = () => {
     };
 
     const handleLoadMore = () => {
-        // FIX: The function call expected 2 arguments but received 3. Removed the extra argument.
-        fetchMoreNotesAction(dispatch, state);
+        fetchMoreNotesAction(dispatch, state, NOTES_PAGE_SIZE);
     };
 
     const filteredNotes = useMemo(() => {

@@ -1,5 +1,9 @@
-// FIX: Provided full content for missing types.ts file.
-// REFACTORED: Expanded types to include all features like default settings and analysis timeframes.
+// types.ts
+
+export enum Currency {
+  USD = 'USD',
+  EUR = 'EUR',
+}
 
 export enum Result {
   Win = 'Win',
@@ -9,50 +13,75 @@ export enum Result {
   Missed = 'Missed',
 }
 
-export enum Currency {
-    USD = 'USD',
-    EUR = 'EUR',
-    GBP = 'GBP',
-    JPY = 'JPY',
-    AUD = 'AUD',
-    CAD = 'CAD',
-    CHF = 'CHF',
-    NZD = 'NZD',
+export enum Direction {
+  Long = 'Long',
+  Short = 'Short',
+}
+
+// New type for analysis sections
+export interface Analysis {
+  image?: string; // This is now an ID/key for an image in IndexedDB
+  notes?: string;
 }
 
 export interface Trade {
   id: string;
-  userId: string;
+  date: string; // Will store full ISO string for time analysis
   accountId: string;
-  date: string; // ISO string
   pair: string;
-  direction: 'Long' | 'Short';
+  entry: string;
+  direction: Direction;
+  risk: number; // The % risk from dropdown
+  rr: number; // The R:R ratio
+  riskAmount: number; // The actual $ amount risked
   result: Result;
-  rr: number;
-  pnl: number;
-  risk: number; // percentage
-  entryType?: string;
-  tpType?: string;
-  slType?: string;
-  closeType?: string;
+  pnl: number; // This will be calculated on save
+  commission?: number;
+  stoploss: string;
+  takeprofit: string;
+  
+  // New fields for deeper analysis
   entryPrice?: number;
-  sl?: number;
-  tp?: number;
-  notesD1?: string;
-  notes1h?: string;
-  notes5m?: string;
-  notesResult?: string;
-  // FIX: Added missing properties to the Trade interface.
-  setup?: string;
-  execution?: string;
-  outcome?: string;
-  screenshotD1Key?: string | null;
-  screenshot1hKey?: string | null;
-  screenshot5mKey?: string | null;
-  screenshotResultKey?: string | null;
+  stoplossPrice?: number;
+  takeprofitPrice?: number;
+  closeType?: string;
+  
+  // New structured analysis
+  analysisD1: Analysis;
+  analysis1h: Analysis;
+  analysis5m: Analysis;
+  analysisResult: Analysis;
+
+  // AI-powered analysis result
   aiAnalysis?: string;
-  createdAt?: string;
-  updatedAt?: string;
+}
+
+export interface Account {
+  id:string;
+  name: string;
+  initialBalance: number;
+  currency?: Currency;
+  isArchived?: boolean;
+}
+
+export interface User {
+  email: string;
+  // NOTE: In a real-world application, never store passwords in plaintext.
+  // This is a simplified simulation for a frontend-only context.
+  password?: string;
+}
+
+export interface Note {
+  id: string;
+  date: string;
+  content: string;
+  tags?: string[];
+  isFavorite?: boolean;
+  attachments?: {
+    name: string;
+    type: string; // MIME type
+    data: string; // This is now an ID/key for an image in IndexedDB
+  }[];
 }
 
 export interface Stats {
@@ -61,6 +90,7 @@ export interface Stats {
   wins: number;
   losses: number;
   breakevens: number;
+  // FIX: Corrected typo from `anumber` to `number`.
   missed: number;
   averageRR: number;
   totalRR: number;
@@ -69,52 +99,23 @@ export interface Stats {
   lossSum: number;
 }
 
-export interface Account {
-  id: string;
-  userId: string;
-  name: string;
-  initialBalance: number;
-  currency: Currency;
-  isArchived: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Note {
-  id: string;
-  userId: string;
-  date: string; // ISO string
-  content: string; // Markdown
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface DefaultSettings {
+    accountId: string;
     pair: string;
-    direction: 'Long' | 'Short';
-    risk: number;
-    rr: number;
-    entryType: string;
-    slType: string;
-    tpType: string;
-    closeType: string;
+    entry: string;
+    risk: number | string;
 }
 
 export interface UserData {
-    id?: string;
-    userId: string;
-    riskPerTrade: number;
-    slTypes: string[];
-    tpTypes: string[];
-    entryTypes: string[];
-    closeTypes: string[];
+    trades: Trade[];
+    accounts: Account[];
+    pairs: string[];
+    entries: string[];
+    risks: number[];
     defaultSettings: DefaultSettings;
-    analysisTimeframes: string[];
-}
-
-export interface Toast {
-    id: string;
-    message: string;
-    type: 'success' | 'error' | 'info';
+    notes: Note[];
+    stoplosses: string[];
+    // FIX: Corrected typo from `takeprofite` to `takeprofits` to resolve type errors.
+    takeprofits: string[];
+    closeTypes: string[];
 }

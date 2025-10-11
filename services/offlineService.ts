@@ -1,7 +1,6 @@
 // services/offlineService.ts
 import { DBSchema, openDB, IDBPDatabase } from 'idb';
-// FIX: Corrected module import path to be relative.
-import { Trade, Account, Note, UserData } from '../types';
+import { Trade, Account, Note } from '../types';
 
 const DB_NAME = 'TradingJournalDB';
 const DB_VERSION = 1;
@@ -22,7 +21,7 @@ interface JournalDB extends DBSchema {
   };
   settings: {
       key: string;
-      value: UserData;
+      value: any;
   };
   sync_queue: {
       key: string;
@@ -74,7 +73,6 @@ export async function bulkPut<T extends { id: string }>(
     tableName: keyof JournalDB,
     items: T[]
 ): Promise<void> {
-    if (!items || items.length === 0) return;
     const db = await getDb();
     const tx = db.transaction(tableName as any, 'readwrite');
     await Promise.all(items.map(item => tx.store.put(item)));
@@ -108,12 +106,6 @@ export async function clearAllData(): Promise<void> {
         db.clear('settings'),
         db.clear('sync_queue'),
     ]);
-}
-
-// FIX: Added missing deleteItem function to interact with IndexedDB.
-export async function deleteItem(tableName: keyof Omit<JournalDB, 'settings' | 'sync_queue'>, key: string): Promise<void> {
-    const db = await getDb();
-    await db.delete(tableName as any, key);
 }
 
 // Generic function to get a single item by key

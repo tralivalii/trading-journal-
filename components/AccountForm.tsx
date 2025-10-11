@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-// FIX: Corrected module import path to be relative.
 import { Account, Currency } from '../types';
 
 // A reusable form field component for consistency.
@@ -27,17 +26,7 @@ const AccountForm: React.FC<{ onSave: (data: Omit<Account, 'id'>) => void; onCan
             alert("Please provide a valid name and initial balance.");
             return;
         }
-        // This is tricky, the passed type doesn't include isArchived.
-        // We assume new accounts are not archived.
-        // And when editing we don't change the archived status here.
-        const saveData: any = { name: name.trim(), initialBalance, currency };
-        if (accountToEdit) {
-            saveData.isArchived = accountToEdit.isArchived;
-        } else {
-            saveData.isArchived = false;
-        }
-
-        onSave(saveData);
+        onSave({ name: name.trim(), initialBalance, currency });
     };
 
     return (
