@@ -4,7 +4,7 @@ import React, { createContext, useReducer, useContext, useEffect, Dispatch } fro
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { Account, Note, Result, Trade, UserData, Currency } from '../types';
 import { supabase } from './supabase';
-import { bulkGet, bulkPut, clearAllData, getSyncQueue, getTable, putSyncQueue } from './offlineService';
+import { bulkPut, clearAllData, getSyncQueue, getTable, putSyncQueue } from './offlineService';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -24,6 +24,8 @@ interface AppState {
   isGuest: boolean;
   hasMoreTrades: boolean;
   isFetchingMore: boolean;
+  hasMoreNotes: boolean;
+  isFetchingMoreNotes: boolean;
   toast: Toast | null;
   syncStatus: SyncStatus;
 }
@@ -39,6 +41,8 @@ type Action =
   | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>; value: any } }
   | { type: 'FETCH_MORE_TRADES_START' }
   | { type: 'FETCH_MORE_TRADES_SUCCESS'; payload: { trades: Trade[]; hasMore: boolean } }
+  | { type: 'FETCH_MORE_NOTES_START' }
+  | { type: 'FETCH_MORE_NOTES_SUCCESS'; payload: { notes: Note[]; hasMore: boolean } }
   | { type: 'SHOW_TOAST'; payload: Omit<Toast, 'id'> }
   | { type: 'HIDE_TOAST' }
   | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
@@ -54,6 +58,8 @@ const initialState: AppState = {
   isGuest: false,
   hasMoreTrades: false,
   isFetchingMore: false,
+  hasMoreNotes: false,
+  isFetchingMoreNotes: false,
   toast: null,
   syncStatus: navigator.onLine ? 'online' : 'offline',
 };
@@ -92,6 +98,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
         userData: guestData,
         hasMoreTrades: false,
         isFetchingMore: false,
+        hasMoreNotes: false,
+        isFetchingMoreNotes: false,
         syncStatus: 'online', // Guest mode is always online
       };
     case 'UPDATE_TRADES':
@@ -126,6 +134,24 @@ const appReducer = (state: AppState, action: Action): AppState => {
             },
             isFetchingMore: false,
             hasMoreTrades: action.payload.hasMore,
+        };
+    case 'FETCH_MORE_NOTES_START':
+        return { ...state, isFetchingMoreNotes: true };
+    case 'FETCH_MORE_NOTES_SUCCESS':
+        if (!state.userData) return state;
+        return {
+            ...state,
+            userData: {
+                ...state.userData,
+                notes: [
+                    ...state.userData.notes,
+                    ...action.payload.notes.filter(
+                        (newNote) => !state.userData!.notes.some((existing) => existing.id === newNote.id)
+                    ),
+                ],
+            },
+            isFetchingMoreNotes: false,
+            hasMoreNotes: action.payload.hasMore,
         };
     case 'SHOW_TOAST':
         return { ...state, toast: { ...action.payload, id: Date.now() } };
@@ -198,18 +224,6 @@ export const useAppContext = () => {
 
 // --- ASYNC ACTIONS ---
 
-const mapTradeFromDb = (t: any): Trade => ({
-    ...t,
-    accountId: t.account_id,
-    riskAmount: t.risk_amount,
-    closeType: t.close_type,
-    analysisD1: t.analysis_d1,
-    analysis1h: t.analysis_1h,
-    analysis5m: t.analysis_5m,
-    analysisResult: t.analysis_result,
-    aiAnalysis: t.ai_analysis,
-});
-
 export const saveTradeAction = async (
   dispatch: Dispatch<Action>,
   state: AppState,
@@ -219,10 +233,24 @@ export const saveTradeAction = async (
     const { userData, currentUser, isGuest, syncStatus } = state;
     if (!userData || !currentUser) throw new Error('User data not available');
     
-    // Server logic will handle calculations, so we can stub this for guest mode
     if (isGuest) {
-        // ... (Guest mode logic remains the same)
-        return;
+      // Guest logic:
+      const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
+      if (!account) throw new Error("Account not found");
+      const riskAmount = (account.initialBalance * tradeData.risk) / 100;
+      let pnl = 0;
+      if(tradeData.result === Result.Win) pnl = riskAmount * tradeData.rr;
+      if(tradeData.result === Result.Loss) pnl = -riskAmount;
+      pnl -= (tradeData.commission || 0);
+
+      const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
+      const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
+      const updatedTrades = isEditing
+        ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
+        : [finalTrade, ...userData.trades];
+      dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+      dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} in guest mode.`, type: 'success' } });
+      return;
     }
     
     // --- Offline-First Logic ---
@@ -238,29 +266,14 @@ export const saveTradeAction = async (
     const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
     const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
 
-    // 1. Immediately update UI state
     const updatedTrades = isEditing
         ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
         : [finalTrade, ...userData.trades];
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-
-    // 2. Save to IndexedDB
     await bulkPut('trades', [finalTrade]);
-    
-    // 3. Add to sync queue
-    await putSyncQueue({
-        id: crypto.randomUUID(),
-        type: 'trade',
-        action: isEditing ? 'update' : 'create',
-        payload: finalTrade,
-        timestamp: Date.now(),
-    });
+    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: isEditing ? 'update' : 'create', payload: finalTrade, timestamp: Date.now() });
 
-    if (syncStatus === 'online') {
-        // Trigger sync in background
-        window.dispatchEvent(new CustomEvent('sync-request'));
-    }
-    
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
     dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} locally.`, type: 'success' } });
 };
 
@@ -273,30 +286,18 @@ export const deleteTradeAction = async (
     if (!userData) throw new Error('User data not available');
     
     if (isGuest) {
-        // ... (Guest mode logic remains the same)
-        return;
+      const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
+      dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+      dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted in guest mode.', type: 'success' } });
+      return;
     }
 
-    // 1. Immediately update UI state
     const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+    await bulkPut('trades', updatedTrades); // This re-saves the whole array, effectively deleting the item
+    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: 'delete', payload: { id: tradeId }, timestamp: Date.now() });
 
-    // 2. Delete from IndexedDB (or mark as deleted)
-    await bulkPut('trades', updatedTrades);
-
-    // 3. Add to sync queue
-    await putSyncQueue({
-        id: crypto.randomUUID(),
-        type: 'trade',
-        action: 'delete',
-        payload: { id: tradeId },
-        timestamp: Date.now(),
-    });
-
-    if (syncStatus === 'online') {
-        window.dispatchEvent(new CustomEvent('sync-request'));
-    }
-    
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted locally.', type: 'success' } });
 };
 
@@ -306,31 +307,133 @@ export const updateTradeWithAIAnalysisAction = async (
   tradeId: string,
   analysisText: string
 ) => {
-    const { userData } = state;
+    const { userData, syncStatus } = state;
     if (!userData) throw new Error('User data not available');
     
     const tradeToUpdate = userData.trades.find(t => t.id === tradeId);
     if (!tradeToUpdate) throw new Error("Trade not found");
     
     const updatedTrade: Trade = { ...tradeToUpdate, aiAnalysis: analysisText };
-
-    // 1. Update UI
     const updatedTrades = userData.trades.map(t => t.id === tradeId ? updatedTrade : t);
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    
-    // 2. Update IndexedDB
     await bulkPut('trades', [updatedTrade]);
-    
-    // 3. Add to sync queue
-     await putSyncQueue({
-        id: crypto.randomUUID(),
-        type: 'trade',
-        action: 'update',
-        payload: updatedTrade,
-        timestamp: Date.now(),
-    });
+    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: 'update', payload: updatedTrade, timestamp: Date.now() });
 
-    if (state.syncStatus === 'online') {
-        window.dispatchEvent(new CustomEvent('sync-request'));
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
+};
+
+// --- ACCOUNT ACTIONS ---
+export const saveAccountAction = async (
+    dispatch: Dispatch<Action>,
+    state: AppState,
+    accountData: Omit<Account, 'id'> & { id?: string },
+    isEditing: boolean
+) => {
+    const { userData, syncStatus } = state;
+    if (!userData) throw new Error('User data not available');
+
+    const accountId = isEditing ? accountData.id! : crypto.randomUUID();
+    const finalAccount: Account = { ...accountData, id: accountId };
+
+    const updatedAccounts = isEditing
+        ? userData.accounts.map(a => a.id === accountId ? finalAccount : a)
+        : [...userData.accounts, finalAccount];
+    
+    dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+    await bulkPut('accounts', [finalAccount]);
+    await putSyncQueue({ id: crypto.randomUUID(), type: 'account', action: isEditing ? 'update' : 'create', payload: finalAccount, timestamp: Date.now() });
+
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
+    dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${isEditing ? 'updated' : 'saved'} locally.`, type: 'success' } });
+};
+
+export const deleteAccountAction = async (
+    dispatch: Dispatch<Action>,
+    state: AppState,
+    accountId: string
+) => {
+    const { userData, syncStatus } = state;
+    if (!userData) throw new Error('User data not available');
+
+    const updatedAccounts = userData.accounts.filter(a => a.id !== accountId);
+    dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+    await bulkPut('accounts', updatedAccounts);
+    await putSyncQueue({ id: crypto.randomUUID(), type: 'account', action: 'delete', payload: { id: accountId }, timestamp: Date.now() });
+
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted locally.', type: 'success' } });
+};
+
+// --- NOTE ACTIONS ---
+export const saveNoteAction = async (
+    dispatch: Dispatch<Action>,
+    state: AppState,
+    noteData: Omit<Note, 'id'> & { id?: string },
+    isEditing: boolean
+) => {
+    const { userData, syncStatus } = state;
+    if (!userData) throw new Error('User data not available');
+
+    const noteId = isEditing ? noteData.id! : crypto.randomUUID();
+    const finalNote: Note = { ...noteData, id: noteId };
+
+    const updatedNotes = isEditing
+        ? userData.notes.map(n => n.id === noteId ? finalNote : n)
+        : [finalNote, ...userData.notes];
+    
+    dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
+    await bulkPut('notes', [finalNote]);
+    await putSyncQueue({ id: crypto.randomUUID(), type: 'note', action: isEditing ? 'update' : 'create', payload: finalNote, timestamp: Date.now() });
+
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
+    dispatch({ type: 'SHOW_TOAST', payload: { message: `Note ${isEditing ? 'updated' : 'saved'} locally.`, type: 'success' } });
+    return finalNote;
+};
+
+export const deleteNoteAction = async (
+    dispatch: Dispatch<Action>,
+    state: AppState,
+    noteId: string
+) => {
+    const { userData, syncStatus } = state;
+    if (!userData) throw new Error('User data not available');
+    
+    const updatedNotes = userData.notes.filter(n => n.id !== noteId);
+    dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
+    await bulkPut('notes', updatedNotes);
+    await putSyncQueue({ id: crypto.randomUUID(), type: 'note', action: 'delete', payload: { id: noteId }, timestamp: Date.now() });
+
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted locally.', type: 'success' } });
+};
+
+// --- PAGINATION ACTIONS ---
+export const fetchMoreNotesAction = async (
+    dispatch: Dispatch<Action>,
+    state: AppState,
+    pageSize: number
+) => {
+    const { currentUser, userData, isGuest, syncStatus } = state;
+    if (isGuest || !currentUser || !userData || syncStatus === 'offline') return;
+
+    dispatch({ type: 'FETCH_MORE_NOTES_START' });
+    try {
+        const { data, error } = await supabase
+            .from('notes')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('date', { ascending: false })
+            .range(userData.notes.length, userData.notes.length + pageSize - 1);
+        
+        if (error) throw error;
+
+        const newNotes = data as Note[];
+        await bulkPut('notes', newNotes);
+        dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: newNotes, hasMore: newNotes.length === pageSize } });
+
+    } catch (error) {
+        console.error("Failed to fetch more notes:", error);
+        dispatch({ type: 'FETCH_MORE_NOTES_START' }); // Reset loading state on error
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Could not load more notes.', type: 'error' } });
     }
 };

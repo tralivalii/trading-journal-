@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useAppContext } from '../services/appState';
+import { useAppContext, saveAccountAction, deleteAccountAction } from '../services/appState';
 import { Account, Currency, UserData } from '../types';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
@@ -215,59 +215,11 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
             setIsAccountModalOpen(false);
             return;
         }
-        if (!currentUser) return;
         
-        try {
-            // Map to snake_case for DB
-            const dbPayload = {
-                name: accountData.name,
-                initial_balance: accountData.initialBalance,
-                currency: accountData.currency,
-            };
-
-            let response;
-            if (accountToEdit) {
-                response = await supabase
-                    .from('accounts')
-                    .update(dbPayload)
-                    .eq('id', accountToEdit.id)
-                    .select()
-                    .single();
-            } else {
-                response = await supabase
-                    .from('accounts')
-                    .insert({ ...dbPayload, user_id: currentUser.id })
-                    .select()
-                    .single();
-            }
-
-            const { data: savedData, error } = response;
-            if (error) throw error;
-            
-            // Map from snake_case from DB to camelCase for app state
-            const appAccount: Account = {
-                id: savedData.id,
-                name: savedData.name,
-                initialBalance: savedData.initial_balance,
-                currency: savedData.currency,
-                isArchived: savedData.is_archived
-            };
-
-            if (accountToEdit) {
-                const updatedAccounts = accounts.map(a => a.id === appAccount.id ? appAccount : a);
-                dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-                dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account updated successfully.', type: 'success' } });
-            } else {
-                dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...accounts, appAccount] });
-                dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account added successfully.', type: 'success' } });
-            }
-            
-            setIsAccountModalOpen(false);
-            setAccountToEdit(null);
-        } catch (error: any) {
-            console.error('Failed to save account:', error);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to save account: ${error.message}`, type: 'error' } });
-        }
+        await saveAccountAction(dispatch, state, { ...accountData, id: accountToEdit?.id }, !!accountToEdit);
+        
+        setIsAccountModalOpen(false);
+        setAccountToEdit(null);
     };
     
     const handleToggleArchiveAccount = async (account: Account) => {
@@ -275,50 +227,18 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
             dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
-        if (!currentUser) return;
-
-        try {
-            const { data, error } = await supabase
-                .from('accounts')
-                .update({ is_archived: !account.isArchived })
-                .eq('id', account.id)
-                .select()
-                .single();
-
-            if (error) throw error;
-            const updatedAccounts = accounts.map(a => a.id === data.id ? {...a, isArchived: data.is_archived} : a);
-            dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-            dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${data.is_archived ? 'archived' : 'unarchived'}.`, type: 'success' } });
-        } catch (error) {
-            console.error('Failed to update account status:', error);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to update account status.', type: 'error' } });
-        }
+        
+        const updatedAccount = { ...account, isArchived: !account.isArchived };
+        await saveAccountAction(dispatch, state, updatedAccount, true);
     };
     
     const handleConfirmDeleteAccount = async () => {
-        if (!accountToDelete || isGuest || !currentUser) {
+        if (!accountToDelete || isGuest) {
             dispatch({ type: 'SHOW_TOAST', payload: { message: "Cannot delete account.", type: 'error' } });
             return;
         }
-    
-        try {
-            const { error } = await supabase
-                .from('accounts')
-                .delete()
-                .eq('id', accountToDelete.id);
-            
-            if (error) throw error;
-    
-            const updatedAccounts = accounts.filter(a => a.id !== accountToDelete.id);
-            dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted successfully.', type: 'success' } });
-    
-        } catch (error: any) {
-            console.error('Failed to delete account:', error);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to delete account: ${error.message}`, type: 'error' } });
-        } finally {
-            setAccountToDelete(null); 
-        }
+        await deleteAccountAction(dispatch, state, accountToDelete.id);
+        setAccountToDelete(null); 
     };
 
     const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {

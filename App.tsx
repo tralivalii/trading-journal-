@@ -22,6 +22,7 @@ import { getTable, bulkPut, getSyncQueue, clearSyncQueue } from './services/offl
 declare const Chart: any;
 
 const TRADES_PAGE_SIZE = 25;
+const NOTES_PAGE_SIZE = 20;
 
 type View = 'journal' | 'dashboard' | 'analysis' | 'notes' | 'data'; 
 type Period = 'week' | 'month' | 'quarter' | 'all';
@@ -296,31 +297,48 @@ async function processSyncQueue(userId: string) {
     const queue = await getSyncQueue();
     if (queue.length === 0) return true;
 
-    // A simple way to process items. A more robust solution might group operations.
     for (const item of queue) {
-        if (item.type === 'trade') {
-            const payload = {
-                ...item.payload,
-                user_id: userId,
-                account_id: item.payload.accountId,
-                close_type: item.payload.closeType,
-                analysis_d1: item.payload.analysisD1,
-                analysis_1h: item.payload.analysis1h,
-                analysis_5m: item.payload.analysis5m,
-                analysis_result: item.payload.analysisResult,
-                ai_analysis: item.payload.aiAnalysis,
-            };
-            delete (payload as any).accountId;
-
-            if (item.action === 'create' || item.action === 'update') {
-                const { error } = await supabase.from('trades').upsert(payload);
-                if (error) { console.error('Sync Error (trade upsert):', error); return false; }
-            } else if (item.action === 'delete') {
-                const { error } = await supabase.from('trades').delete().eq('id', item.payload.id);
-                if (error) { console.error('Sync Error (trade delete):', error); return false; }
+        try {
+            switch (item.type) {
+                case 'trade': {
+                    const payload = { ...item.payload, user_id: userId, account_id: item.payload.accountId, close_type: item.payload.closeType, analysis_d1: item.payload.analysisD1, analysis_1h: item.payload.analysis1h, analysis_5m: item.payload.analysis5m, analysis_result: item.payload.analysisResult, ai_analysis: item.payload.aiAnalysis };
+                    delete (payload as any).accountId;
+                    if (item.action === 'create' || item.action === 'update') {
+                        const { error } = await supabase.from('trades').upsert(payload);
+                        if (error) throw error;
+                    } else if (item.action === 'delete') {
+                        const { error } = await supabase.from('trades').delete().eq('id', item.payload.id);
+                        if (error) throw error;
+                    }
+                    break;
+                }
+                case 'account': {
+                    const payload = { ...item.payload, user_id: userId, initial_balance: item.payload.initialBalance, is_archived: item.payload.isArchived };
+                    if (item.action === 'create' || item.action === 'update') {
+                        const { error } = await supabase.from('accounts').upsert(payload);
+                        if (error) throw error;
+                    } else if (item.action === 'delete') {
+                        const { error } = await supabase.from('accounts').delete().eq('id', item.payload.id);
+                        if (error) throw error;
+                    }
+                    break;
+                }
+                case 'note': {
+                    const payload = { ...item.payload, user_id: userId };
+                    if (item.action === 'create' || item.action === 'update') {
+                        const { error } = await supabase.from('notes').upsert(payload);
+                        if (error) throw error;
+                    } else if (item.action === 'delete') {
+                        const { error } = await supabase.from('notes').delete().eq('id', item.payload.id);
+                        if (error) throw error;
+                    }
+                    break;
+                }
             }
+        } catch (error) {
+            console.error(`Sync Error (${item.type} ${item.action}):`, error);
+            return false; // Stop processing on first error
         }
-        // TODO: Handle other types like 'account', 'note'
     }
     
     await clearSyncQueue();
@@ -445,7 +463,7 @@ function AppContent() {
                 ] = await Promise.all([
                   supabase.from('accounts').select('*').eq('user_id', currentUser.id),
                   supabase.from('trades').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }),
-                  supabase.from('notes').select('*').eq('user_id', currentUser.id),
+                  supabase.from('notes').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }).range(0, NOTES_PAGE_SIZE - 1),
                   supabase.from('user_data').select('data').eq('user_id', currentUser.id).single()
                 ]);
                 
@@ -471,6 +489,7 @@ function AppContent() {
                 // Update state
                 const fullUserData: UserData = { ...serverSettings, accounts: serverAccounts, trades: serverTrades, notes: serverNotes };
                 dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
+                dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: [], hasMore: serverNotes.length === NOTES_PAGE_SIZE } });
             }
 
         } catch (error) {

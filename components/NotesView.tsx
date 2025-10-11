@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useAppContext } from '../services/appState';
+import { useAppContext, saveNoteAction, deleteNoteAction, fetchMoreNotesAction } from '../services/appState';
 import { Note } from '../types';
 import NoteDetail from './NoteDetail';
 import { ICONS } from '../constants';
-import { supabase } from '../services/supabase';
 import Modal from './ui/Modal';
+import { supabase } from '../services/supabase'; // Kept for image upload logic
 
 interface NotesViewProps {}
+const NOTES_PAGE_SIZE = 20;
 
 const generateNoteTitle = (note: Note, allNotes: Note[]): string => {
     const noteDate = new Date(note.date);
@@ -203,7 +204,7 @@ const NotesEmptyState: React.FC<{ onNewNote: () => void }> = ({ onNewNote }) => 
 
 const NotesView: React.FC<NotesViewProps> = () => {
     const { state, dispatch } = useAppContext();
-    const { userData, currentUser, isGuest } = state;
+    const { userData, currentUser, isGuest, hasMoreNotes, isFetchingMoreNotes } = state;
     const notes = userData?.notes || [];
 
     const [selectedNote, setSelectedNote] = useState<Note | null>(null);
@@ -260,79 +261,53 @@ const NotesView: React.FC<NotesViewProps> = () => {
 
         const newNoteData = {
             content,
-            user_id: currentUser.id,
             date: new Date().toISOString(),
             tags: parseTags(content),
         };
 
         try {
-            const { data, error } = await supabase.from('notes').insert(newNoteData).select().single();
-            if (error) throw error;
-            
-            const fullNewNote: Note = { id: data.id, date: data.date, content: data.content, tags: data.tags || [] };
-
-            const updatedNotes = [fullNewNote, ...notes];
-            dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            setSelectedNote(fullNewNote);
+            const savedNote = await saveNoteAction(dispatch, state, newNoteData, false);
+            setSelectedNote(savedNote);
             setIsCreatingNewNote(false);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note created.', type: 'success' } });
         } catch (error) {
             console.error('Failed to create note:', error);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to create note.', type: 'error' } });
         } finally {
             setIsSavingNote(false);
         }
     };
 
     const handleUpdateNote = async (id: string, content: string) => {
-        if (isGuest || !currentUser) {
+        if (isGuest) {
             dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             setIsEditMode(false);
             return;
         }
         setIsSavingNote(true);
         const tags = parseTags(content);
+        const originalNote = notes.find(n => n.id === id);
+        if (!originalNote) return;
         
+        const noteData = { ...originalNote, content, tags };
+
         try {
-            const { data, error } = await supabase.from('notes').update({ content, tags }).eq('id', id).select().single();
-            if (error) throw error;
-            
-            const updatedNote: Note = { id: data.id, date: data.date, content: data.content, tags: data.tags || [] };
-            const updatedNotes = notes.map(n => n.id === id ? updatedNote : n);
-            dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            setSelectedNote(updatedNote);
+            const savedNote = await saveNoteAction(dispatch, state, noteData, true);
+            setSelectedNote(savedNote);
             setIsEditMode(false);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note updated.', type: 'success' } });
         } catch (error) {
-             console.error('Failed to update note:', error);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to update note.', type: 'error' } });
+            console.error('Failed to update note:', error);
         } finally {
             setIsSavingNote(false);
         }
     };
     
     const handleDeleteNote = async (id: string) => {
-        if (isGuest || !currentUser) {
+        if (isGuest) {
             dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
             return;
         }
         if (!confirm('Are you sure you want to delete this note?')) return;
         
-        try {
-            const { error } = await supabase.from('notes').delete().eq('id', id);
-            if (error) throw error;
-            
-            const updatedNotes = notes.filter(n => n.id !== id);
-            dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted.', type: 'success' } });
-            if (selectedNote?.id === id) {
-                setSelectedNote(null);
-                setIsEditMode(false);
-            }
-        } catch (error) {
-            console.error('Failed to delete note:', error);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to delete note.', type: 'error' } });
-        }
+        await deleteNoteAction(dispatch, state, id);
     };
     
     const handleTagClick = (tag: string) => {
@@ -344,6 +319,10 @@ const NotesView: React.FC<NotesViewProps> = () => {
         setSelectedNote(null);
         setIsCreatingNewNote(false);
         setIsEditMode(false);
+    };
+
+    const handleLoadMore = () => {
+        fetchMoreNotesAction(dispatch, state, NOTES_PAGE_SIZE);
     };
 
     const filteredNotes = useMemo(() => {
@@ -408,6 +387,17 @@ const NotesView: React.FC<NotesViewProps> = () => {
                                     <p className="text-xs text-gray-400 mt-1 truncate">{note.content.split('\n')[0] || 'No content'}</p>
                                 </div>
                             ))}
+                            {hasMoreNotes && (
+                                <div className="p-4 text-center">
+                                    <button
+                                        onClick={handleLoadMore}
+                                        disabled={isFetchingMoreNotes}
+                                        className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-800 disabled:cursor-wait font-medium text-sm"
+                                    >
+                                        {isFetchingMoreNotes ? 'Loading...' : 'Load More Notes'}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
