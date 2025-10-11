@@ -23,7 +23,8 @@ interface AppState {
 type AppAction =
     | { type: 'INITIALIZE_SESSION'; payload: { session: Session | null } }
     | { type: 'SET_GUEST_MODE' }
-    | { type: 'SET_USER_DATA'; payload: UserData }
+    | { type: 'SET_USER_DATA'; payload: UserData | null }
+    | { type: 'FINISH_LOADING' } // New action to explicitly stop loading
     | { type: 'SHOW_TOAST'; payload: { message: string, type: 'success' | 'error' } }
     | { type: 'HIDE_TOAST' }
     | { type: 'SAVE_TRADE_SUCCESS'; payload: { trade: Trade, isEditing: boolean } }
@@ -59,8 +60,8 @@ const initialUserData: UserData = {
     risks: [0.25, 0.5, 1, 1.5, 2],
     defaultSettings: initialDefaultSettings,
     notes: [],
-    stoplosses: ['Structure', 'Fibonacci', 'Fixed Pips', 'ATR'],
-    takeprofits: ['Structure', 'Fibonacci', 'Fixed Pips', 'ATR'],
+    stoplosses: ['Structure', 'Fibonacci', 'Fixed Pips', 'ATR', 'Fractal'],
+    takeprofits: ['Structure', 'Fibonacci', 'Fixed Pips', 'ATR', 'Fractal'],
     closeTypes: ['TP Hit', 'SL Hit', 'Manual', 'Breakeven'],
     analysisTimeframes: ['1D', '1h', '5m', 'Result'],
 };
@@ -88,9 +89,10 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
                 ...state,
                 session: action.payload.session,
                 currentUser: action.payload.session?.user ?? null,
-                isLoading: false,
                 isGuest: false,
             };
+        case 'FINISH_LOADING':
+            return { ...state, isLoading: false };
         case 'SET_GUEST_MODE':
             return {
                 ...state,
@@ -98,8 +100,38 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
                 isGuest: true,
                 userData: initialUserData,
             };
-        case 'SET_USER_DATA':
-            return { ...state, userData: action.payload };
+        case 'SET_USER_DATA': {
+            const incomingUserData = action.payload;
+
+            if (incomingUserData === null) {
+                return { ...state, userData: null };
+            }
+
+            // If we have user data, merge it safely with defaults
+            // This ensures that if a user's saved settings are missing a new field,
+            // the app doesn't crash.
+            const safeUserData: UserData = {
+                ...initialUserData,
+                ...incomingUserData,
+                defaultSettings: {
+                    ...initialUserData.defaultSettings,
+                    ...(incomingUserData.defaultSettings || {}),
+                },
+                // Ensure all arrays exist
+                analysisTimeframes: incomingUserData.analysisTimeframes || initialUserData.analysisTimeframes,
+                pairs: incomingUserData.pairs || initialUserData.pairs,
+                entries: incomingUserData.entries || initialUserData.entries,
+                risks: incomingUserData.risks || initialUserData.risks,
+                stoplosses: incomingUserData.stoplosses || initialUserData.stoplosses,
+                takeprofits: incomingUserData.takeprofits || initialUserData.takeprofits,
+                closeTypes: incomingUserData.closeTypes || initialUserData.closeTypes,
+                // Ensure top-level arrays also exist
+                trades: incomingUserData.trades || [],
+                accounts: incomingUserData.accounts || [],
+                notes: incomingUserData.notes || [],
+            };
+            return { ...state, userData: safeUserData };
+        }
         case 'SHOW_TOAST':
             return { ...state, toast: action.payload };
         case 'HIDE_TOAST':
@@ -209,7 +241,6 @@ const calculatePnlAndRisk = (tradeData: Omit<Trade, 'id' | 'pnl' | 'riskAmount'>
     const account = accounts.find(a => a.id === tradeData.accountId);
     if (!account) return { pnl: 0, riskAmount: 0 };
     
-    // In a real system, we'd look up historical balance, but we'll use initialBalance as a proxy.
     const riskAmount = account.initialBalance * (tradeData.risk / 100);
     let pnl = 0;
 
@@ -254,11 +285,11 @@ export const deleteTradeAction = async (dispatch: React.Dispatch<AppAction>, sta
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted.', type: 'success' } });
 };
 
-export const saveAccountAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, accountData: Omit<Account, 'id'>, isEditing: boolean) => {
+export const saveAccountAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, accountData: Partial<Account>, isEditing: boolean) => {
     const finalAccount: Account = {
         ...accountData,
-        id: isEditing ? (accountData as Account).id : crypto.randomUUID(),
-    };
+        id: isEditing ? accountData.id! : crypto.randomUUID(),
+    } as Account;
     const { error } = await supabase.from('accounts').upsert({ ...finalAccount, user_id: state.currentUser!.id });
     if (error) throw new Error("Failed to save account.");
     dispatch({ type: 'SAVE_ACCOUNT_SUCCESS', payload: { account: finalAccount, isEditing } });
@@ -307,22 +338,32 @@ export const updateTradeWithAIAnalysisAction = async (dispatch: React.Dispatch<A
 
 export const fetchMoreTradesAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, pageSize: number) => {
     dispatch({ type: 'FETCH_MORE_TRADES_START' });
-    const { data, error } = await supabase.from('trades')
-        .select('*').eq('user_id', state.currentUser!.id)
-        .order('date', { ascending: false })
-        .range(state.userData!.trades.length, state.userData!.trades.length + pageSize - 1);
-    if (error) throw new Error("Failed to fetch more trades.");
-    dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: data || [], hasMore: (data || []).length === pageSize } });
+    try {
+        const { data, error } = await supabase.from('trades')
+            .select('*').eq('user_id', state.currentUser!.id)
+            .order('date', { ascending: false })
+            .range(state.userData!.trades.length, state.userData!.trades.length + pageSize - 1);
+        if (error) throw new Error("Failed to fetch more trades.");
+        dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: data || [], hasMore: (data || []).length === pageSize } });
+    } catch (e) {
+        console.error(e);
+        dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: state.hasMoreTrades } });
+    }
 };
 
 export const fetchMoreNotesAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, pageSize: number) => {
     dispatch({ type: 'FETCH_MORE_NOTES_START' });
-    const { data, error } = await supabase.from('notes')
-        .select('*').eq('user_id', state.currentUser!.id)
-        .order('date', { ascending: false })
-        .range(state.userData!.notes.length, state.userData!.notes.length + pageSize - 1);
-    if (error) throw new Error("Failed to fetch more notes.");
-    dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: data || [], hasMore: (data || []).length === pageSize } });
+    try {
+        const { data, error } = await supabase.from('notes')
+            .select('*').eq('user_id', state.currentUser!.id)
+            .order('date', { ascending: false })
+            .range(state.userData!.notes.length, state.userData!.notes.length + pageSize - 1);
+        if (error) throw new Error("Failed to fetch more notes.");
+        dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: data || [], hasMore: (data || []).length === pageSize } });
+    } catch(e) {
+        console.error(e);
+        dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: [], hasMore: state.hasMoreNotes } });
+    }
 };
 
 
@@ -346,7 +387,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ]);
 
             if (tradesError || accountsError || notesError || (settingsError && settingsError.code !== 'PGRST116')) {
-                 // PGRST116 means no rows found, which is fine for settings.
                 console.error({tradesError, accountsError, notesError, settingsError});
                 throw new Error("Failed to fetch initial data.");
             }
@@ -358,30 +398,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 accounts: accountsData || [],
                 notes: notesData || [],
             };
-            dispatch({ type: 'SET_USER_DATA', payload: userData });
+            dispatch({ type: 'SET_USER_DATA', payload: userData as UserData });
             dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: (tradesData?.length || 0) === 20 }});
             dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: [], hasMore: (notesData?.length || 0) === 20 }});
         } catch (error) {
             console.error(error);
             dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to load data.', type: 'error' } });
+            // If data loading fails, we still set some default data so the app doesn't crash
+            dispatch({ type: 'SET_USER_DATA', payload: initialUserData });
         }
     }, []);
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             dispatch({ type: 'INITIALIZE_SESSION', payload: { session } });
             if (session) {
-                loadInitialData(session.user.id);
-            }
-        });
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            dispatch({ type: 'INITIALIZE_SESSION', payload: { session } });
-            if (session) {
-                loadInitialData(session.user.id);
+                await loadInitialData(session.user.id);
             } else {
+                // If there's no session, we clear user data.
                 dispatch({ type: 'SET_USER_DATA', payload: null });
             }
+            // This is the key fix: We finish loading AFTER the session check and data load attempt.
+            dispatch({ type: 'FINISH_LOADING' });
         });
 
         return () => subscription.unsubscribe();
