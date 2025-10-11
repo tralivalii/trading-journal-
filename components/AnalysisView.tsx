@@ -1,7 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../services/appState';
-import { Result } from '../types';
+import { Result, Trade } from '../types';
 import { analyzeTradeGroups, calculateStreaks } from '../services/analysisService';
+import { filterTradesByPeriod } from '../services/statisticsService';
+
+type Period = 'week' | 'month' | 'quarter' | 'all';
 
 const DataCard: React.FC<{ title: string, children: React.ReactNode }> = ({ title, children }) => (
     <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col">
@@ -14,7 +17,7 @@ const DataCard: React.FC<{ title: string, children: React.ReactNode }> = ({ titl
 
 const NoData: React.FC<{ message?: string }> = ({ message }) => (
     <div className="text-center py-8 text-[#8A91A8] flex-grow flex flex-col items-center justify-center gap-4">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         <p>{message || "Not enough data to display."}</p>
@@ -27,10 +30,15 @@ const AnalysisView: React.FC = () => {
     const { state } = useAppContext();
     const { trades, accounts } = state.userData!;
     const [activeGroup, setActiveGroup] = useState<AnalysisGroup>(Result.Loss);
+    const [period, setPeriod] = useState<Period>('all');
 
     const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
     const activeAccountIds = useMemo(() => new Set(activeAccounts.map(a => a.id)), [activeAccounts]);
-    const analysisTrades = useMemo(() => trades.filter(t => activeAccountIds.has(t.accountId)), [trades, activeAccountIds]);
+    
+    const analysisTrades = useMemo(() => {
+        const activeTrades = trades.filter(t => activeAccountIds.has(t.accountId));
+        return filterTradesByPeriod(activeTrades, period);
+    }, [trades, activeAccountIds, period]);
     
     const analysisData = useMemo(() => analyzeTradeGroups(analysisTrades), [analysisTrades]);
     const streaks = useMemo(() => calculateStreaks(analysisTrades), [analysisTrades]);
@@ -101,10 +109,24 @@ const AnalysisView: React.FC = () => {
     
     return (
         <div>
-            <h1 className="text-3xl font-bold text-white mb-6">Trade Analysis</h1>
-            {trades.length === 0 ? (
+            <div className="mb-6">
+                <h1 className="text-3xl font-bold text-white">Trade Analysis</h1>
+                <div className="flex flex-wrap items-center gap-2 mt-4">
+                    {(['week', 'month', 'quarter', 'all'] as Period[]).map(p => (
+                        <button 
+                            key={p} 
+                            onClick={() => setPeriod(p)}
+                            className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${period === p ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}
+                        >
+                            {p === 'all' ? 'All Time' : `This ${p}`}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            
+            {analysisTrades.length === 0 ? (
                 <DataCard title="Performance Analysis">
-                    <NoData message="Add some trades to see your analysis." />
+                    <NoData message="Add some trades in the selected period to see your analysis." />
                 </DataCard>
             ) : (
                 <div className="space-y-8">
@@ -133,7 +155,7 @@ const AnalysisView: React.FC = () => {
                                     {activeGroup !== Result.Missed && selectedGroupStats.distributionByCloseType && <DistributionChart title="By Close Type" data={selectedGroupStats.distributionByCloseType} total={selectedGroupStats.count} />}
                                 </div>
                             </div>
-                        ) : <NoData message={`No trades found for ${activeGroup}s.`} />}
+                        ) : <NoData message={`No trades found for ${activeGroup}s in this period.`} />}
                     </DataCard>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
