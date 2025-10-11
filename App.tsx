@@ -669,6 +669,9 @@ function AppContent() {
       </button>
   );
   
+  const handleFormClose = useCallback(() => {
+    setFormModalOpen(false);
+  }, []);
 
   if (!session && !isGuest) {
     return <Auth />;
@@ -773,7 +776,7 @@ function AppContent() {
 
       <Modal 
         isOpen={isFormModalOpen} 
-        onClose={() => setFormModalOpen(false)}
+        onClose={handleFormClose}
         onCloseRequest={() => {
             // Forward the close request to the form component itself to handle dirty state
             const tradeForm = document.getElementById('trade-form-wrapper');
@@ -785,7 +788,7 @@ function AppContent() {
         title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} 
         size="4xl"
       >
-        <TradeForm onSave={handleSaveTrade} onClose={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
+        <TradeForm onSave={handleSaveTrade} onClose={handleFormClose} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
       </Modal>
       
       <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">

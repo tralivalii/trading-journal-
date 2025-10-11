@@ -26,7 +26,7 @@ const AnalysisDetailSection: React.FC<{
     analysis: Analysis;
     onImageClick: (src: string | null, notes?: string) => void;
 }> = ({ analysis, onImageClick }) => {
-    const imageUrl = useImageBlobUrl(analysis.image, { transform: { width: 600, quality: 80 } });
+    const imageUrl = useImageBlobUrl(analysis.image, { transform: { width: 600, quality: 80, resize: 'contain' } });
     
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">

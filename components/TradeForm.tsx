@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
 import { useAppContext } from '../services/appState';
@@ -189,7 +189,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   
   const [isUploading, setIsUploading] = useState(false);
 
-  const handleCloseRequest = () => {
+  const handleCloseRequest = useCallback(() => {
     if (isDirty) {
         if(window.confirm("You have unsaved changes. Are you sure you want to close?")) {
             onClose();
@@ -197,7 +197,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     } else {
         onClose();
     }
-  };
+  }, [isDirty, onClose]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -209,7 +209,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         wrapper.removeEventListener('closeRequest', handleCloseRequest);
       }
     };
-  }, [isDirty, onClose]); // Re-attach listener if isDirty changes
+  }, [handleCloseRequest]);
 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
