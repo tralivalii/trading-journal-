@@ -423,7 +423,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                             {risks.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                     </FormField>
-                    <FormField label="Commission ($)">
+                    <FormField label="Commission">
                         <input
                             ref={commissionInputRef}
                             type="text"

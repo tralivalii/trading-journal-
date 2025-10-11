@@ -194,24 +194,42 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
 
     const stats: Stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
-    const totalBalance = useMemo(() => {
-        if (selectedAccountId !== 'all') {
-            return accountBalances.get(selectedAccountId) ?? 0;
-        }
-        return Array.from(accountBalances.values()).reduce((sum: number, balance: number) => sum + balance, 0);
-    }, [accountBalances, selectedAccountId]);
-    
-    const mainCurrency = useMemo(() => {
-        if (selectedAccountId !== 'all') {
-            return activeAccounts.find(a => a.id === selectedAccountId)?.currency || 'USD';
-        }
-        return activeAccounts.length > 0 ? (activeAccounts[0].currency || 'USD') : 'USD';
-    }, [activeAccounts, selectedAccountId]);
-
-
     const formatCurrency = (amount: number, currency: string | undefined = 'USD') => amount.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const formatPercent = (value: number) => `${value.toFixed(2)}%`;
     const formatRR = (value: number) => `${value.toFixed(2)}R`;
+
+    const balancesSummary = useMemo(() => {
+        const summary: Record<string, number> = {};
+        if (selectedAccountId !== 'all') {
+            const balance = accountBalances.get(selectedAccountId);
+            const account = activeAccounts.find(a => a.id === selectedAccountId);
+            if (balance !== undefined && account) {
+                summary[account.currency || 'USD'] = balance;
+            }
+        } else {
+            activeAccounts.forEach(acc => {
+                const balance = accountBalances.get(acc.id);
+                if (balance !== undefined) {
+                    const currency = acc.currency || 'USD';
+                    summary[currency] = (summary[currency] || 0) + balance;
+                }
+            });
+        }
+        return summary;
+    }, [accountBalances, activeAccounts, selectedAccountId]);
+
+    const netProfitSummary = useMemo(() => {
+        if (filteredTrades.length === 0) return {};
+        
+        const accountsMap = new Map(accounts.map(acc => [acc.id, acc]));
+    
+        return filteredTrades.reduce((acc, trade) => {
+            const currency = accountsMap.get(trade.accountId)?.currency || 'USD';
+            acc[currency] = (acc[currency] || 0) + trade.pnl;
+            return acc;
+        }, {} as Record<string, number>);
+    }, [filteredTrades, accounts]);
+
 
     const PeriodButton: React.FC<{p: Period, label: string}> = ({ p, label }) => (
         <button 
@@ -262,11 +280,34 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                 <p className="text-base font-medium text-[#8A91A8] uppercase tracking-wider">
                     {selectedAccountId === 'all' ? 'Total Balance' : `${activeAccounts.find(a=>a.id === selectedAccountId)?.name} Balance`}
                 </p>
-                <p className="font-bold text-[#F0F0F0]" style={{fontSize: 'clamp(1.75rem, 5vw, 2.5rem)'}}>{formatCurrency(totalBalance, mainCurrency)}</p>
+                <div className="flex flex-wrap justify-center items-baseline gap-x-6 gap-y-2">
+                    {Object.keys(balancesSummary).length > 0 ? (
+                        Object.entries(balancesSummary).map(([currency, total]) => (
+                             <p key={currency} className="font-bold text-[#F0F0F0]" style={{fontSize: 'clamp(1.75rem, 5vw, 2.5rem)'}}>
+                                 {formatCurrency(total, currency)}
+                             </p>
+                        ))
+                    ) : (
+                        <p className="font-bold text-[#F0F0F0]" style={{fontSize: 'clamp(1.75rem, 5vw, 2.5rem)'}}>{formatCurrency(0)}</p>
+                    )}
+                </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
-                 <StatCard label="Net Profit" value={formatCurrency(stats.netProfit, mainCurrency)} className={stats.netProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}/>
+                 <div className="bg-[#232733] p-4 rounded-lg border border-gray-700/50 text-center flex flex-col justify-center">
+                    <p className="text-sm font-medium text-[#8A91A8] uppercase tracking-wider">Net Profit</p>
+                    <div className="flex flex-col items-center justify-center gap-x-4 gap-y-1">
+                        {Object.keys(netProfitSummary).length > 0 ? (
+                            Object.entries(netProfitSummary).map(([currency, value]) => (
+                                <p key={currency} className={`font-bold text-2xl ${value >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                    {formatCurrency(value, currency)}
+                                </p>
+                            ))
+                        ) : (
+                            <p className="font-bold text-2xl text-[#F0F0F0]">{formatCurrency(0)}</p>
+                        )}
+                    </div>
+                </div>
                  <StatCard label="Total Trades" value={stats.totalTrades} className="text-[#F0F0F0]" />
                  <StatCard label="Win Rate" value={formatPercent(stats.winRate)} className={stats.winRate >= 50 ? 'text-[#10B981]' : 'text-[#EF4444]' }/>
                  <StatCard label="Avg R:R" value={formatRR(stats.averageRR)} className="text-[#F0F0F0]"/>
@@ -319,16 +360,24 @@ const SyncIndicator: React.FC<{ status: SyncStatus }> = ({ status }) => {
     );
 };
 
+// FIX: Coerce numeric properties to numbers to prevent type errors.
 const mapTradeFromDb = (t: any): Trade => ({
     ...t,
     accountId: t.account_id,
-    riskAmount: t.risk_amount,
+    riskAmount: Number(t.risk_amount || 0),
     closeType: t.close_type,
     analysisD1: t.analysis_d1,
     analysis1h: t.analysis_1h,
     analysis5m: t.analysis_5m,
     analysisResult: t.analysis_result,
     aiAnalysis: t.ai_analysis,
+    pnl: Number(t.pnl || 0),
+    risk: Number(t.risk || 0),
+    rr: Number(t.rr || 0),
+    commission: t.commission ? Number(t.commission) : undefined,
+    entryPrice: t.entry_price ? Number(t.entry_price) : undefined,
+    stoplossPrice: t.stoploss_price ? Number(t.stoploss_price) : undefined,
+    takeprofitPrice: t.takeprofit_price ? Number(t.takeprofit_price) : undefined,
 });
 
 async function processSyncQueue(userId: string) {
@@ -582,7 +631,12 @@ function AppContent() {
                 }
                 
                 const serverTrades = (tradesData || []).map(mapTradeFromDb);
-                const serverAccounts = (accountsData || []).map((a: any) => ({...a, initialBalance: a.initial_balance, isArchived: a.is_archived}));
+                // FIX: Explicitly type serverAccounts and coerce numeric properties to ensure type safety.
+                const serverAccounts: Account[] = (accountsData || []).map((a: any) => ({
+                    ...a,
+                    initialBalance: Number(a.initial_balance || 0),
+                    isArchived: a.is_archived,
+                }));
                 const serverNotes = (notesData || []) as Note[];
                 const serverSettings = userSettingsData?.data || {};
 
