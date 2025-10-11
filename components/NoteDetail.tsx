@@ -88,7 +88,9 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                     const alt = match[1];
                     const path = match[2];
                     try {
-                        const { data, error } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600);
+                        const { data, error } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600, {
+                            transform: { width: 600, quality: 80 }
+                        });
                         if (error) throw error;
                         return { original: match[0], replacement: `![${alt}](${data.signedUrl})` };
                     } catch (e) {

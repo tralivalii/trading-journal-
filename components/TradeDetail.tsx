@@ -20,9 +20,9 @@ const DetailItem: React.FC<{ label: string; value: React.ReactNode; className?: 
 const AnalysisDetailSection: React.FC<{ 
     title: string; 
     analysis: Analysis;
-    onImageClick: (src: string) => void;
+    onImageClick: (src: string | null) => void;
 }> = ({ title, analysis, onImageClick }) => {
-    const imageUrl = useImageBlobUrl(analysis.image);
+    const imageUrl = useImageBlobUrl(analysis.image, { transform: { width: 600, quality: 80 } });
     
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
