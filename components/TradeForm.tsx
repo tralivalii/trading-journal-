@@ -157,6 +157,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const [isDirty, setIsDirty] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const rrInputRef = useRef<HTMLInputElement>(null);
+  const commissionInputRef = useRef<HTMLInputElement>(null);
 
   const [trade, setTrade] = useState(() => {
      const initialTradeState = {
@@ -302,14 +304,30 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     
     const newErrors: Record<string, string> = {};
     if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.')) {
-        newErrors.rr = "This field is required.";
+        newErrors.rr = "This field is required and must be a valid number.";
     }
     if (trade.commission.trim() === '' || isNaN(parseFloat(trade.commission)) || trade.commission.trim().endsWith('.')) {
-        newErrors.commission = "This field is required.";
+        newErrors.commission = "This field is required and must be a valid number.";
     }
 
     if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
+
+        const firstErrorField = Object.keys(newErrors)[0];
+        const fieldRef = firstErrorField === 'rr' 
+            ? rrInputRef.current 
+            : commissionInputRef.current;
+
+        if (fieldRef) {
+            // Scroll into view
+            fieldRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Flash effect using Tailwind classes
+            fieldRef.classList.add('ring-2', 'ring-red-500');
+            setTimeout(() => {
+                fieldRef.classList.remove('ring-2', 'ring-red-500');
+            }, 1000); // Animation duration
+        }
         return;
     }
 
@@ -373,6 +391,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                     </FormField>
                     <FormField label="R:R Ratio">
                         <input 
+                            ref={rrInputRef}
                             type="text"
                             inputMode="decimal"
                             name="rr"
@@ -406,6 +425,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                     </FormField>
                     <FormField label="Commission ($)">
                         <input
+                            ref={commissionInputRef}
                             type="text"
                             inputMode="decimal"
                             name="commission"
