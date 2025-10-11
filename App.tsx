@@ -19,6 +19,8 @@ import { supabase } from './services/supabase';
 
 declare const Chart: any;
 
+const TRADES_PAGE_SIZE = 25;
+
 type View = 'journal' | 'dashboard' | 'notes' | 'data'; 
 type Period = 'week' | 'month' | 'quarter' | 'all';
 type AnalysisGroup = Result.Win | Result.Loss | Result.Breakeven | Result.Missed;
@@ -421,7 +423,7 @@ const TOAST_ICONS = {
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { session, currentUser, userData, isLoading, isGuest } = state;
+  const { session, currentUser, userData, isLoading, isGuest, hasMoreTrades, isFetchingMore } = state;
 
   const [isFormModalOpen, setFormModalOpen] = useState(false);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
@@ -459,11 +461,13 @@ function AppContent() {
 
   useEffect(() => {
     if (currentUser && !userData && !isGuest) {
-      const fetchUserData = async () => {
+      const fetchInitialUserData = async () => {
         dispatch({ type: 'SET_IS_LOADING', payload: true });
         
         try {
-            // Fetch all data in parallel
+            const from = 0;
+            const to = TRADES_PAGE_SIZE - 1;
+
             const [
               userSettings,
               { data: accountsData, error: accountsError },
@@ -472,7 +476,7 @@ function AppContent() {
             ] = await Promise.all([
               getUserSettings(currentUser.id),
               supabase.from('accounts').select('*').eq('user_id', currentUser.id),
-              supabase.from('trades').select('*').eq('user_id', currentUser.id),
+              supabase.from('trades').select('*').eq('user_id', currentUser.id).range(from, to).order('date', { ascending: false }),
               supabase.from('notes').select('*').eq('user_id', currentUser.id)
             ]);
 
@@ -497,20 +501,62 @@ function AppContent() {
             };
             
             dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
+            
+            // Check if there are more trades to load
+            if (tradesData && tradesData.length === TRADES_PAGE_SIZE) {
+                dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: true } });
+            }
 
         } catch (error) {
             console.error('Error fetching data:', error);
-            // Optional: show a toast message to the user
+            showToast('Failed to load your journal. Please refresh.', 'error');
         } finally {
             dispatch({ type: 'SET_IS_LOADING', payload: false });
         }
       };
       
-      fetchUserData();
+      fetchInitialUserData();
     } else if (!currentUser && !isGuest) {
        dispatch({ type: 'SET_USER_DATA', payload: null });
     }
-  }, [currentUser, userData, dispatch, isGuest]);
+  }, [currentUser, userData, dispatch, isGuest, showToast]);
+  
+  const handleLoadMore = useCallback(async () => {
+    if (isGuest || !currentUser || !userData || isFetchingMore) return;
+
+    dispatch({ type: 'FETCH_MORE_TRADES_START' });
+
+    const currentPage = Math.ceil(userData.trades.length / TRADES_PAGE_SIZE);
+    const from = currentPage * TRADES_PAGE_SIZE;
+    const to = from + TRADES_PAGE_SIZE - 1;
+
+    try {
+        const { data: tradesData, error: tradesError } = await supabase
+            .from('trades')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .range(from, to)
+            .order('date', { ascending: false });
+
+        if (tradesError) throw tradesError;
+        
+        const newTrades = (tradesData || []).map((t: any) => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result }));
+
+        dispatch({
+            type: 'FETCH_MORE_TRADES_SUCCESS',
+            payload: {
+                trades: newTrades,
+                hasMore: newTrades.length === TRADES_PAGE_SIZE,
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching more trades:', error);
+        showToast('Failed to load more trades.', 'error');
+        // Reset loading state on error
+        dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: state.hasMoreTrades } });
+    }
+  }, [currentUser, userData, isGuest, dispatch, showToast, isFetchingMore, state.hasMoreTrades]);
+
 
   const controlFabVisibility = useCallback(() => {
       if (window.scrollY > lastScrollY.current && window.scrollY > 100) {
@@ -693,7 +739,7 @@ function AppContent() {
       </button>
   );
 
-  if (!session) {
+  if (!session && !isGuest) {
     return <Auth />;
   }
 
@@ -734,7 +780,7 @@ function AppContent() {
         )}
 
         <main>
-          {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade}/>}
+          {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade} onLoadMore={handleLoadMore} hasMore={hasMoreTrades} isFetchingMore={isFetchingMore} />}
           {activeView === 'dashboard' && <Dashboard onAddTrade={handleAddTrade} />}
           {activeView === 'notes' && <NotesView showToast={showToast} />}
           {activeView === 'data' && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} showToast={showToast} />}
@@ -840,7 +886,9 @@ function AppContent() {
 }
 
 const App: React.FC = () => (
+  <AppProvider>
     <AppContent />
+  </AppProvider>
 );
 
 export default App;

@@ -10,6 +10,9 @@ interface TradesListProps {
   onView: (trade: Trade) => void;
   onDelete: (id: string) => void;
   onAddTrade: () => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  isFetchingMore: boolean;
 }
 
 type JournalPeriod = 'this-month' | 'last-month' | 'this-quarter' | 'all';
@@ -97,7 +100,7 @@ const MobileTradeCard: React.FC<{
 };
 
 
-const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade }) => {
+const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade, onLoadMore, hasMore, isFetchingMore }) => {
   const { state } = useAppContext();
   const { trades, accounts } = state.userData!;
   
@@ -109,7 +112,7 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
 
   const filteredTrades = useMemo(() => {
     const accountFiltered = trades.filter(trade => selectedAccountId === 'all' || trade.accountId === selectedAccountId);
-    const periodFiltered = filterTradesByPeriod(accountFiltered, period);
+    const periodFiltered = period === 'all' ? accountFiltered : filterTradesByPeriod(accountFiltered, period);
     return periodFiltered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [trades, selectedAccountId, period]);
 
@@ -272,6 +275,28 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                 </div>
             )}
         </div>
+
+        {hasMore && period === 'all' && (
+            <div className="mt-8 text-center">
+                <button
+                    onClick={onLoadMore}
+                    disabled={isFetchingMore}
+                    className="px-6 py-2.5 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:bg-gray-800 disabled:cursor-wait font-medium flex items-center justify-center gap-2 mx-auto"
+                >
+                    {isFetchingMore ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Loading...
+                        </>
+                    ) : (
+                        'Load More'
+                    )}
+                </button>
+            </div>
+        )}
     </div>
   );
 };

@@ -2,7 +2,8 @@
 
 import React, { createContext, useReducer, useContext, useEffect, Dispatch } from 'react';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
-import { Account, Note, Result, Trade, UserData } from '../types';
+// FIX: Added 'Currency' to import to resolve type error.
+import { Account, Note, Result, Trade, UserData, Currency } from '../types';
 import { supabase } from './supabase';
 
 // --- STATE AND ACTION TYPES ---
@@ -13,6 +14,8 @@ interface AppState {
   userData: UserData | null;
   isLoading: boolean;
   isGuest: boolean;
+  hasMoreTrades: boolean;
+  isFetchingMore: boolean;
 }
 
 type Action =
@@ -23,7 +26,10 @@ type Action =
   | { type: 'UPDATE_TRADES'; payload: Trade[] }
   | { type: 'UPDATE_ACCOUNTS'; payload: Account[] }
   | { type: 'UPDATE_NOTES'; payload: Note[] }
-  | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>; value: any } };
+  | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>; value: any } }
+  | { type: 'FETCH_MORE_TRADES_START' }
+  | { type: 'FETCH_MORE_TRADES_SUCCESS'; payload: { trades: Trade[]; hasMore: boolean } };
+
 
 // --- REDUCER ---
 
@@ -33,6 +39,8 @@ const initialState: AppState = {
   userData: null,
   isLoading: true,
   isGuest: false,
+  hasMoreTrades: false,
+  isFetchingMore: false,
 };
 
 const appReducer = (state: AppState, action: Action): AppState => {
@@ -52,7 +60,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
       // Create some default guest data so the app is usable
       const guestData: UserData = {
         trades: [],
-        accounts: [{ id: 'guest-acc', name: 'Guest Account', initialBalance: 100000, currency: 'USD', isArchived: false }],
+        // FIX: Corrected currency assignment to use the Currency enum instead of a string literal.
+        accounts: [{ id: 'guest-acc', name: 'Guest Account', initialBalance: 100000, currency: Currency.USD, isArchived: false }],
         pairs: ['EUR/USD', 'GBP/USD', 'XAU/USD', 'BTC/USDT'],
         entries: ['Market', 'Order Block', 'FVG'],
         risks: [0.5, 1, 1.5, 2],
@@ -67,7 +76,9 @@ const appReducer = (state: AppState, action: Action): AppState => {
         isGuest: true, 
         isLoading: false,
         currentUser: { id: 'guest', email: 'guest@example.com' } as any, // Mock user for guest mode
-        userData: guestData
+        userData: guestData,
+        hasMoreTrades: false,
+        isFetchingMore: false,
       };
     case 'UPDATE_TRADES':
       return state.userData ? { ...state, userData: { ...state.userData, trades: action.payload } } : state;
@@ -84,6 +95,25 @@ const appReducer = (state: AppState, action: Action): AppState => {
                 [action.payload.field]: action.payload.value
             }
         };
+    case 'FETCH_MORE_TRADES_START':
+        return { ...state, isFetchingMore: true };
+    case 'FETCH_MORE_TRADES_SUCCESS':
+        if (!state.userData) return state;
+        return {
+            ...state,
+            userData: {
+                ...state.userData,
+                // Append new trades, avoiding duplicates
+                trades: [
+                    ...state.userData.trades,
+                    ...action.payload.trades.filter(
+                        (newTrade) => !state.userData!.trades.some((existing) => existing.id === newTrade.id)
+                    ),
+                ],
+            },
+            isFetchingMore: false,
+            hasMoreTrades: action.payload.hasMore,
+        };
     default:
       return state;
   }
@@ -99,11 +129,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       dispatch({ type: 'SET_SESSION', payload: session });
+      if (!session) {
+          dispatch({ type: 'SET_IS_LOADING', payload: false });
+      }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         dispatch({ type: 'SET_SESSION', payload: session });
+         if (!session) {
+          dispatch({ type: 'SET_IS_LOADING', payload: false });
+        }
       }
     );
 
@@ -131,35 +167,6 @@ export const useAppContext = () => {
 
 // --- ASYNC ACTIONS ---
 
-const calculatePnl = (trade: Omit<Trade, 'id' | 'pnl' | 'riskAmount'>, account: Account): { pnl: number, riskAmount: number } => {
-    const accountBalance = account.initialBalance; // Simplified to use initial balance for risk calculation.
-    
-    if (trade.result === Result.InProgress || trade.result === Result.Missed) {
-        return { pnl: 0, riskAmount: (accountBalance * trade.risk) / 100 };
-    }
-
-    const riskAmount = (accountBalance * trade.risk) / 100;
-    let pnl = 0;
-
-    switch (trade.result) {
-        case Result.Win:
-            pnl = riskAmount * trade.rr;
-            break;
-        case Result.Loss:
-            pnl = -riskAmount;
-            break;
-        case Result.Breakeven:
-            pnl = 0;
-            break;
-    }
-    
-    // Subtract commission
-    pnl -= (trade.commission || 0);
-
-    return { pnl, riskAmount };
-};
-
-
 export const saveTradeAction = async (
   dispatch: Dispatch<Action>,
   state: AppState,
@@ -169,18 +176,18 @@ export const saveTradeAction = async (
 ) => {
     const { userData, currentUser, isGuest } = state;
     if (!userData || !currentUser) throw new Error('User data not available');
-
-    const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
-    if (!account) {
-        showToast('Selected account not found.', 'error');
-        throw new Error('Account not found');
-    }
-
-    const { pnl, riskAmount } = calculatePnl(tradeData, account);
     
-    const finalTradeData = { ...tradeData, pnl, riskAmount };
-
+    // Server logic will handle calculations, so we can stub this for guest mode
     if (isGuest) {
+        const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
+        if (!account) throw new Error("Guest account not found");
+        const riskAmount = (account.initialBalance * tradeData.risk) / 100;
+        let pnl = 0;
+        if(tradeData.result === Result.Win) pnl = riskAmount * tradeData.rr;
+        if(tradeData.result === Result.Loss) pnl = -riskAmount;
+        pnl -= (tradeData.commission || 0);
+
+        const finalTradeData = { ...tradeData, pnl, riskAmount };
         const updatedTrades = isEditing
             ? userData.trades.map(t => t.id === tradeData.id ? { ...finalTradeData, id: tradeData.id! } : t)
             : [...userData.trades, { ...finalTradeData, id: `guest-${crypto.randomUUID()}` }];
@@ -189,23 +196,22 @@ export const saveTradeAction = async (
         return;
     }
 
-    const { id, ...dbPayload } = finalTradeData;
+    const { id, ...dbPayload } = tradeData;
 
     // Map to snake_case for Supabase
     const supabasePayload = {
       ...dbPayload,
       user_id: currentUser.id,
       account_id: dbPayload.accountId,
-      risk_amount: dbPayload.riskAmount,
       close_type: dbPayload.closeType,
       analysis_d1: dbPayload.analysisD1,
       analysis_1h: dbPayload.analysis1h,
       analysis_5m: dbPayload.analysis5m,
       analysis_result: dbPayload.analysisResult,
+      // pnl and risk_amount are calculated by the DB trigger, so we don't send them
     };
     // remove camelCase keys from the root object to avoid inserting them as columns
     delete (supabasePayload as any).accountId;
-    delete (supabasePayload as any).riskAmount;
     delete (supabasePayload as any).closeType;
     delete (supabasePayload as any).analysisD1;
     delete (supabasePayload as any).analysis1h;
@@ -216,6 +222,7 @@ export const saveTradeAction = async (
     if (isEditing) {
         const { data, error } = await supabase.from('trades').update(supabasePayload).eq('id', id!).select().single();
         if (error) throw error;
+        // The returned `data` will have the server-calculated pnl and risk_amount
         const updatedTrade = { ...data, accountId: data.account_id, riskAmount: data.risk_amount, closeType: data.close_type, analysisD1: data.analysis_d1, analysis1h: data.analysis_1h, analysis5m: data.analysis_5m, analysisResult: data.analysis_result };
         const updatedTrades = userData.trades.map(t => t.id === id ? updatedTrade : t);
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
@@ -223,7 +230,8 @@ export const saveTradeAction = async (
         const { data, error } = await supabase.from('trades').insert(supabasePayload).select().single();
         if (error) throw error;
         const newTrade = { ...data, accountId: data.account_id, riskAmount: data.risk_amount, closeType: data.close_type, analysisD1: data.analysis_d1, analysis1h: data.analysis_1h, analysis5m: data.analysis_5m, analysisResult: data.analysis_result };
-        const updatedTrades = [...userData.trades, newTrade];
+        // Prepend the new trade to show it at the top of the list immediately
+        const updatedTrades = [newTrade, ...userData.trades];
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
     }
 };
