@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 // FIX: Changed imports to be relative paths
-import { Trade, Result } from '../types';
+import { Trade, Result, Account } from '../types';
 import { ICONS } from '../constants';
 import { filterTradesByPeriod } from '../services/statisticsService';
 import { useAppContext } from '../services/appState';
@@ -24,6 +24,77 @@ const AlertIcon: React.FC<{ message: string }> = ({ message }) => (
         </div>
     </div>
 );
+
+const getResultClasses = (result: Result) => {
+    switch (result) {
+      case Result.Win: return 'bg-[#10B981]/10 text-[#10B981]';
+      case Result.Loss: return 'bg-[#EF4444]/10 text-[#EF4444]';
+      case Result.Breakeven: return 'bg-gray-500/10 text-[#8A91A8]';
+      case Result.InProgress: return 'bg-yellow-500/10 text-yellow-400';
+      case Result.Missed: return 'bg-blue-500/10 text-blue-400';
+      default: return 'bg-gray-700 text-white';
+    }
+};
+
+const MobileTradeCard: React.FC<{
+    trade: Trade;
+    account?: Account;
+    onView: (trade: Trade) => void;
+    onEdit: (trade: Trade) => void;
+    onDelete: (id: string) => void;
+    formattedDate: string;
+}> = ({ trade, account, onView, onEdit, onDelete, formattedDate }) => {
+    const currency = account?.currency || 'USD';
+    const hasAlerts = account?.isArchived || trade.risk > 2;
+
+    return (
+        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors">
+            {/* Top row */}
+            <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-base">{trade.pair}</span>
+                    {hasAlerts && (
+                        <div className="flex items-center gap-1.5">
+                            {account?.isArchived && <AlertIcon message="Account Archived" />}
+                            {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
+                        </div>
+                    )}
+                </div>
+                <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{formattedDate}</span>
+            </div>
+
+            {/* Middle row */}
+            <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                <div>
+                    <div className="text-xs text-gray-400">Direction</div>
+                    <div className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</div>
+                </div>
+                <div>
+                    <div className="text-xs text-gray-400">R:R</div>
+                    <div className="font-semibold text-white">{trade.rr.toFixed(2)}</div>
+                </div>
+                <div>
+                    <div className="text-xs text-gray-400">PnL</div>
+                    <div className={`font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {trade.pnl.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </div>
+                </div>
+            </div>
+
+            {/* Bottom row */}
+            <div className="flex justify-between items-center" onPointerUp={e => e.stopPropagation()}>
+                <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center w-28 inline-block ${getResultClasses(trade.result)}`}>
+                    {trade.result}
+                </span>
+                <div className="flex items-center gap-1">
+                    <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="View trade"><span className="w-5 h-5 block">{ICONS.eye}</span></button>
+                    <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Edit trade"><span className="w-5 h-5 block">{ICONS.pencil}</span></button>
+                    <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Delete trade"><span className="w-5 h-5 block">{ICONS.trash}</span></button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 
 const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade }) => {
@@ -58,17 +129,6 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
   }, [filteredTrades]);
 
   const sortedMonthKeys = useMemo(() => Object.keys(groupedByMonthKey).sort().reverse(), [groupedByMonthKey]);
-
-  const getResultClasses = (result: Result) => {
-    switch (result) {
-      case Result.Win: return 'bg-[#10B981]/10 text-[#10B981]';
-      case Result.Loss: return 'bg-[#EF4444]/10 text-[#EF4444]';
-      case Result.Breakeven: return 'bg-gray-500/10 text-[#8A91A8]';
-      case Result.InProgress: return 'bg-yellow-500/10 text-yellow-400';
-      case Result.Missed: return 'bg-blue-500/10 text-blue-400';
-      default: return 'bg-gray-700 text-white';
-    }
-  };
 
   const PeriodButton: React.FC<{p: JournalPeriod, label: string}> = ({ p, label }) => (
     <button 
@@ -116,10 +176,12 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
 
                     return (
                          <div key={monthKey}>
-                             <h2 className="text-xl font-semibold text-white mb-3 pl-1">{monthName}</h2>
-                             <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden">
+                            <h2 className="text-xl font-semibold text-white mb-3 pl-1">{monthName}</h2>
+                            
+                            {/* --- DESKTOP TABLE VIEW --- */}
+                            <div className="hidden lg:block bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden">
                                 <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[700px] text-sm text-left text-[#F0F0F0]">
+                                    <table className="w-full text-sm text-left text-[#F0F0F0]">
                                     <thead className="text-xs text-[#8A91A8] uppercase bg-gray-800">
                                         <tr>
                                         <th scope="col" className="px-6 py-3">Date</th>
@@ -169,6 +231,26 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                     </tbody>
                                     </table>
                                 </div>
+                            </div>
+                            
+                            {/* --- MOBILE CARD VIEW --- */}
+                            <div className="lg:hidden space-y-2">
+                                {monthTrades.map(trade => {
+                                    const account = accountsMap.get(trade.accountId);
+                                    const tradeDate = new Date(trade.date);
+                                    const formattedDate = tradeDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                    return (
+                                        <MobileTradeCard
+                                            key={trade.id}
+                                            trade={trade}
+                                            account={account}
+                                            onView={onView}
+                                            onEdit={onEdit}
+                                            onDelete={onDelete}
+                                            formattedDate={formattedDate}
+                                        />
+                                    );
+                                })}
                             </div>
                         </div>
                     );
