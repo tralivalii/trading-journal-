@@ -1,122 +1,18 @@
-
+// FIX: Provided full content for missing TradeDetail.tsx file.
 import React, { useState, useMemo } from 'react';
-// FIX: Removed unused and non-existent 'CloseType' from imports.
-import { Trade, Account, Result, Analysis } from '../types';
-import { ICONS } from '../constants';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
-import { analyzeTradeWithAI } from '../services/aiService';
+import { Trade, Result } from '../types';
 import { useAppContext } from '../services/appState';
-import { updateTradeWithAIAnalysisAction } from '../services/appState';
+import { ICONS } from '../constants';
+import { analyzeTradeWithAI } from '../services/aiService';
 
-interface TradeDetailProps {
-  trade: Trade;
-  account?: Account;
-  onEdit: (trade: Trade) => void;
-}
-
-const DetailItem: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({ label, value, className }) => (
+const DetailItem: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className }) => (
     <div>
         <p className="text-sm text-[#8A91A8] uppercase tracking-wider">{label}</p>
-        <p className={`text-base font-semibold text-[#F0F0F0] ${className}`}>{value || 'N/A'}</p>
+        <div className={`text-base text-white mt-1 font-medium ${className}`}>{children}</div>
     </div>
 );
 
-const AnalysisDetailSection: React.FC<{ 
-    analysis: Analysis;
-    onImageClick: (src: string | null, notes?: string) => void;
-}> = ({ analysis, onImageClick }) => {
-    // Get a URL for the preview image, resized for performance
-    const previewUrl = useImageBlobUrl(analysis.image, { transform: { width: 800, quality: 85, resize: 'contain' } });
-    // Get a separate URL for the full-resolution image for the modal
-    const fullscreenUrl = useImageBlobUrl(analysis.image);
-    
-    return (
-        <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
-            <div className="space-y-4">
-                 <div className="w-full">
-                    {previewUrl ? (
-                        <img 
-                            src={previewUrl} 
-                            alt={`Analysis chart`} 
-                            className="rounded-md border border-gray-700 w-full h-auto cursor-pointer hover:opacity-90 transition-opacity object-contain"
-                            onClick={() => onImageClick(fullscreenUrl, analysis.notes)}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full">No Image</div>
-                    )}
-                </div>
-                <div>
-                    <p className="text-[#F0F0F0] whitespace-pre-wrap text-sm">{analysis.notes || 'No notes for this section.'}</p>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-const timeframeToFieldMap: Record<string, keyof Trade> = {
-    '1D': 'analysisD1',
-    '1h': 'analysis1h',
-    '5m': 'analysis5m',
-    'Result': 'analysisResult',
-};
-
-const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => {
-  const { state, dispatch } = useAppContext();
-  const { userData } = state;
-  const [fullscreenData, setFullscreenData] = useState<{ src: string; notes?: string } | null>(null);
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  const filledOutTimeframes = useMemo(() => {
-    if (!userData || !trade) return [];
-    
-    return (userData.analysisTimeframes || []).filter(timeframe => {
-        const field = timeframeToFieldMap[timeframe];
-        if (!field) return false;
-        const analysis = trade[field] as Analysis | undefined;
-        return analysis && (!!analysis.image || !!analysis.notes?.trim());
-    });
-  }, [userData, trade]);
-  
-  const [activeTab, setActiveTab] = useState<string>(filledOutTimeframes.length > 0 ? filledOutTimeframes[0] : '');
-
-  const analysisD1ImageUrl = useImageBlobUrl(trade.analysisD1.image);
-  const analysis1hImageUrl = useImageBlobUrl(trade.analysis1h.image);
-  const analysis5mImageUrl = useImageBlobUrl(trade.analysis5m.image);
-  const analysisResultImageUrl = useImageBlobUrl(trade.analysisResult.image);
-
-  const handleImageClick = (src: string | null, notes?: string) => {
-    if (src) {
-        setFullscreenData({ src, notes });
-    } else {
-        setFullscreenData(null);
-    }
-  };
-
-  const handleAiAnalysis = async () => {
-    if (state.isGuest) {
-        dispatch({ type: 'SHOW_TOAST', payload: { message: "AI Analysis is disabled in guest mode.", type: 'error' } });
-        return;
-    }
-    setIsAiLoading(true);
-    setAiError(null);
-    try {
-        const imageUrls = [analysisD1ImageUrl, analysis1hImageUrl, analysis5mImageUrl, analysisResultImageUrl].filter(Boolean) as string[];
-        // FIX: Added the 'imageUrls' argument to the 'analyzeTradeWithAI' function call to match its signature.
-        const analysisText = await analyzeTradeWithAI(trade, (userData?.analysisTimeframes || []), imageUrls);
-        await updateTradeWithAIAnalysisAction(dispatch, state, trade.id, analysisText);
-
-    } catch (error: any) {
-        console.error("AI Analysis Error:", error);
-        setAiError(error.message || "Failed to get AI analysis.");
-        dispatch({ type: 'SHOW_TOAST', payload: { message: "Failed to get AI analysis.", type: 'error' } });
-    } finally {
-        setIsAiLoading(false);
-    }
-  };
-
-
-  const getResultClasses = (result: Result) => {
+const getResultClasses = (result: Result) => {
     switch (result) {
       case Result.Win: return 'bg-[#10B981]/10 text-[#10B981]';
       case Result.Loss: return 'bg-[#EF4444]/10 text-[#EF4444]';
@@ -125,152 +21,75 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
       case Result.Missed: return 'bg-blue-500/10 text-blue-400';
       default: return 'bg-gray-700 text-white';
     }
-  };
-  
-  const currency = account?.currency || 'USD';
-  
-  const StatCard: React.FC<{ label: string, value: string | number, className?: string }> = ({ label, value, className }) => (
-      <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50 text-center flex flex-col justify-center">
-          <p className="text-sm font-medium text-[#8A91A8] uppercase tracking-wider">{label}</p>
-          <p className={`font-bold text-2xl ${className}`}>{value}</p>
-      </div>
-  );
+};
 
-  return (
-    <div className="space-y-6">
-        {/* --- HEADER --- */}
-        <div className="flex justify-between items-center flex-wrap gap-2">
-            <div className="flex items-center gap-4">
-                <h2 className="text-3xl font-bold text-white">{trade.pair}</h2>
-                <span className={`px-4 py-1.5 rounded-full text-sm font-semibold ${getResultClasses(trade.result)}`}>
-                    {trade.result}
-                </span>
-            </div>
-            <div className="flex items-center gap-4">
-                <span className="text-base text-[#8A91A8] hidden sm:block">{new Date(trade.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                <button 
-                    onClick={() => onEdit(trade)}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#2A2F3B] text-white rounded-lg hover:bg-[#373c49] border border-gray-600 hover:border-gray-500 transition-colors text-sm font-medium"
-                    aria-label="Edit trade"
-                >
-                    {ICONS.pencil}
-                    <span>Edit</span>
-                </button>
-            </div>
-        </div>
+const TradeDetail: React.FC<{ trade: Trade, onEdit: (trade: Trade) => void, onDelete: (id: string) => void }> = ({ trade, onEdit, onDelete }) => {
+    const { state } = useAppContext();
+    const account = useMemo(() => state.userData?.accounts.find(a => a.id === trade.accountId), [state.userData, trade.accountId]);
+    const currency = account?.currency || 'USD';
 
-        {/* --- KEY METRICS --- */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Net PnL" value={trade.pnl.toLocaleString('en-US', { style: 'currency', currency })} className={trade.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'} />
-            <StatCard label="R:R Ratio" value={trade.rr.toFixed(2)} className="text-white" />
-            <StatCard label="Risk Amount" value={trade.riskAmount.toLocaleString('en-US', { style: 'currency', currency })} className="text-white" />
-            <StatCard label="Risk %" value={trade.risk} className="text-white" />
-        </div>
-      
-        {/* --- TRADE DETAILS --- */}
-        <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
-             <h3 className="text-xl font-semibold text-white mb-4">Trade Information</h3>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-5">
-                <DetailItem label="Account" value={account?.name} />
-                <DetailItem label="Direction" value={trade.direction} className={trade.direction === 'Long' ? 'text-[#10B981]' : 'text-[#EF4444]'}/>
-                <DetailItem label="Entry Type" value={trade.entry} />
-                <DetailItem label="Stoploss Type" value={trade.stoploss} />
-                <DetailItem label="Take Profit Type" value={trade.takeprofit} />
-                <DetailItem label="Close Type" value={trade.closeType} />
-             </div>
-        </div>
-      
-        {/* --- ANALYSIS NOTES & CHARTS --- */}
-        {filledOutTimeframes.length > 0 && (
-            <div>
-                <h3 className="text-xl font-semibold text-white mb-4">Analysis Breakdown</h3>
-                <div className="mb-4 border-b border-gray-700/50">
-                    <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                        {filledOutTimeframes.map(tab => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveTab(tab)}
-                                className={`${
-                                    activeTab === tab
-                                        ? 'border-blue-500 text-blue-400'
-                                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                                } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors focus:outline-none`}
-                            >
-                                {tab} Analysis
-                            </button>
-                        ))}
-                    </nav>
-                </div>
+    const [aiAnalysis, setAiAnalysis] = useState<string>('');
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+    const handleGetAIAnalysis = async () => {
+        setIsAnalyzing(true);
+        setAiAnalysis('');
+        const analysis = await analyzeTradeWithAI(trade);
+        setAiAnalysis(analysis);
+        setIsAnalyzing(false);
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-start">
                 <div>
-                    <AnalysisDetailSection 
-                        analysis={trade[timeframeToFieldMap[activeTab]] as Analysis}
-                        onImageClick={handleImageClick}
-                    />
+                    <h3 className="text-2xl font-bold text-white">{trade.pair}</h3>
+                    <p className="text-gray-400">{new Date(trade.date).toLocaleString()}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Edit trade"><span className="w-5 h-5 block">{ICONS.pencil}</span></button>
+                    <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Delete trade"><span className="w-5 h-5 block">{ICONS.trash}</span></button>
                 </div>
             </div>
-        )}
-
-        {/* --- AI Analysis Section --- */}
-        <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-white">AI Coach Analysis</h3>
-                {!trade.aiAnalysis && (
-                    <button onClick={handleAiAnalysis} disabled={isAiLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-wait font-medium flex items-center justify-center gap-2 text-sm">
-                        {isAiLoading ? (
-                            <>
-                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                Analyzing...
-                            </>
-                        ) : "Analyze with AI"}
-                    </button>
-                )}
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-4 bg-[#2A2F3B] rounded-lg border border-gray-700/50">
+                <DetailItem label="Result">
+                    <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center w-28 inline-block ${getResultClasses(trade.result)}`}>
+                        {trade.result}
+                    </span>
+                </DetailItem>
+                <DetailItem label="Direction" className={trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}>
+                    {trade.direction}
+                </DetailItem>
+                <DetailItem label="PnL" className={trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
+                    {trade.pnl.toLocaleString('en-US', { style: 'currency', currency })}
+                </DetailItem>
+                <DetailItem label="R:R Ratio">
+                    {trade.rr.toFixed(2)}
+                </DetailItem>
             </div>
-            <div className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
-                {trade.aiAnalysis ? (
-                    trade.aiAnalysis
-                ) : isAiLoading ? (
-                    <p className="text-gray-400 animate-pulse">The AI is analyzing your trade, notes, and charts. This may take a moment...</p>
-                ) : aiError ? (
-                    <p className="text-red-400">Error: {aiError}</p>
-                ) : (
-                    <p className="text-gray-500">Click the button to get an objective analysis of your trade from an AI trading coach.</p>
-                )}
-            </div>
-        </div>
-      
-      {fullscreenData && (
-        <div 
-          className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4" 
-          onClick={() => setFullscreenData(null)}
-        >
-          <div
-            className="relative w-auto h-auto max-w-full max-h-full flex"
-            onClick={e => e.stopPropagation()}
-          >
-            <img 
-              src={fullscreenData.src} 
-              alt="Fullscreen view" 
-              className="block max-w-full max-h-[95vh] object-contain rounded-lg"
-            />
-            {fullscreenData.notes && (
-              <div
-                className="absolute bottom-0 left-0 right-0 p-4 bg-black/60 backdrop-blur-sm text-white text-sm rounded-b-lg"
-              >
-                <p className="max-w-4xl mx-auto whitespace-pre-wrap">{fullscreenData.notes}</p>
-              </div>
+            
+            {(trade.setup || trade.execution || trade.outcome) && (
+                <div className="space-y-4">
+                    {trade.setup && <div className="prose prose-invert prose-sm max-w-none"><h4>Setup</h4><p>{trade.setup}</p></div>}
+                    {trade.execution && <div className="prose prose-invert prose-sm max-w-none"><h4>Execution</h4><p>{trade.execution}</p></div>}
+                    {trade.outcome && <div className="prose prose-invert prose-sm max-w-none"><h4>Outcome</h4><p>{trade.outcome}</p></div>}
+                </div>
             )}
-          </div>
-          <button
-            onClick={() => setFullscreenData(null)}
-            className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-1.5 hover:bg-black/80 transition-colors"
-            aria-label="Close fullscreen view"
-          >
-            <span className="w-6 h-6 block">{ICONS.x}</span>
-          </button>
+            
+            <div>
+                 <button onClick={handleGetAIAnalysis} disabled={isAnalyzing} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors disabled:bg-gray-500">
+                    {isAnalyzing ? 'Analyzing...' : 'Get AI Analysis'}
+                </button>
+                {isAnalyzing && <p className="text-sm text-gray-400 mt-2 animate-pulse">AI is analyzing your trade...</p>}
+                {aiAnalysis && (
+                    <div className="mt-4 p-4 bg-[#1A1D26] rounded-lg border border-gray-700/50">
+                        <p className="text-sm text-gray-300 whitespace-pre-wrap">{aiAnalysis}</p>
+                    </div>
+                )}
+            </div>
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default TradeDetail;

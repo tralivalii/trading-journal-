@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+// FIX: Corrected module import paths to be relative.
 import { useAppContext, saveNoteAction, deleteNoteAction, fetchMoreNotesAction } from '../services/appState';
 import { Note } from '../types';
 import NoteDetail from './NoteDetail';

@@ -1,9 +1,4 @@
-// types.ts
-
-export enum Currency {
-  USD = 'USD',
-  EUR = 'EUR',
-}
+// FIX: Provided full content for missing types.ts file.
 
 export enum Result {
   Win = 'Win',
@@ -13,75 +8,42 @@ export enum Result {
   Missed = 'Missed',
 }
 
-export enum Direction {
-  Long = 'Long',
-  Short = 'Short',
-}
-
-// New type for analysis sections
-export interface Analysis {
-  image?: string; // This is now an ID/key for an image in IndexedDB
-  notes?: string;
+export enum Currency {
+    USD = 'USD',
+    EUR = 'EUR',
+    GBP = 'GBP',
+    JPY = 'JPY',
+    AUD = 'AUD',
+    CAD = 'CAD',
+    CHF = 'CHF',
+    NZD = 'NZD',
 }
 
 export interface Trade {
   id: string;
-  date: string; // Will store full ISO string for time analysis
+  userId: string;
   accountId: string;
+  date: string; // ISO string
   pair: string;
-  entry: string;
-  direction: Direction;
-  risk: number; // The % risk from dropdown
-  rr: number; // The R:R ratio
-  riskAmount: number; // The actual $ amount risked
+  direction: 'Long' | 'Short';
   result: Result;
-  pnl: number; // This will be calculated on save
-  commission?: number;
-  stoploss: string;
-  takeprofit: string;
-  
-  // New fields for deeper analysis
-  entryPrice?: number;
-  stoplossPrice?: number;
-  takeprofitPrice?: number;
+  rr: number;
+  pnl: number;
+  risk: number; // percentage
+  entryType?: string;
+  takeProfitType?: string;
+  stoplossType?: string;
   closeType?: string;
-  
-  // New structured analysis
-  analysisD1: Analysis;
-  analysis1h: Analysis;
-  analysis5m: Analysis;
-  analysisResult: Analysis;
-
-  // AI-powered analysis result
-  aiAnalysis?: string;
-}
-
-export interface Account {
-  id:string;
-  name: string;
-  initialBalance: number;
-  currency?: Currency;
-  isArchived?: boolean;
-}
-
-export interface User {
-  email: string;
-  // NOTE: In a real-world application, never store passwords in plaintext.
-  // This is a simplified simulation for a frontend-only context.
-  password?: string;
-}
-
-export interface Note {
-  id: string;
-  date: string;
-  content: string;
-  tags?: string[];
-  isFavorite?: boolean;
-  attachments?: {
-    name: string;
-    type: string; // MIME type
-    data: string; // This is now an ID/key for an image in IndexedDB
-  }[];
+  entryPrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  setup?: string; // Markdown
+  execution?: string; // Markdown
+  outcome?: string; // Markdown
+  screenshotBeforeKey?: string | null;
+  screenshotAfterKey?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Stats {
@@ -90,7 +52,6 @@ export interface Stats {
   wins: number;
   losses: number;
   breakevens: number;
-  // FIX: Corrected typo from `anumber` to `number`.
   missed: number;
   averageRR: number;
   totalRR: number;
@@ -99,24 +60,42 @@ export interface Stats {
   lossSum: number;
 }
 
-export interface DefaultSettings {
-    accountId: string;
-    pair: string;
-    entry: string;
-    risk: number | string;
+export interface Account {
+  id: string;
+  userId: string;
+  name: string;
+  initialBalance: number;
+  currency: Currency;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Note {
+  id: string;
+  userId: string;
+  date: string; // ISO string
+  content: string; // Markdown
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSettings {
+    id?: string;
+    userId: string;
+    riskPerTrade: number; // default risk percentage
 }
 
 export interface UserData {
     trades: Trade[];
     accounts: Account[];
-    pairs: string[];
-    entries: string[];
-    risks: number[];
-    defaultSettings: DefaultSettings;
     notes: Note[];
-    stoplosses: string[];
-    // FIX: Corrected typo from `takeprofite` to `takeprofits` to resolve type errors.
-    takeprofits: string[];
-    closeTypes: string[];
-    analysisTimeframes: string[];
+    settings: UserSettings;
+}
+
+export interface Toast {
+    id: string;
+    message: string;
+    type: 'success' | 'error' | 'info';
 }

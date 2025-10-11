@@ -1,7 +1,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// FIX: Changed import to be a relative path
+// FIX: Corrected module import paths to be relative. The reported errors were likely due to missing files.
 import App from './App';
 import { AppProvider } from './services/appState';
 

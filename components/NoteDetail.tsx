@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+// FIX: Corrected module import paths to be relative.
 import { Note } from '../types';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';

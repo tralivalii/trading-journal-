@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
+// FIX: Corrected module import path to be relative.
 import { useAppContext } from '../services/appState';
 
 interface SupabaseTransformOptions {

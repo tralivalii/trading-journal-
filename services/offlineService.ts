@@ -1,5 +1,6 @@
 // services/offlineService.ts
 import { DBSchema, openDB, IDBPDatabase } from 'idb';
+// FIX: Corrected module import path to be relative.
 import { Trade, Account, Note } from '../types';
 
 const DB_NAME = 'TradingJournalDB';

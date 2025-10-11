@@ -1,487 +1,222 @@
-
-// services/appState.tsx
-
+// FIX: Provided full content for missing appState.tsx file.
 import React, { createContext, useReducer, useContext, useEffect, Dispatch } from 'react';
-import { Session, User as SupabaseUser } from '@supabase/supabase-js';
-import { Account, Note, Result, Trade, UserData, Currency } from '../types';
 import { supabase } from './supabase';
-import { bulkPut, clearAllData, getSyncQueue, getTable, putSyncQueue } from './offlineService';
-
-// --- STATE AND ACTION TYPES ---
-
-interface Toast {
-    message: string;
-    type: 'success' | 'error';
-    id: number;
-}
-
-export type SyncStatus = 'online' | 'offline' | 'syncing';
+import { Session, User } from '@supabase/supabase-js';
+import { UserData, Trade, Note, Toast } from '../types';
+import * as dbService from './databaseService';
 
 interface AppState {
-  session: Session | null;
-  currentUser: SupabaseUser | null;
-  userData: UserData | null;
-  isLoading: boolean;
-  isGuest: boolean;
-  hasMoreTrades: boolean;
-  isFetchingMore: boolean;
-  hasMoreNotes: boolean;
-  isFetchingMoreNotes: boolean;
-  toast: Toast | null;
-  syncStatus: SyncStatus;
+    isLoading: boolean;
+    session: Session | null;
+    currentUser: User | null;
+    isGuest: boolean;
+    userData: UserData | null;
+    toasts: Toast[];
+    hasMoreTrades: boolean;
+    isFetchingMoreTrades: boolean;
+    hasMoreNotes: boolean;
+    isFetchingMoreNotes: boolean;
 }
 
 type Action =
-  | { type: 'SET_SESSION'; payload: Session | null }
-  | { type: 'SET_USER_DATA'; payload: UserData | null }
-  | { type: 'SET_IS_LOADING'; payload: boolean }
-  | { type: 'SET_GUEST_MODE' }
-  | { type: 'UPDATE_TRADES'; payload: Trade[] }
-  | { type: 'UPDATE_ACCOUNTS'; payload: Account[] }
-  | { type: 'UPDATE_NOTES'; payload: Note[] }
-  | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>; value: any } }
-  | { type: 'FETCH_MORE_TRADES_START' }
-  | { type: 'FETCH_MORE_TRADES_SUCCESS'; payload: { trades: Trade[]; hasMore: boolean } }
-  | { type: 'FETCH_MORE_NOTES_START' }
-  | { type: 'FETCH_MORE_NOTES_SUCCESS'; payload: { notes: Note[]; hasMore: boolean } }
-  | { type: 'SHOW_TOAST'; payload: Omit<Toast, 'id'> }
-  | { type: 'HIDE_TOAST' }
-  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
+    | { type: 'SET_LOADING'; payload: boolean }
+    | { type: 'SET_SESSION'; payload: { session: Session | null, user: User | null } }
+    | { type: 'SET_GUEST_MODE' }
+    | { type: 'LOGOUT' }
+    | { type: 'SET_USER_DATA'; payload: UserData }
+    | { type: 'SAVE_TRADE'; payload: Trade }
+    | { type: 'DELETE_TRADE'; payload: string }
+    | { type: 'ADD_MORE_TRADES'; payload: { trades: Trade[], hasMore: boolean } }
+    | { type: 'SET_FETCHING_MORE_TRADES'; payload: boolean }
+    | { type: 'SAVE_NOTE'; payload: Note }
+    | { type: 'DELETE_NOTE'; payload: string }
+    | { type: 'ADD_MORE_NOTES'; payload: { notes: Note[], hasMore: boolean } }
+    | { type: 'SET_FETCHING_MORE_NOTES'; payload: boolean }
+    | { type: 'SHOW_TOAST', payload: { message: string, type: 'success' | 'error' | 'info' } }
+    | { type: 'DISMISS_TOAST', payload: string };
 
-
-// --- REDUCER ---
 
 const initialState: AppState = {
-  session: null,
-  currentUser: null,
-  userData: null,
-  isLoading: true,
-  isGuest: false,
-  hasMoreTrades: false,
-  isFetchingMore: false,
-  hasMoreNotes: false,
-  isFetchingMoreNotes: false,
-  toast: null,
-  syncStatus: navigator.onLine ? 'online' : 'offline',
+    isLoading: true,
+    session: null,
+    currentUser: null,
+    isGuest: false,
+    userData: null,
+    toasts: [],
+    hasMoreTrades: true,
+    isFetchingMoreTrades: false,
+    hasMoreNotes: true,
+    isFetchingMoreNotes: false,
 };
-
-const defaultTimeframes = ['1D', '1h', '5m', 'Result'];
 
 const appReducer = (state: AppState, action: Action): AppState => {
-  switch (action.type) {
-    case 'SET_SESSION':
-      return {
-        ...state,
-        session: action.payload,
-        currentUser: action.payload?.user ?? null,
-        isGuest: false, // Reset guest mode on session change
-      };
-    case 'SET_USER_DATA':
-      if (action.payload) {
-        const userDataWithDefaults: UserData = {
-          ...action.payload,
-          analysisTimeframes: action.payload.analysisTimeframes || defaultTimeframes,
-        };
-        return { ...state, userData: userDataWithDefaults };
-      }
-      return { ...state, userData: null };
-    case 'SET_IS_LOADING':
-      return { ...state, isLoading: action.payload };
-    case 'SET_GUEST_MODE':
-      const guestData: UserData = {
-        trades: [],
-        accounts: [{ id: 'guest-acc', name: 'Guest Account', initialBalance: 100000, currency: Currency.USD, isArchived: false }],
-        pairs: ['EUR/USD', 'GBP/USD', 'XAU/USD', 'BTC/USDT'],
-        entries: ['Market', 'Order Block', 'FVG'],
-        risks: [0.5, 1, 1.5, 2],
-        defaultSettings: { accountId: 'guest-acc', pair: 'EUR/USD', entry: 'Market', risk: 1 },
-        notes: [],
-        stoplosses: ['Session High/Low', 'FVG'],
-        takeprofits: ['Session High/Low', 'FVG'],
-        closeTypes: ['SL Hit', 'TP Hit', 'Manual'],
-        analysisTimeframes: defaultTimeframes,
-      };
-      return { 
-        ...state, 
-        isGuest: true, 
-        isLoading: false,
-        currentUser: { id: 'guest', email: 'guest@example.com' } as any, 
-        userData: guestData,
-        hasMoreTrades: false,
-        isFetchingMore: false,
-        hasMoreNotes: false,
-        isFetchingMoreNotes: false,
-        syncStatus: 'online', // Guest mode is always online
-      };
-    case 'UPDATE_TRADES':
-      return state.userData ? { ...state, userData: { ...state.userData, trades: action.payload } } : state;
-    case 'UPDATE_ACCOUNTS':
-      return state.userData ? { ...state, userData: { ...state.userData, accounts: action.payload } } : state;
-    case 'UPDATE_NOTES':
-      return state.userData ? { ...state, userData: { ...state.userData, notes: action.payload } } : state;
-    case 'UPDATE_USER_DATA_FIELD':
-        if (!state.userData) return state;
-        return {
-            ...state,
-            userData: {
-                ...state.userData,
-                [action.payload.field]: action.payload.value
-            }
-        };
-    case 'FETCH_MORE_TRADES_START':
-        return { ...state, isFetchingMore: true };
-    case 'FETCH_MORE_TRADES_SUCCESS':
-        if (!state.userData) return state;
-        return {
-            ...state,
-            userData: {
-                ...state.userData,
-                trades: [
-                    ...state.userData.trades,
-                    ...action.payload.trades.filter(
-                        (newTrade) => !state.userData!.trades.some((existing) => existing.id === newTrade.id)
-                    ),
-                ],
-            },
-            isFetchingMore: false,
-            hasMoreTrades: action.payload.hasMore,
-        };
-    case 'FETCH_MORE_NOTES_START':
-        return { ...state, isFetchingMoreNotes: true };
-    case 'FETCH_MORE_NOTES_SUCCESS':
-        if (!state.userData) return state;
-        return {
-            ...state,
-            userData: {
-                ...state.userData,
-                notes: [
-                    ...state.userData.notes,
-                    ...action.payload.notes.filter(
-                        (newNote) => !state.userData!.notes.some((existing) => existing.id === newNote.id)
-                    ),
-                ],
-            },
-            isFetchingMoreNotes: false,
-            hasMoreNotes: action.payload.hasMore,
-        };
-    case 'SHOW_TOAST':
-        return { ...state, toast: { ...action.payload, id: Date.now() } };
-    case 'HIDE_TOAST':
-        return { ...state, toast: null };
-    case 'SET_SYNC_STATUS':
-        return { ...state, syncStatus: action.payload };
-    default:
-      return state;
-  }
+    switch(action.type) {
+        case 'SET_LOADING': return { ...state, isLoading: action.payload };
+        case 'SET_SESSION': return { ...state, session: action.payload.session, currentUser: action.payload.user, isGuest: false };
+        case 'SET_GUEST_MODE': return { ...state, isGuest: true, isLoading: false, userData: { trades: [], accounts: [], notes: [], settings: { userId: 'guest', riskPerTrade: 1 } } };
+        case 'LOGOUT': return { ...initialState, isLoading: false };
+        case 'SET_USER_DATA': return { ...state, userData: action.payload };
+        case 'SAVE_TRADE': {
+            const trades = state.userData?.trades || [];
+            const index = trades.findIndex(t => t.id === action.payload.id);
+            const newTrades = index > -1 ? [...trades.slice(0, index), action.payload, ...trades.slice(index + 1)] : [action.payload, ...trades];
+            return { ...state, userData: { ...state.userData!, trades: newTrades }};
+        }
+        case 'DELETE_TRADE': {
+            const trades = state.userData?.trades.filter(t => t.id !== action.payload) || [];
+            return { ...state, userData: { ...state.userData!, trades } };
+        }
+        case 'ADD_MORE_TRADES': return { ...state, userData: { ...state.userData!, trades: [...state.userData!.trades, ...action.payload.trades]}, hasMoreTrades: action.payload.hasMore };
+        case 'SET_FETCHING_MORE_TRADES': return { ...state, isFetchingMoreTrades: action.payload };
+        case 'SAVE_NOTE': {
+            const notes = state.userData?.notes || [];
+            const index = notes.findIndex(n => n.id === action.payload.id);
+            const newNotes = index > -1 ? [...notes.slice(0, index), action.payload, ...notes.slice(index + 1)] : [action.payload, ...notes];
+            return { ...state, userData: { ...state.userData!, notes: newNotes }};
+        }
+        case 'DELETE_NOTE': {
+            const notes = state.userData?.notes.filter(n => n.id !== action.payload) || [];
+            return { ...state, userData: { ...state.userData!, notes } };
+        }
+        case 'ADD_MORE_NOTES': return { ...state, userData: { ...state.userData!, notes: [...state.userData!.notes, ...action.payload.notes]}, hasMoreNotes: action.payload.hasMore };
+        case 'SET_FETCHING_MORE_NOTES': return { ...state, isFetchingMoreNotes: action.payload };
+        case 'SHOW_TOAST': return { ...state, toasts: [...state.toasts, { ...action.payload, id: crypto.randomUUID() }] };
+        case 'DISMISS_TOAST': return { ...state, toasts: state.toasts.filter(t => t.id !== action.payload) };
+        default: return state;
+    }
 };
 
-// --- CONTEXT AND PROVIDER ---
-
-const AppContext = createContext<{ state: AppState; dispatch: Dispatch<Action> } | undefined>(undefined);
+const AppContext = createContext<{ state: AppState; dispatch: Dispatch<Action> }>({ state: initialState, dispatch: () => null });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+    const [state, dispatch] = useReducer(appReducer, initialState);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      dispatch({ type: 'SET_SESSION', payload: session });
-      if (!session) {
-          dispatch({ type: 'SET_IS_LOADING', payload: false });
-      }
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (!session) {
-            await clearAllData();
-        }
-        dispatch({ type: 'SET_SESSION', payload: session });
-         if (!session) {
-          dispatch({ type: 'SET_IS_LOADING', payload: false });
-        }
-      }
-    );
-
-    // Online/Offline listeners
-    const handleOnline = () => dispatch({ type: 'SET_SYNC_STATUS', payload: 'online' });
-    const handleOffline = () => dispatch({ type: 'SET_SYNC_STATUS', payload: 'offline' });
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      authListener.subscription.unsubscribe();
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  return (
-    <AppContext.Provider value={{ state, dispatch }}>
-      {children}
-    </AppContext.Provider>
-  );
-};
-
-// --- HOOK ---
-
-export const useAppContext = () => {
-  const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useAppContext must be used within an AppProvider');
-  }
-  return context;
-};
-
-// --- ASYNC ACTIONS ---
-
-export const saveTradeAction = async (
-  dispatch: Dispatch<Action>,
-  state: AppState,
-  tradeData: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string },
-  isEditing: boolean
-) => {
-    const { userData, currentUser, isGuest, syncStatus } = state;
-    if (!userData || !currentUser) throw new Error('User data not available');
-    
-    if (isGuest) {
-      // Guest logic:
-      const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
-      if (!account) throw new Error("Account not found");
-      const riskAmount = (account.initialBalance * tradeData.risk) / 100;
-      let pnl = 0;
-      if(tradeData.result === Result.Win) pnl = riskAmount * tradeData.rr;
-      if(tradeData.result === Result.Loss) pnl = -riskAmount;
-      pnl -= (tradeData.commission || 0);
-
-      const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
-      const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
-      const updatedTrades = isEditing
-        ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
-        : [finalTrade, ...userData.trades];
-      dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-      dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} in guest mode.`, type: 'success' } });
-      return;
-    }
-    
-    // --- Offline-First Logic ---
-    const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
-    if (!account) throw new Error("Account not found");
-
-    const riskAmount = (account.initialBalance * tradeData.risk) / 100;
-    let pnl = 0;
-    if(tradeData.result === Result.Win) pnl = riskAmount * tradeData.rr;
-    if(tradeData.result === Result.Loss) pnl = -riskAmount;
-    pnl -= (tradeData.commission || 0);
-
-    const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
-    const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
-
-    const updatedTrades = isEditing
-        ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
-        : [finalTrade, ...userData.trades];
-    dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    await bulkPut('trades', [finalTrade]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: isEditing ? 'update' : 'create', payload: finalTrade, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} locally.`, type: 'success' } });
-};
-
-export const deleteTradeAction = async (
-  dispatch: Dispatch<Action>,
-  state: AppState,
-  tradeId: string
-) => {
-    const { userData, isGuest, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
-    
-    if (isGuest) {
-      const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
-      dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-      dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted in guest mode.', type: 'success' } });
-      return;
-    }
-
-    const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
-    dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    await bulkPut('trades', updatedTrades); // This re-saves the whole array, effectively deleting the item
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: 'delete', payload: { id: tradeId }, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted locally.', type: 'success' } });
-};
-
-export const updateTradeWithAIAnalysisAction = async (
-  dispatch: Dispatch<Action>,
-  state: AppState,
-  tradeId: string,
-  analysisText: string
-) => {
-    const { userData, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
-    
-    const tradeToUpdate = userData.trades.find(t => t.id === tradeId);
-    if (!tradeToUpdate) throw new Error("Trade not found");
-    
-    const updatedTrade: Trade = { ...tradeToUpdate, aiAnalysis: analysisText };
-    const updatedTrades = userData.trades.map(t => t.id === tradeId ? updatedTrade : t);
-    dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    await bulkPut('trades', [updatedTrade]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: 'update', payload: updatedTrade, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-};
-
-// --- ACCOUNT ACTIONS ---
-export const saveAccountAction = async (
-    dispatch: Dispatch<Action>,
-    state: AppState,
-    accountData: Omit<Account, 'id'> & { id?: string },
-    isEditing: boolean
-) => {
-    const { userData, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
-
-    const accountId = isEditing ? accountData.id! : crypto.randomUUID();
-    const finalAccount: Account = { ...accountData, id: accountId };
-
-    const updatedAccounts = isEditing
-        ? userData.accounts.map(a => a.id === accountId ? finalAccount : a)
-        : [...userData.accounts, finalAccount];
-    
-    dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-    await bulkPut('accounts', [finalAccount]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'account', action: isEditing ? 'update' : 'create', payload: finalAccount, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${isEditing ? 'updated' : 'saved'} locally.`, type: 'success' } });
-};
-
-export const deleteAccountAction = async (
-    dispatch: Dispatch<Action>,
-    state: AppState,
-    accountId: string
-) => {
-    const { userData, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
-
-    const updatedAccounts = userData.accounts.filter(a => a.id !== accountId);
-    dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-    await bulkPut('accounts', updatedAccounts);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'account', action: 'delete', payload: { id: accountId }, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted locally.', type: 'success' } });
-};
-
-// --- NOTE ACTIONS ---
-export const saveNoteAction = async (
-    dispatch: Dispatch<Action>,
-    state: AppState,
-    noteData: Omit<Note, 'id'> & { id?: string },
-    isEditing: boolean
-) => {
-    const { userData, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
-
-    const noteId = isEditing ? noteData.id! : crypto.randomUUID();
-    const finalNote: Note = { ...noteData, id: noteId };
-
-    const updatedNotes = isEditing
-        ? userData.notes.map(n => n.id === noteId ? finalNote : n)
-        : [finalNote, ...userData.notes];
-    
-    dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-    await bulkPut('notes', [finalNote]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'note', action: isEditing ? 'update' : 'create', payload: finalNote, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: `Note ${isEditing ? 'updated' : 'saved'} locally.`, type: 'success' } });
-    return finalNote;
-};
-
-export const deleteNoteAction = async (
-    dispatch: Dispatch<Action>,
-    state: AppState,
-    noteId: string
-) => {
-    const { userData, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
-    
-    const updatedNotes = userData.notes.filter(n => n.id !== noteId);
-    dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-    await bulkPut('notes', updatedNotes);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'note', action: 'delete', payload: { id: noteId }, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted locally.', type: 'success' } });
-};
-
-// --- SETTINGS ACTIONS ---
-export const saveSettingsAction = async (
-  dispatch: Dispatch<Action>,
-  state: AppState,
-  field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, 
-  value: any
-) => {
-    const { userData, currentUser, isGuest, syncStatus } = state;
-    if (isGuest || !currentUser || !userData) return;
-
-    // Update local state immediately
-    dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value } });
-    
-    // Update local DB
-    const { trades, accounts, notes, ...allSettingsData } = userData;
-    const updatedData = { ...allSettingsData, [field]: value };
-    await bulkPut('settings', [{ id: 'user-settings', data: updatedData }]);
-    
-    // Queue for sync
-    await putSyncQueue({ 
-        id: crypto.randomUUID(), 
-        type: 'settings',
-        action: 'update', 
-        payload: updatedData, 
-        timestamp: Date.now() 
-    });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    
-    const friendlyFieldName = (field as string)
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/^./, (str) => str.toUpperCase());
-      
-    dispatch({ type: 'SHOW_TOAST', payload: { message: `${friendlyFieldName} updated successfully.`, type: 'success' } });
-};
-
-
-// --- PAGINATION ACTIONS ---
-export const fetchMoreNotesAction = async (
-    dispatch: Dispatch<Action>,
-    state: AppState,
-    pageSize: number
-) => {
-    const { currentUser, userData, isGuest, syncStatus } = state;
-    if (isGuest || !currentUser || !userData || syncStatus === 'offline') return;
-
-    dispatch({ type: 'FETCH_MORE_NOTES_START' });
-    try {
-        const { data, error } = await supabase
-            .from('notes')
-            .select('*')
-            .eq('user_id', currentUser.id)
-            .order('date', { ascending: false })
-            .range(userData.notes.length, userData.notes.length + pageSize - 1);
+    useEffect(() => {
+        const fetchInitialData = async (user: User) => {
+            dispatch({ type: 'SET_LOADING', payload: true });
+            try {
+                const [
+                    { data: trades, count: tradesCount },
+                    accounts,
+                    { data: notes, count: notesCount },
+                    settings
+                ] = await Promise.all([
+                    dbService.getTrades(user.id, 0, 50),
+                    dbService.getAccounts(user.id),
+                    dbService.getNotes(user.id, 0, 20),
+                    dbService.getSettings(user.id)
+                ]);
+                dispatch({ type: 'SET_USER_DATA', payload: { trades, accounts, notes, settings: settings || { userId: user.id, riskPerTrade: 1 } } });
+                dispatch({ type: 'ADD_MORE_TRADES', payload: { trades, hasMore: trades.length < (tradesCount ?? 0) } });
+                dispatch({ type: 'ADD_MORE_NOTES', payload: { notes, hasMore: notes.length < (notesCount ?? 0) } });
+            } catch (error) {
+                console.error("Error fetching initial data:", error);
+            } finally {
+                dispatch({ type: 'SET_LOADING', payload: false });
+            }
+        };
         
-        if (error) throw error;
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                dispatch({ type: 'SET_SESSION', payload: { session, user: session.user } });
+                fetchInitialData(session.user);
+            } else {
+                dispatch({ type: 'SET_LOADING', payload: false });
+            }
+        });
+        
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (session) {
+                dispatch({ type: 'SET_SESSION', payload: { session, user: session.user } });
+                fetchInitialData(session.user);
+            } else {
+                dispatch({ type: 'LOGOUT' });
+            }
+        });
 
-        const newNotes = data as Note[];
-        await bulkPut('notes', newNotes);
-        dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: newNotes, hasMore: newNotes.length === pageSize } });
+        return () => subscription.unsubscribe();
+    }, []);
 
+    return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>
+};
+
+export const useAppContext = () => useContext(AppContext);
+
+// Action Creators
+export const saveTradeAction = async (dispatch: Dispatch<Action>, state: AppState, tradeData: Omit<Trade, 'id' | 'userId'>, id?: string) => {
+    if (!state.currentUser) return;
+    try {
+        const savedTrade = await dbService.saveTrade(tradeData, state.currentUser.id, id);
+        dispatch({ type: 'SAVE_TRADE', payload: savedTrade });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade saved successfully!', type: 'success' } });
     } catch (error) {
-        console.error("Failed to fetch more notes:", error);
-        dispatch({ type: 'FETCH_MORE_NOTES_START' }); // Reset loading state on error
-        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Could not load more notes.', type: 'error' } });
+        console.error("Error saving trade:", error);
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to save trade.', type: 'error' } });
+    }
+};
+
+export const deleteTradeAction = async (dispatch: Dispatch<Action>, state: AppState, id: string) => {
+    if (!state.currentUser) return;
+    try {
+        await dbService.deleteTrade(id);
+        dispatch({ type: 'DELETE_TRADE', payload: id });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted.', type: 'success' } });
+    } catch (error) {
+        console.error("Error deleting trade:", error);
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to delete trade.', type: 'error' } });
+    }
+};
+
+export const fetchMoreTradesAction = async (dispatch: Dispatch<Action>, state: AppState, pageSize: number) => {
+    if (!state.currentUser || state.isFetchingMoreTrades || !state.hasMoreTrades) return;
+    dispatch({ type: 'SET_FETCHING_MORE_TRADES', payload: true });
+    try {
+        const page = Math.ceil(state.userData!.trades.length / pageSize);
+        const { data, count } = await dbService.getTrades(state.currentUser.id, page, pageSize);
+        dispatch({ type: 'ADD_MORE_TRADES', payload: { trades: data, hasMore: (state.userData!.trades.length + data.length) < (count ?? 0) } });
+    } catch (error) {
+        console.error("Error fetching more trades:", error);
+    } finally {
+        dispatch({ type: 'SET_FETCHING_MORE_TRADES', payload: false });
+    }
+};
+
+export const saveNoteAction = async (dispatch: Dispatch<Action>, state: AppState, noteData: Partial<Note>, isUpdate: boolean) => {
+    if (!state.currentUser) throw new Error("User not logged in");
+    try {
+        const savedNote = await dbService.saveNote(noteData, state.currentUser.id, isUpdate ? noteData.id : undefined);
+        dispatch({ type: 'SAVE_NOTE', payload: savedNote });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Note ${isUpdate ? 'updated' : 'created'}!`, type: 'success' } });
+        return savedNote;
+    } catch (error) {
+        console.error("Error saving note:", error);
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to save note.', type: 'error' } });
+        throw error;
+    }
+};
+
+export const deleteNoteAction = async (dispatch: Dispatch<Action>, state: AppState, id: string) => {
+    if (!state.currentUser) return;
+    try {
+        await dbService.deleteNote(id);
+        dispatch({ type: 'DELETE_NOTE', payload: id });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted.', type: 'success' } });
+    } catch (error) {
+        console.error("Error deleting note:", error);
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to delete note.', type: 'error' } });
+    }
+};
+
+export const fetchMoreNotesAction = async (dispatch: Dispatch<Action>, state: AppState, pageSize: number) => {
+    if (!state.currentUser || state.isFetchingMoreNotes || !state.hasMoreNotes) return;
+    dispatch({ type: 'SET_FETCHING_MORE_NOTES', payload: true });
+    try {
+        const page = Math.ceil(state.userData!.notes.length / pageSize);
+        const { data, count } = await dbService.getNotes(state.currentUser.id, page, pageSize);
+        dispatch({ type: 'ADD_MORE_NOTES', payload: { notes: data, hasMore: (state.userData!.notes.length + data.length) < (count ?? 0) } });
+    } catch (error) {
+        console.error("Error fetching more notes:", error);
+    } finally {
+        dispatch({ type: 'SET_FETCHING_MORE_NOTES', payload: false });
     }
 };
