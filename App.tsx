@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -219,18 +220,18 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         return summary;
     }, [accountBalances, activeAccounts, selectedAccountId]);
 
-    const netProfitSummary = useMemo(() => {
+    // FIX: Add explicit return type to useMemo and type the initial value of reduce to ensure correct type inference.
+    const netProfitSummary = useMemo((): Record<string, number> => {
         if (filteredTrades.length === 0) return {};
         
         const accountsMap = new Map(accounts.map(acc => [acc.id, acc]));
     
-        // FIX: Explicitly type the accumulator in Array.prototype.reduce to prevent `unknown` type inference.
-        return filteredTrades.reduce((summary: Record<string, number>, trade) => {
+        return filteredTrades.reduce((summary, trade) => {
             const account = accountsMap.get(trade.accountId);
             const currency = account?.currency || 'USD';
             summary[currency] = (summary[currency] || 0) + trade.pnl;
             return summary;
-        }, {});
+        }, {} as Record<string, number>);
     }, [filteredTrades, accounts]);
 
 
