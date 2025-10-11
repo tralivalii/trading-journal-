@@ -233,16 +233,14 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
   return (
     <div>
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
+            <div className="flex items-center gap-4">
                 <h1 className="text-3xl font-bold text-white flex-shrink-0">Trade Journal</h1>
-                <div className="mt-4">
-                    <button 
-                        onClick={onAddTrade}
-                        className="hidden lg:flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors text-sm"
-                    >
-                       <span className="w-4 h-4">{ICONS.plus}</span> Add New Trade
-                    </button>
-                </div>
+                <button 
+                    onClick={onAddTrade}
+                    className="hidden lg:flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors text-sm"
+                >
+                   <span className="w-4 h-4">{ICONS.plus}</span> Add New Trade
+                </button>
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <div className="flex flex-wrap items-center gap-2">
