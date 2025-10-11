@@ -77,7 +77,7 @@ const AnalysisSection: React.FC<{
                     </FormField>
                     {imageUrl && (
                         <div className="mt-3 relative inline-block">
-                           <img src={imageUrl} alt={`${title} preview`} className="rounded-md max-h-40 border border-gray-700" />
+                           <img src={imageUrl} alt={`${title} preview`} className="rounded-md h-40 w-auto border border-gray-700 object-contain" />
                            <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none" aria-label="Remove image">&times;</button>
                         </div>
                     )}
@@ -289,7 +289,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const isClosedTrade = trade.result !== Result.InProgress;
 
   return (
-    <div ref={wrapperRef}>
+    <div ref={wrapperRef} id="trade-form-wrapper">
         <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
             {/* --- Section 1: Setup --- */}
             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">

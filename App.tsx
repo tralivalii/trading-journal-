@@ -785,9 +785,7 @@ function AppContent() {
         title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} 
         size="4xl"
       >
-        <div id="trade-form-wrapper">
-          <TradeForm onSave={handleSaveTrade} onClose={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
-        </div>
+        <TradeForm onSave={handleSaveTrade} onClose={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
       </Modal>
       
       <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">
