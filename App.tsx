@@ -352,6 +352,14 @@ async function processSyncQueue(userId: string) {
                     }
                     break;
                 }
+                 case 'settings': {
+                    const payload = { user_id: userId, data: item.payload };
+                    if (item.action === 'update') {
+                        const { error } = await supabase.from('user_data').upsert(payload);
+                        if (error) throw error;
+                    }
+                    break;
+                }
             }
         } catch (error) {
             console.error(`Sync Error (${item.type} ${item.action}):`, error);

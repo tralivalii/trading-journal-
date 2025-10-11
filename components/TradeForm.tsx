@@ -141,10 +141,17 @@ const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File
     });
 };
 
+const timeframeToFieldMap: Record<string, keyof Trade> = {
+    '1D': 'analysisD1',
+    '1h': 'analysis1h',
+    '5m': 'analysis5m',
+    'Result': 'analysisResult',
+};
+
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
   const { state, dispatch } = useAppContext();
   const { userData, currentUser, isGuest } = state;
-  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = userData!;
+  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes, analysisTimeframes } = userData!;
   
   const initialTradeStateRef = useRef<Omit<Trade, 'id' | 'pnl' | 'riskAmount'>>();
   const [isDirty, setIsDirty] = useState(false);
@@ -370,10 +377,20 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
                 <h3 className="text-xl font-semibold text-white">Analysis Breakdown</h3>
                 <div className="space-y-4">
-                    <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
-                    <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
-                    <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
-                    <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+                    {analysisTimeframes.map(timeframe => {
+                        const field = timeframeToFieldMap[timeframe];
+                        if (!field || !trade.hasOwnProperty(field)) return null;
+
+                        return (
+                            <AnalysisSection 
+                                key={timeframe}
+                                title={`${timeframe} Analysis`} 
+                                analysis={trade[field] as Analysis} 
+                                onFileChange={(file) => handleFileChange(field, file)} 
+                                onNotesChange={(notes) => handleAnalysisChange(field, 'notes', notes)} 
+                            />
+                        );
+                    })}
                 </div>
             </div>
             

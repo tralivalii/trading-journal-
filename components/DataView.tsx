@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useAppContext, saveAccountAction, deleteAccountAction } from '../services/appState';
+import { useAppContext, saveAccountAction, deleteAccountAction, saveSettingsAction } from '../services/appState';
 import { Account, Currency, UserData } from '../types';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
@@ -181,7 +181,7 @@ const EditableTagList: React.FC<{
 const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
     const { state, dispatch } = useAppContext();
     const { userData, currentUser, isGuest } = state;
-    const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings, trades } = userData!;
+    const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings, trades, analysisTimeframes } = userData!;
 
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountToEdit, setAccountToEdit] = useState<Account | null>(null);
@@ -241,29 +241,8 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
         setAccountToDelete(null); 
     };
 
-    const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
-        if (isGuest) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-            return;
-        }
-        if (!currentUser || !userData) return;
-        
-        const allSettingsData = { pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings };
-        const updatedData = { ...allSettingsData, [field]: value };
-
-        const { error } = await supabase
-            .from('user_data')
-            .upsert({ user_id: currentUser.id, data: updatedData })
-            .select();
-
-        if (error) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving settings: ${error.message}`, type: 'error' } });
-            console.error(error);
-        } else {
-            dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
-            const friendlyFieldName = (field as string).charAt(0).toUpperCase() + (field as string).slice(1);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: `${friendlyFieldName} updated successfully.`, type: 'success' } });
-        }
+    const handleSaveSettings = (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
+        saveSettingsAction(dispatch, state, field, value);
     };
 
     const handleDefaultSettingsChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -438,6 +417,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
                             <EditableTagList title="Stoploss Types" items={stoplosses} onSave={(newItems) => handleSaveSettings('stoplosses', newItems)} />
                             <EditableTagList title="Takeprofit Types" items={takeprofits} onSave={(newItems) => handleSaveSettings('takeprofits', newItems)} />
                             <EditableTagList title="Close Types" items={closeTypes} onSave={(newItems) => handleSaveSettings('closeTypes', newItems)} />
+                            <EditableTagList title="Analysis Timeframes" items={analysisTimeframes} onSave={(newItems) => handleSaveSettings('analysisTimeframes', newItems)} />
                         </div>
                     </DataCard>
 

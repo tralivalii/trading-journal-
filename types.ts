@@ -118,4 +118,5 @@ export interface UserData {
     // FIX: Corrected typo from `takeprofite` to `takeprofits` to resolve type errors.
     takeprofits: string[];
     closeTypes: string[];
+    analysisTimeframes: string[];
 }

@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { Trade } from '../types';
+import { Trade, Analysis } from '../types';
 
 async function imageUrlToBase64(url: string): Promise<{ mimeType: string; data: string }> {
     const response = await fetch(url);
@@ -24,11 +24,31 @@ async function imageUrlToBase64(url: string): Promise<{ mimeType: string; data: 
     });
 }
 
-export const analyzeTradeWithAI = async (trade: Trade, imageUrls: string[]): Promise<string> => {
+const timeframeToFieldMap: Record<string, keyof Trade> = {
+    '1D': 'analysisD1',
+    '1h': 'analysis1h',
+    '5m': 'analysis5m',
+    'Result': 'analysisResult',
+};
+
+export const analyzeTradeWithAI = async (trade: Trade, analysisTimeframes: string[], imageUrls: string[]): Promise<string> => {
     if (!process.env.API_KEY) {
         throw new Error("API key is not configured.");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const analysisNotes = analysisTimeframes
+        .map(timeframe => {
+            const field = timeframeToFieldMap[timeframe];
+            if (!field) return null;
+            const analysis = trade[field] as Analysis | undefined;
+            if (analysis && analysis.notes) {
+                return `- ${timeframe} Analysis Notes: ${analysis.notes}`;
+            }
+            return null;
+        })
+        .filter(Boolean)
+        .join('\n');
 
     const textPart = {
         text: `
@@ -48,10 +68,7 @@ export const analyzeTradeWithAI = async (trade: Trade, imageUrls: string[]): Pro
           - Close Type: ${trade.closeType || 'N/A'}
 
           Trader's Notes:
-          - D1 Analysis Notes: ${trade.analysisD1.notes || 'No notes.'}
-          - 1h Analysis Notes: ${trade.analysis1h.notes || 'No notes.'}
-          - 5m Analysis Notes: ${trade.analysis5m.notes || 'No notes.'}
-          - Result Analysis Notes: ${trade.analysisResult.notes || 'No notes.'}
+          ${analysisNotes || 'No notes provided.'}
           
           Your tasks:
           1.  **Confluence Check:** Based on the notes and charts (if provided), was there strong reasoning for entering the trade?

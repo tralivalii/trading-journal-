@@ -89,6 +89,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
         stoplosses: ['Session High/Low', 'FVG'],
         takeprofits: ['Session High/Low', 'FVG'],
         closeTypes: ['SL Hit', 'TP Hit', 'Manual'],
+        analysisTimeframes: ['1D', '1h', '5m', 'Result'],
       };
       return { 
         ...state, 
@@ -406,6 +407,43 @@ export const deleteNoteAction = async (
     if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted locally.', type: 'success' } });
 };
+
+// --- SETTINGS ACTIONS ---
+export const saveSettingsAction = async (
+  dispatch: Dispatch<Action>,
+  state: AppState,
+  field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, 
+  value: any
+) => {
+    const { userData, currentUser, isGuest, syncStatus } = state;
+    if (isGuest || !currentUser || !userData) return;
+
+    // Update local state immediately
+    dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value } });
+    
+    // Update local DB
+    const { trades, accounts, notes, ...allSettingsData } = userData;
+    const updatedData = { ...allSettingsData, [field]: value };
+    await bulkPut('settings', [{ id: 'user-settings', data: updatedData }]);
+    
+    // Queue for sync
+    await putSyncQueue({ 
+        id: crypto.randomUUID(), 
+        type: 'settings',
+        action: 'update', 
+        payload: updatedData, 
+        timestamp: Date.now() 
+    });
+
+    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
+    
+    const friendlyFieldName = (field as string)
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase());
+      
+    dispatch({ type: 'SHOW_TOAST', payload: { message: `${friendlyFieldName} updated successfully.`, type: 'success' } });
+};
+
 
 // --- PAGINATION ACTIONS ---
 export const fetchMoreNotesAction = async (
