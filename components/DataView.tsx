@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext, saveAccountAction, deleteAccountAction, saveSettingsAction } from '../services/appState';
 import { Account, Currency, UserData } from '../types';
@@ -417,7 +418,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
                             <EditableTagList title="Stoploss Types" items={stoplosses} onSave={(newItems) => handleSaveSettings('stoplosses', newItems)} />
                             <EditableTagList title="Takeprofit Types" items={takeprofits} onSave={(newItems) => handleSaveSettings('takeprofits', newItems)} />
                             <EditableTagList title="Close Types" items={closeTypes} onSave={(newItems) => handleSaveSettings('closeTypes', newItems)} />
-                            <EditableTagList title="Analysis Timeframes" items={analysisTimeframes} onSave={(newItems) => handleSaveSettings('analysisTimeframes', newItems)} />
+                            <EditableTagList title="Analysis Timeframes" items={analysisTimeframes || []} onSave={(newItems) => handleSaveSettings('analysisTimeframes', newItems)} />
                         </div>
                     </DataCard>
 

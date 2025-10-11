@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 // FIX: Removed unused and non-existent 'CloseType' from imports.
 import { Trade, Account, Result, Analysis } from '../types';
@@ -69,7 +70,7 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
   const filledOutTimeframes = useMemo(() => {
     if (!userData || !trade) return [];
     
-    return userData.analysisTimeframes.filter(timeframe => {
+    return (userData.analysisTimeframes || []).filter(timeframe => {
         const field = timeframeToFieldMap[timeframe];
         if (!field) return false;
         const analysis = trade[field] as Analysis | undefined;
@@ -102,7 +103,7 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
     try {
         const imageUrls = [analysisD1ImageUrl, analysis1hImageUrl, analysis5mImageUrl, analysisResultImageUrl].filter(Boolean) as string[];
         // FIX: Added the 'imageUrls' argument to the 'analyzeTradeWithAI' function call to match its signature.
-        const analysisText = await analyzeTradeWithAI(trade, userData?.analysisTimeframes || [], imageUrls);
+        const analysisText = await analyzeTradeWithAI(trade, (userData?.analysisTimeframes || []), imageUrls);
         await updateTradeWithAIAnalysisAction(dispatch, state, trade.id, analysisText);
 
     } catch (error: any) {

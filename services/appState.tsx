@@ -1,3 +1,4 @@
+
 // services/appState.tsx
 
 import React, { createContext, useReducer, useContext, useEffect, Dispatch } from 'react';
@@ -64,6 +65,8 @@ const initialState: AppState = {
   syncStatus: navigator.onLine ? 'online' : 'offline',
 };
 
+const defaultTimeframes = ['1D', '1h', '5m', 'Result'];
+
 const appReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case 'SET_SESSION':
@@ -74,7 +77,14 @@ const appReducer = (state: AppState, action: Action): AppState => {
         isGuest: false, // Reset guest mode on session change
       };
     case 'SET_USER_DATA':
-      return { ...state, userData: action.payload };
+      if (action.payload) {
+        const userDataWithDefaults: UserData = {
+          ...action.payload,
+          analysisTimeframes: action.payload.analysisTimeframes || defaultTimeframes,
+        };
+        return { ...state, userData: userDataWithDefaults };
+      }
+      return { ...state, userData: null };
     case 'SET_IS_LOADING':
       return { ...state, isLoading: action.payload };
     case 'SET_GUEST_MODE':
@@ -89,7 +99,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
         stoplosses: ['Session High/Low', 'FVG'],
         takeprofits: ['Session High/Low', 'FVG'],
         closeTypes: ['SL Hit', 'TP Hit', 'Manual'],
-        analysisTimeframes: ['1D', '1h', '5m', 'Result'],
+        analysisTimeframes: defaultTimeframes,
       };
       return { 
         ...state, 

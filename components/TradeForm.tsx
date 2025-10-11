@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
@@ -377,7 +378,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
                 <h3 className="text-xl font-semibold text-white">Analysis Breakdown</h3>
                 <div className="space-y-4">
-                    {analysisTimeframes.map(timeframe => {
+                    {(analysisTimeframes || []).map(timeframe => {
                         const field = timeframeToFieldMap[timeframe];
                         if (!field || !trade.hasOwnProperty(field)) return null;
 
