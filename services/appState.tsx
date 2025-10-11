@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { UserData, Trade, Account, Note, DefaultSettings, Result } from '../types';
+import { UserData, Trade, Account, Note, DefaultSettings, Result, Analysis } from '../types';
 import * as offlineService from './offlineService';
+import { objectsToSnake, objectToSnake } from '../utils/caseConverter';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -24,7 +25,7 @@ type AppAction =
     | { type: 'INITIALIZE_SESSION'; payload: { session: Session | null } }
     | { type: 'SET_GUEST_MODE' }
     | { type: 'SET_USER_DATA'; payload: UserData | null }
-    | { type: 'FINISH_LOADING' } // New action to explicitly stop loading
+    | { type: 'FINISH_LOADING' }
     | { type: 'SHOW_TOAST'; payload: { message: string, type: 'success' | 'error' } }
     | { type: 'HIDE_TOAST' }
     | { type: 'SAVE_TRADE_SUCCESS'; payload: { trade: Trade, isEditing: boolean } }
@@ -94,11 +95,15 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         case 'FINISH_LOADING':
             return { ...state, isLoading: false };
         case 'SET_GUEST_MODE':
+             const guestData = {
+                ...initialUserData,
+                accounts: [{ id: 'guest-account', name: 'Guest Account', initialBalance: 10000, isArchived: false }],
+                defaultSettings: { ...initialUserData.defaultSettings, accountId: 'guest-account' }
+            };
             return {
                 ...state,
-                isLoading: false,
                 isGuest: true,
-                userData: initialUserData,
+                userData: guestData,
             };
         case 'SET_USER_DATA': {
             const incomingUserData = action.payload;
@@ -106,10 +111,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             if (incomingUserData === null) {
                 return { ...state, userData: null };
             }
-
-            // If we have user data, merge it safely with defaults
-            // This ensures that if a user's saved settings are missing a new field,
-            // the app doesn't crash.
+            
             const safeUserData: UserData = {
                 ...initialUserData,
                 ...incomingUserData,
@@ -117,15 +119,13 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
                     ...initialUserData.defaultSettings,
                     ...(incomingUserData.defaultSettings || {}),
                 },
-                // Ensure all arrays exist
-                analysisTimeframes: incomingUserData.analysisTimeframes || initialUserData.analysisTimeframes,
-                pairs: incomingUserData.pairs || initialUserData.pairs,
-                entries: incomingUserData.entries || initialUserData.entries,
-                risks: incomingUserData.risks || initialUserData.risks,
-                stoplosses: incomingUserData.stoplosses || initialUserData.stoplosses,
-                takeprofits: incomingUserData.takeprofits || initialUserData.takeprofits,
-                closeTypes: incomingUserData.closeTypes || initialUserData.closeTypes,
-                // Ensure top-level arrays also exist
+                analysisTimeframes: incomingUserData.analysisTimeframes?.length ? incomingUserData.analysisTimeframes : initialUserData.analysisTimeframes,
+                pairs: incomingUserData.pairs?.length ? incomingUserData.pairs : initialUserData.pairs,
+                entries: incomingUserData.entries?.length ? incomingUserData.entries : initialUserData.entries,
+                risks: incomingUserData.risks?.length ? incomingUserData.risks : initialUserData.risks,
+                stoplosses: incomingUserData.stoplosses?.length ? incomingUserData.stoplosses : initialUserData.stoplosses,
+                takeprofits: incomingUserData.takeprofits?.length ? incomingUserData.takeprofits : initialUserData.takeprofits,
+                closeTypes: incomingUserData.closeTypes?.length ? incomingUserData.closeTypes : initialUserData.closeTypes,
                 trades: incomingUserData.trades || [],
                 accounts: incomingUserData.accounts || [],
                 notes: incomingUserData.notes || [],
@@ -237,7 +237,8 @@ const AppContext = createContext<{ state: AppState; dispatch: React.Dispatch<App
 
 // --- ACTION CREATORS ---
 
-const calculatePnlAndRisk = (tradeData: Omit<Trade, 'id' | 'pnl' | 'riskAmount'>, accounts: Account[]): { pnl: number, riskAmount: number } => {
+const calculatePnlAndRisk = (tradeData: Partial<Trade>, accounts: Account[]): { pnl: number, riskAmount: number } => {
+    if (!tradeData.accountId || typeof tradeData.risk !== 'number' || typeof tradeData.rr !== 'number' || !tradeData.result) return { pnl: 0, riskAmount: 0 };
     const account = accounts.find(a => a.id === tradeData.accountId);
     if (!account) return { pnl: 0, riskAmount: 0 };
     
@@ -254,11 +255,58 @@ const calculatePnlAndRisk = (tradeData: Omit<Trade, 'id' | 'pnl' | 'riskAmount'>
     return { pnl: parseFloat(pnl.toFixed(2)), riskAmount: parseFloat(riskAmount.toFixed(2)) };
 };
 
-export const saveTradeAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, tradeData: Partial<Trade>, isEditing: boolean) => {
-    const { userData, currentUser } = state;
-    if (!userData || !currentUser) throw new Error("User data not loaded.");
+const createAction = async <T extends {id: string}>(
+    dispatch: React.Dispatch<AppAction>,
+    state: AppState,
+    table: 'trades' | 'accounts' | 'notes',
+    data: T,
+    successType: 'SAVE_TRADE_SUCCESS' | 'SAVE_ACCOUNT_SUCCESS' | 'SAVE_NOTE_SUCCESS'
+) => {
+    await offlineService.bulkPut(table, [data]);
+    await offlineService.putSyncQueue({ id: crypto.randomUUID(), type: table.slice(0, -1) as any, action: 'create', payload: data, timestamp: Date.now() });
+    
+    // Optimistic UI update
+    dispatch({ type: successType, payload: { [table.slice(0, -1)]: data, isEditing: false } as any });
+    
+    document.dispatchEvent(new CustomEvent('sync-request'));
+    return data;
+};
 
-    const { pnl, riskAmount } = calculatePnlAndRisk(tradeData as any, userData.accounts);
+const updateAction = async <T extends {id: string}>(
+    dispatch: React.Dispatch<AppAction>,
+    state: AppState,
+    table: 'trades' | 'accounts' | 'notes' | 'settings',
+    data: T,
+    successType: 'SAVE_TRADE_SUCCESS' | 'SAVE_ACCOUNT_SUCCESS' | 'SAVE_NOTE_SUCCESS' | 'SAVE_SETTINGS_SUCCESS'
+) => {
+    await offlineService.bulkPut(table, [data]);
+    await offlineService.putSyncQueue({ id: crypto.randomUUID(), type: table.slice(0, -1) as any, action: 'update', payload: data, timestamp: Date.now() });
+
+    dispatch({ type: successType, payload: { [table.slice(0, -1)]: data, isEditing: true } as any });
+
+    document.dispatchEvent(new CustomEvent('sync-request'));
+    return data;
+};
+
+const deleteAction = async (
+    dispatch: React.Dispatch<AppAction>,
+    id: string,
+    table: 'trades' | 'accounts' | 'notes',
+    successType: 'DELETE_TRADE_SUCCESS' | 'DELETE_ACCOUNT_SUCCESS' | 'DELETE_NOTE_SUCCESS'
+) => {
+    await offlineService.deleteItem(table, id);
+    await offlineService.putSyncQueue({ id: crypto.randomUUID(), type: table.slice(0, -1) as any, action: 'delete', payload: { id }, timestamp: Date.now() });
+
+    dispatch({ type: successType, payload: id });
+    document.dispatchEvent(new CustomEvent('sync-request'));
+};
+
+
+export const saveTradeAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, tradeData: Partial<Trade>, isEditing: boolean) => {
+    const { userData } = state;
+    if (!userData) throw new Error("User data not loaded.");
+
+    const { pnl, riskAmount } = calculatePnlAndRisk(tradeData, userData.accounts);
     
     const finalTradeData: Trade = {
         ...tradeData,
@@ -267,21 +315,16 @@ export const saveTradeAction = async (dispatch: React.Dispatch<AppAction>, state
         id: isEditing ? tradeData.id! : crypto.randomUUID(),
     } as Trade;
 
-    const { error } = await supabase.from('trades').upsert({ ...finalTradeData, user_id: currentUser.id });
-
-    if (error) {
-        console.error("Supabase error:", error);
-        throw new Error("Failed to save trade to the cloud.");
+    if (isEditing) {
+        await updateAction(dispatch, state, 'trades', finalTradeData, 'SAVE_TRADE_SUCCESS');
+    } else {
+        await createAction(dispatch, state, 'trades', finalTradeData, 'SAVE_TRADE_SUCCESS');
     }
-    
-    dispatch({ type: 'SAVE_TRADE_SUCCESS', payload: { trade: finalTradeData, isEditing } });
     dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} successfully.`, type: 'success' } });
 };
 
 export const deleteTradeAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, tradeId: string) => {
-    const { error } = await supabase.from('trades').delete().match({ id: tradeId, user_id: state.currentUser!.id });
-    if (error) throw new Error("Failed to delete trade.");
-    dispatch({ type: 'DELETE_TRADE_SUCCESS', payload: tradeId });
+    await deleteAction(dispatch, tradeId, 'trades', 'DELETE_TRADE_SUCCESS');
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted.', type: 'success' } });
 };
 
@@ -290,53 +333,57 @@ export const saveAccountAction = async (dispatch: React.Dispatch<AppAction>, sta
         ...accountData,
         id: isEditing ? accountData.id! : crypto.randomUUID(),
     } as Account;
-    const { error } = await supabase.from('accounts').upsert({ ...finalAccount, user_id: state.currentUser!.id });
-    if (error) throw new Error("Failed to save account.");
-    dispatch({ type: 'SAVE_ACCOUNT_SUCCESS', payload: { account: finalAccount, isEditing } });
+    
+    if (isEditing) {
+        await updateAction(dispatch, state, 'accounts', finalAccount, 'SAVE_ACCOUNT_SUCCESS');
+    } else {
+        await createAction(dispatch, state, 'accounts', finalAccount, 'SAVE_ACCOUNT_SUCCESS');
+    }
     dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${isEditing ? 'updated' : 'created'}.`, type: 'success' } });
 };
 
 export const deleteAccountAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, accountId: string) => {
-    const { error } = await supabase.from('accounts').delete().match({ id: accountId, user_id: state.currentUser!.id });
-    if (error) throw new Error("Failed to delete account.");
-    dispatch({ type: 'DELETE_ACCOUNT_SUCCESS', payload: accountId });
+    await deleteAction(dispatch, accountId, 'accounts', 'DELETE_ACCOUNT_SUCCESS');
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted.', type: 'success' } });
 };
 
 export const saveSettingsAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, settings: Partial<UserData>) => {
-    const { error } = await supabase.from('settings').upsert({ id: state.currentUser!.id, ...settings, user_id: state.currentUser!.id });
-    if (error) throw new Error("Failed to save settings.");
-    dispatch({ type: 'SAVE_SETTINGS_SUCCESS', payload: settings });
+    const finalSettings = { ...state.userData, ...settings, id: state.currentUser!.id };
+    await updateAction(dispatch, state, 'settings', finalSettings, 'SAVE_SETTINGS_SUCCESS');
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'Settings saved.', type: 'success' } });
 };
 
-export const saveNoteAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, noteData: Omit<Note, 'id'>, isEditing: boolean): Promise<Note> => {
+export const saveNoteAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, noteData: Partial<Note>, isEditing: boolean): Promise<Note> => {
     const finalNote: Note = {
         ...noteData,
-        id: isEditing ? (noteData as Note).id : crypto.randomUUID(),
-    };
-    const { error } = await supabase.from('notes').upsert({ ...finalNote, user_id: state.currentUser!.id });
-    if (error) throw new Error("Failed to save note.");
-    dispatch({ type: 'SAVE_NOTE_SUCCESS', payload: { note: finalNote, isEditing } });
+        id: isEditing ? noteData.id! : crypto.randomUUID(),
+    } as Note;
+
+    if (isEditing) {
+        await updateAction(dispatch, state, 'notes', finalNote, 'SAVE_NOTE_SUCCESS');
+    } else {
+        await createAction(dispatch, state, 'notes', finalNote, 'SAVE_NOTE_SUCCESS');
+    }
     dispatch({ type: 'SHOW_TOAST', payload: { message: `Note ${isEditing ? 'updated' : 'created'}.`, type: 'success' } });
     return finalNote;
 };
 
 export const deleteNoteAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, noteId: string) => {
-    const { error } = await supabase.from('notes').delete().match({ id: noteId, user_id: state.currentUser!.id });
-    if (error) throw new Error("Failed to delete note.");
-    dispatch({ type: 'DELETE_NOTE_SUCCESS', payload: noteId });
+    await deleteAction(dispatch, noteId, 'notes', 'DELETE_NOTE_SUCCESS');
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted.', type: 'success' } });
 };
 
 export const updateTradeWithAIAnalysisAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, tradeId: string, analysis: string) => {
-    const { error } = await supabase.from('trades').update({ aiAnalysis: analysis }).match({ id: tradeId, user_id: state.currentUser!.id });
-    if (error) throw new Error("Failed to save AI analysis.");
-    dispatch({ type: 'UPDATE_TRADE_AI_ANALYSIS', payload: { tradeId, analysis } });
+    const tradeToUpdate = state.userData?.trades.find(t => t.id === tradeId);
+    if (!tradeToUpdate) throw new Error("Trade not found for AI analysis update.");
+    const updatedTrade = { ...tradeToUpdate, aiAnalysis: analysis };
+    
+    await updateAction(dispatch, state, 'trades', updatedTrade, 'SAVE_TRADE_SUCCESS');
     dispatch({ type: 'SHOW_TOAST', payload: { message: 'AI analysis saved.', type: 'success' } });
 };
 
 export const fetchMoreTradesAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, pageSize: number) => {
+    if (state.isGuest) return;
     dispatch({ type: 'FETCH_MORE_TRADES_START' });
     try {
         const { data, error } = await supabase.from('trades')
@@ -344,6 +391,8 @@ export const fetchMoreTradesAction = async (dispatch: React.Dispatch<AppAction>,
             .order('date', { ascending: false })
             .range(state.userData!.trades.length, state.userData!.trades.length + pageSize - 1);
         if (error) throw new Error("Failed to fetch more trades.");
+        
+        await offlineService.bulkPut('trades', data || []);
         dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: data || [], hasMore: (data || []).length === pageSize } });
     } catch (e) {
         console.error(e);
@@ -352,6 +401,7 @@ export const fetchMoreTradesAction = async (dispatch: React.Dispatch<AppAction>,
 };
 
 export const fetchMoreNotesAction = async (dispatch: React.Dispatch<AppAction>, state: AppState, pageSize: number) => {
+    if (state.isGuest) return;
     dispatch({ type: 'FETCH_MORE_NOTES_START' });
     try {
         const { data, error } = await supabase.from('notes')
@@ -359,6 +409,8 @@ export const fetchMoreNotesAction = async (dispatch: React.Dispatch<AppAction>, 
             .order('date', { ascending: false })
             .range(state.userData!.notes.length, state.userData!.notes.length + pageSize - 1);
         if (error) throw new Error("Failed to fetch more notes.");
+        
+        await offlineService.bulkPut('notes', data || []);
         dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: data || [], hasMore: (data || []).length === pageSize } });
     } catch(e) {
         console.error(e);
@@ -374,38 +426,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const loadInitialData = useCallback(async (userId: string) => {
         try {
-            const [
-                { data: tradesData, error: tradesError },
-                { data: accountsData, error: accountsError },
-                { data: notesData, error: notesError },
-                { data: settingsData, error: settingsError }
-            ] = await Promise.all([
-                supabase.from('trades').select('*').eq('user_id', userId).order('date', { ascending: false }).limit(20),
-                supabase.from('accounts').select('*').eq('user_id', userId),
-                supabase.from('notes').select('*').eq('user_id', userId).order('date', { ascending: false }).limit(20),
-                supabase.from('settings').select('*').eq('id', userId).single(),
+            // Offline-first approach
+            const [localTrades, localAccounts, localNotes, localSettings] = await Promise.all([
+                offlineService.getTable<Trade>('trades'),
+                offlineService.getTable<Account>('accounts'),
+                offlineService.getTable<Note>('notes'),
+                offlineService.bulkGet<any>('settings', [userId]),
             ]);
-
-            if (tradesError || accountsError || notesError || (settingsError && settingsError.code !== 'PGRST116')) {
-                console.error({tradesError, accountsError, notesError, settingsError});
-                throw new Error("Failed to fetch initial data.");
-            }
-
-            const userData = {
-                ...initialUserData,
-                ...(settingsData || {}),
-                trades: tradesData || [],
-                accounts: accountsData || [],
-                notes: notesData || [],
+            
+            const localUserData = {
+                trades: localTrades,
+                accounts: localAccounts,
+                notes: localNotes,
+                ...(localSettings[0] || {}),
             };
-            dispatch({ type: 'SET_USER_DATA', payload: userData as UserData });
-            dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: (tradesData?.length || 0) === 20 }});
-            dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: [], hasMore: (notesData?.length || 0) === 20 }});
+            dispatch({ type: 'SET_USER_DATA', payload: localUserData as UserData });
+            
+            // Now, fetch from network to update
+            const { data: networkSettings, error: settingsError } = await supabase.from('user_data').select('*').eq('user_id', userId).single();
+            if (settingsError && settingsError.code !== 'PGRST116') throw settingsError; // PGRST116 = no rows found
+            
+            const finalSettings = networkSettings || { user_id: userId, ...initialUserData };
+            
+            dispatch({ type: 'SET_USER_DATA', payload: { ...localUserData, ...finalSettings } });
+            
+            // Trigger a sync in the background
+            document.dispatchEvent(new CustomEvent('sync-request'));
+            
         } catch (error) {
-            console.error(error);
+            console.error("Failed to load initial data", error);
             dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to load data.', type: 'error' } });
-            // If data loading fails, we still set some default data so the app doesn't crash
-            dispatch({ type: 'SET_USER_DATA', payload: initialUserData });
+            // Fallback to guest mode if initial load fails catastrophically
+            dispatch({ type: 'SET_GUEST_MODE' });
         }
     }, []);
 
@@ -415,10 +467,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (session) {
                 await loadInitialData(session.user.id);
             } else {
-                // If there's no session, we clear user data.
                 dispatch({ type: 'SET_USER_DATA', payload: null });
             }
-            // This is the key fix: We finish loading AFTER the session check and data load attempt.
             dispatch({ type: 'FINISH_LOADING' });
         });
 

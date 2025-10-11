@@ -79,6 +79,12 @@ export async function bulkPut<T extends { id: string }>(
     await tx.done;
 }
 
+// FIX: Added deleteItem function to remove a single record from a table.
+export async function deleteItem(tableName: keyof JournalDB, key: string): Promise<void> {
+    const db = await getDb();
+    await db.delete(tableName as any, key);
+}
+
 // Get all items in the sync queue
 export async function getSyncQueue(): Promise<JournalDB['sync_queue']['value'][]> {
     const db = await getDb();
