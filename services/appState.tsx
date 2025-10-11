@@ -41,8 +41,10 @@ type Action =
   | { type: 'UPDATE_USER_DATA_FIELD'; payload: { field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>; value: any } }
   | { type: 'FETCH_MORE_TRADES_START' }
   | { type: 'FETCH_MORE_TRADES_SUCCESS'; payload: { trades: Trade[]; hasMore: boolean } }
+  | { type: 'FETCH_MORE_TRADES_FAILURE' } // FIX: Added for error handling
   | { type: 'FETCH_MORE_NOTES_START' }
   | { type: 'FETCH_MORE_NOTES_SUCCESS'; payload: { notes: Note[]; hasMore: boolean } }
+  | { type: 'FETCH_MORE_NOTES_FAILURE' } // FIX: Added for error handling
   | { type: 'SHOW_TOAST'; payload: Omit<Toast, 'id'> }
   | { type: 'HIDE_TOAST' }
   | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
@@ -147,6 +149,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
             isFetchingMore: false,
             hasMoreTrades: action.payload.hasMore,
         };
+    case 'FETCH_MORE_TRADES_FAILURE': // FIX: Added case
+        return { ...state, isFetchingMore: false };
     case 'FETCH_MORE_NOTES_START':
         return { ...state, isFetchingMoreNotes: true };
     case 'FETCH_MORE_NOTES_SUCCESS':
@@ -165,6 +169,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
             isFetchingMoreNotes: false,
             hasMoreNotes: action.payload.hasMore,
         };
+    case 'FETCH_MORE_NOTES_FAILURE': // FIX: Added case
+        return { ...state, isFetchingMoreNotes: false };
     case 'SHOW_TOAST':
         return { ...state, toast: { ...action.payload, id: Date.now() } };
     case 'HIDE_TOAST':
@@ -460,6 +466,37 @@ export const deleteNoteAction = async (
 };
 
 // --- PAGINATION ACTIONS ---
+// FIX: Added the missing function
+export const fetchMoreTradesAction = async (
+    dispatch: Dispatch<Action>,
+    state: AppState,
+    pageSize: number
+) => {
+    const { currentUser, userData, isGuest, syncStatus } = state;
+    if (isGuest || !currentUser || !userData || syncStatus === 'offline') return;
+
+    dispatch({ type: 'FETCH_MORE_TRADES_START' });
+    try {
+        const { data, error } = await supabase
+            .from('trades')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .order('date', { ascending: false })
+            .range(userData.trades.length, userData.trades.length + pageSize - 1);
+        
+        if (error) throw error;
+
+        const newTrades = data as Trade[];
+        await bulkPut('trades', newTrades);
+        dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: newTrades, hasMore: newTrades.length === pageSize } });
+
+    } catch (error) {
+        console.error("Failed to fetch more trades:", error);
+        dispatch({ type: 'FETCH_MORE_TRADES_FAILURE' });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Could not load more trades.', type: 'error' } });
+    }
+};
+
 export const fetchMoreNotesAction = async (
     dispatch: Dispatch<Action>,
     state: AppState,
@@ -485,7 +522,7 @@ export const fetchMoreNotesAction = async (
 
     } catch (error) {
         console.error("Failed to fetch more notes:", error);
-        dispatch({ type: 'FETCH_MORE_NOTES_START' }); // Reset loading state on error
+        dispatch({ type: 'FETCH_MORE_NOTES_FAILURE' }); // FIX: Changed from START to FAILURE for correct state reset
         dispatch({ type: 'SHOW_TOAST', payload: { message: 'Could not load more notes.', type: 'error' } });
     }
 };
