@@ -50,6 +50,8 @@ type Action =
 
 // --- REDUCER ---
 
+const defaultTimeframes = ['1D', '1h', '5m', 'Result'];
+
 const initialState: AppState = {
   session: null,
   currentUser: null,
@@ -74,7 +76,16 @@ const appReducer = (state: AppState, action: Action): AppState => {
         isGuest: false, // Reset guest mode on session change
       };
     case 'SET_USER_DATA':
-      return { ...state, userData: action.payload };
+      const userData = action.payload;
+      if (userData) {
+          // Ensure defaults for existing users to prevent crashes
+          userData.analysisTimeframes = userData.analysisTimeframes || [...defaultTimeframes];
+          userData.defaultSettings = {
+              ...{ accountId: '', pair: '', entry: '', risk: 1, stoploss: 'Sessions High/Low', takeprofit: 'Fractal' },
+              ...userData.defaultSettings,
+          };
+      }
+      return { ...state, userData };
     case 'SET_IS_LOADING':
       return { ...state, isLoading: action.payload };
     case 'SET_GUEST_MODE':
@@ -84,11 +95,12 @@ const appReducer = (state: AppState, action: Action): AppState => {
         pairs: ['EUR/USD', 'GBP/USD', 'XAU/USD', 'BTC/USDT'],
         entries: ['Market', 'Order Block', 'FVG'],
         risks: [0.5, 1, 1.5, 2],
-        defaultSettings: { accountId: 'guest-acc', pair: 'EUR/USD', entry: 'Market', risk: 1 },
+        defaultSettings: { accountId: 'guest-acc', pair: 'EUR/USD', entry: 'Market', risk: 1, stoploss: 'Sessions High/Low', takeprofit: 'Fractal' },
         notes: [],
-        stoplosses: ['Session High/Low', 'FVG'],
-        takeprofits: ['Session High/Low', 'FVG'],
+        stoplosses: ['Session High/Low', 'FVG', 'Fractal'],
+        takeprofits: ['Session High/Low', 'FVG', 'Fractal'],
         closeTypes: ['SL Hit', 'TP Hit', 'Manual'],
+        analysisTimeframes: [...defaultTimeframes],
       };
       return { 
         ...state, 
@@ -174,6 +186,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       dispatch({ type: 'SET_SESSION', payload: session });
+      // This is the key fix: only stop loading after the initial check is complete.
       if (!session) {
           dispatch({ type: 'SET_IS_LOADING', payload: false });
       }
@@ -181,11 +194,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        if (!session) {
+        const currentSession = state.session;
+        if (session?.user.id !== currentSession?.user.id) {
             await clearAllData();
         }
         dispatch({ type: 'SET_SESSION', payload: session });
-         if (!session) {
+        if (!session) {
           dispatch({ type: 'SET_IS_LOADING', payload: false });
         }
       }
@@ -223,6 +237,44 @@ export const useAppContext = () => {
 };
 
 // --- ASYNC ACTIONS ---
+
+export const saveSettingsAction = async (
+    dispatch: Dispatch<Action>,
+    state: AppState,
+    settings: Partial<Omit<UserData, 'trades' | 'accounts' | 'notes'>>
+) => {
+    const { userData, currentUser, syncStatus, isGuest } = state;
+    if (!userData || !currentUser || isGuest) return;
+
+    // Optimistically update UI
+    for (const [key, value] of Object.entries(settings)) {
+        dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field: key as any, value }});
+    }
+
+    const allSettingsData = { ...userData, ...settings };
+    // Remove data that is not part of settings
+    delete (allSettingsData as any).trades;
+    delete (allSettingsData as any).accounts;
+    delete (allSettingsData as any).notes;
+
+    // Update local DB
+    await bulkPut('settings', [{ id: 'user-settings', data: allSettingsData }]);
+    
+    // Add to sync queue
+    await putSyncQueue({
+        id: crypto.randomUUID(),
+        type: 'settings',
+        action: 'update',
+        payload: allSettingsData,
+        timestamp: Date.now()
+    });
+
+    if (syncStatus === 'online') {
+        window.dispatchEvent(new CustomEvent('sync-request'));
+    }
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Settings saved locally.', type: 'success' } });
+};
+
 
 export const saveTradeAction = async (
   dispatch: Dispatch<Action>,

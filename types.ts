@@ -90,7 +90,6 @@ export interface Stats {
   wins: number;
   losses: number;
   breakevens: number;
-  // FIX: Corrected typo from `anumber` to `number`.
   missed: number;
   averageRR: number;
   totalRR: number;
@@ -104,6 +103,8 @@ export interface DefaultSettings {
     pair: string;
     entry: string;
     risk: number | string;
+    stoploss: string;
+    takeprofit: string;
 }
 
 export interface UserData {
@@ -115,7 +116,7 @@ export interface UserData {
     defaultSettings: DefaultSettings;
     notes: Note[];
     stoplosses: string[];
-    // FIX: Corrected typo from `takeprofite` to `takeprofits` to resolve type errors.
     takeprofits: string[];
     closeTypes: string[];
+    analysisTimeframes: string[];
 }

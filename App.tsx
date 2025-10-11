@@ -352,6 +352,13 @@ async function processSyncQueue(userId: string) {
                     }
                     break;
                 }
+                 case 'settings': {
+                    const { error } = await supabase
+                        .from('user_data')
+                        .upsert({ user_id: userId, data: item.payload });
+                    if (error) throw error;
+                    break;
+                }
             }
         } catch (error) {
             console.error(`Sync Error (${item.type} ${item.action}):`, error);
@@ -673,16 +680,16 @@ function AppContent() {
     setFormModalOpen(false);
   }, []);
 
-  if (!session && !isGuest) {
-    return <Auth />;
-  }
-  
-  if (isLoading && !userData) {
+  if (isLoading) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] text-white">
             <div className="text-xl animate-pulse">Loading Your Journal...</div>
         </div>
     );
+  }
+  
+  if (!session && !isGuest) {
+    return <Auth />;
   }
   
   if (!userData) {
@@ -703,7 +710,7 @@ function AppContent() {
                 <NavItem view="dashboard" label="Dashboard" />
                 <NavItem view="analysis" label="Analysis" />
                 <NavItem view="notes" label="Notes" />
-                <NavItem view="data" label="Data" />
+                <NavItem view="data" label="Settings" />
             </div>
             <div className="flex items-center gap-4 w-full justify-center md:w-auto mt-4 md:mt-0">
                 <div className="flex items-center gap-4">

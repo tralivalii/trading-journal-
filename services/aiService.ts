@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { Trade } from '../types';
+import { Trade, Analysis } from '../types';
 
 async function imageUrlToBase64(url: string): Promise<{ mimeType: string; data: string }> {
     const response = await fetch(url);
@@ -24,11 +24,30 @@ async function imageUrlToBase64(url: string): Promise<{ mimeType: string; data: 
     });
 }
 
+const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
+    'D1': { key: 'analysisD1', title: 'D1 Analysis Notes' },
+    '1h': { key: 'analysis1h', title: '1h Analysis Notes' },
+    '5m': { key: 'analysis5m', title: '5m Analysis Notes' },
+    'Result': { key: 'analysisResult', title: 'Result Analysis Notes' },
+};
+
 export const analyzeTradeWithAI = async (trade: Trade, imageUrls: string[]): Promise<string> => {
     if (!process.env.API_KEY) {
         throw new Error("API key is not configured.");
     }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    let notesSection = '';
+    for (const tf in timeframeMap) {
+        const map = timeframeMap[tf];
+        const analysis = trade[map.key] as Analysis;
+        if (analysis && analysis.notes) {
+            notesSection += `- ${map.title}: ${analysis.notes}\n`;
+        }
+    }
+    if (notesSection === '') {
+        notesSection = 'No notes provided.';
+    }
 
     const textPart = {
         text: `
@@ -43,15 +62,12 @@ export const analyzeTradeWithAI = async (trade: Trade, imageUrls: string[]): Pro
           - Risk: ${trade.risk}%
           - R:R Ratio: ${trade.rr}
           - Entry Type: ${trade.entry || 'N/A'}
-          - Stoploss Type: ${trade.stoploss || 'N/A'}
-          - Take Profit Type: ${trade.takeprofit || 'N/A'}
+          - SL Type: ${trade.stoploss || 'N/A'}
+          - TP Type: ${trade.takeprofit || 'N/A'}
           - Close Type: ${trade.closeType || 'N/A'}
 
           Trader's Notes:
-          - D1 Analysis Notes: ${trade.analysisD1.notes || 'No notes.'}
-          - 1h Analysis Notes: ${trade.analysis1h.notes || 'No notes.'}
-          - 5m Analysis Notes: ${trade.analysis5m.notes || 'No notes.'}
-          - Result Analysis Notes: ${trade.analysisResult.notes || 'No notes.'}
+          ${notesSection}
           
           Your tasks:
           1.  **Confluence Check:** Based on the notes and charts (if provided), was there strong reasoning for entering the trade?

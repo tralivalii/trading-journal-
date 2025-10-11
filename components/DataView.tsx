@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { useAppContext, saveAccountAction, deleteAccountAction } from '../services/appState';
+// FIX: Import missing action creators.
+import { useAppContext, saveSettingsAction, saveAccountAction, deleteAccountAction } from '../services/appState';
 import { Account, Currency, UserData } from '../types';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
@@ -112,7 +113,7 @@ const EditableTagList: React.FC<{
         <div>
             <h3 className="text-base font-semibold text-[#8A91A8] mb-2">{title}</h3>
             <div className="flex flex-wrap gap-2 mb-3 min-h-[34px] items-center">
-                {items.map((item, index) => (
+                {(items || []).map((item, index) => (
                     <div key={index}>
                         {editingIndex === index ? (
                             <div className="flex items-center bg-gray-700 text-white text-sm font-medium pl-3 pr-2 py-1 rounded-full ring-2 ring-blue-500 min-w-16 justify-center">
@@ -159,7 +160,7 @@ const EditableTagList: React.FC<{
                         )}
                     </div>
                 ))}
-                {items.length === 0 && <p className="text-sm text-gray-500 italic">No items added yet.</p>}
+                {(items || []).length === 0 && <p className="text-sm text-gray-500 italic">No items added yet.</p>}
             </div>
             <form onSubmit={handleAddItem} className="flex gap-2">
                 <input
@@ -181,7 +182,7 @@ const EditableTagList: React.FC<{
 const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
     const { state, dispatch } = useAppContext();
     const { userData, currentUser, isGuest } = state;
-    const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings, trades } = userData!;
+    const { accounts, pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings, trades, analysisTimeframes } = userData!;
 
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountToEdit, setAccountToEdit] = useState<Account | null>(null);
@@ -241,29 +242,8 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
         setAccountToDelete(null); 
     };
 
-    const handleSaveSettings = async (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
-        if (isGuest) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-            return;
-        }
-        if (!currentUser || !userData) return;
-        
-        const allSettingsData = { pairs, entries, risks, stoplosses, takeprofits, closeTypes, defaultSettings };
-        const updatedData = { ...allSettingsData, [field]: value };
-
-        const { error } = await supabase
-            .from('user_data')
-            .upsert({ user_id: currentUser.id, data: updatedData })
-            .select();
-
-        if (error) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving settings: ${error.message}`, type: 'error' } });
-            console.error(error);
-        } else {
-            dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field, value }});
-            const friendlyFieldName = (field as string).charAt(0).toUpperCase() + (field as string).slice(1);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: `${friendlyFieldName} updated successfully.`, type: 'success' } });
-        }
+    const handleSaveSettings = (field: keyof Omit<UserData, 'trades' | 'accounts' | 'notes'>, value: any) => {
+       saveSettingsAction(dispatch, state, { [field]: value });
     };
 
     const handleDefaultSettingsChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -298,7 +278,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
 
         const headers = [
             'id', 'date', 'accountId', 'pair', 'direction', 'result', 'pnl', 'risk', 'rr', 
-            'riskAmount', 'commission', 'entry', 'stoploss', 'takeprofit', 'closeType',
+            'riskAmount', 'commission', 'entry', 'sl', 'tp', 'closeType',
             'analysisD1_notes', 'analysis1h_notes', 'analysis5m_notes', 'analysisResult_notes'
         ];
 
@@ -347,7 +327,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
 
     return (
         <div>
-            <h1 className="text-3xl font-bold text-white mb-6">Data & Settings</h1>
+            <h1 className="text-3xl font-bold text-white mb-6">Settings</h1>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Left Column */}
@@ -416,6 +396,18 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
                                     {entries.map(e => <option key={e} value={e}>{e}</option>)}
                                 </select>
                             </FormField>
+                             <FormField label="Default SL Type">
+                                <select name="stoploss" value={currentDefaults.stoploss} onChange={handleDefaultSettingsChange} className={selectClasses}>
+                                    <option value="">None</option>
+                                    {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </FormField>
+                             <FormField label="Default TP Type">
+                                <select name="takeprofit" value={currentDefaults.takeprofit} onChange={handleDefaultSettingsChange} className={selectClasses}>
+                                    <option value="">None</option>
+                                    {takeprofits.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </FormField>
                             <FormField label="Default Risk (%)">
                                 <select name="risk" value={currentDefaults.risk} onChange={handleDefaultSettingsChange} className={selectClasses}>
                                     {risks.map(r => <option key={r} value={r}>{r}</option>)}
@@ -435,9 +427,10 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
                             <EditableTagList title="Pairs" items={pairs} onSave={(newItems) => handleSaveSettings('pairs', newItems)} />
                             <EditableTagList title="Entry Types" items={entries} onSave={(newItems) => handleSaveSettings('entries', newItems)} />
                             <EditableTagList title="Risk Presets (%)" items={risks} onSave={(newItems) => handleSaveSettings('risks', newItems.map(Number).sort((a,b) => a-b))} inputType="number" placeholder="Add risk %..." />
-                            <EditableTagList title="Stoploss Types" items={stoplosses} onSave={(newItems) => handleSaveSettings('stoplosses', newItems)} />
-                            <EditableTagList title="Takeprofit Types" items={takeprofits} onSave={(newItems) => handleSaveSettings('takeprofits', newItems)} />
+                            <EditableTagList title="SL Types" items={stoplosses} onSave={(newItems) => handleSaveSettings('stoplosses', newItems)} />
+                            <EditableTagList title="TP Types" items={takeprofits} onSave={(newItems) => handleSaveSettings('takeprofits', newItems)} />
                             <EditableTagList title="Close Types" items={closeTypes} onSave={(newItems) => handleSaveSettings('closeTypes', newItems)} />
+                            <EditableTagList title="Analysis Timeframes" items={analysisTimeframes} onSave={(newItems) => handleSaveSettings('analysisTimeframes', newItems)} placeholder="Add new timeframe..."/>
                         </div>
                     </DataCard>
 

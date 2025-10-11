@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-// FIX: Removed unused and non-existent 'CloseType' from imports.
+import React, { useState, useMemo } from 'react';
 import { Trade, Account, Result, Analysis } from '../types';
 import { ICONS } from '../constants';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
@@ -13,7 +12,13 @@ interface TradeDetailProps {
   onEdit: (trade: Trade) => void;
 }
 
-type AnalysisTab = 'D1' | '1h' | '5m' | 'Result';
+const timeframeMap: Record<string, { key: keyof Trade }> = {
+    '1D': { key: 'analysisD1' },
+    '1h': { key: 'analysis1h' },
+    '5m': { key: 'analysis5m' },
+    'Result': { key: 'analysisResult' },
+};
+
 
 const DetailItem: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({ label, value, className }) => (
     <div>
@@ -57,8 +62,19 @@ const AnalysisDetailSection: React.FC<{
 
 const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => {
   const { state, dispatch } = useAppContext();
+  const { userData } = state;
+
+  const filledTimeframes = useMemo(() => {
+    return (userData?.analysisTimeframes || []).filter(tf => {
+        const map = timeframeMap[tf];
+        if (!map) return false;
+        const analysisData = trade[map.key] as Analysis;
+        return analysisData && (analysisData.image || analysisData.notes);
+    });
+  }, [trade, userData?.analysisTimeframes]);
+  
   const [fullscreenData, setFullscreenData] = useState<{ src: string; notes?: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<AnalysisTab>('D1');
+  const [activeTab, setActiveTab] = useState<string>(filledTimeframes[0] || '');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
@@ -117,13 +133,6 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
       </div>
   );
 
-  const analysisContent: Record<AnalysisTab, Analysis> = {
-    'D1': trade.analysisD1,
-    '1h': trade.analysis1h,
-    '5m': trade.analysis5m,
-    'Result': trade.analysisResult,
-  };
-
   return (
     <div className="space-y-6">
         {/* --- HEADER --- */}
@@ -162,39 +171,41 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
                 <DetailItem label="Account" value={account?.name} />
                 <DetailItem label="Direction" value={trade.direction} className={trade.direction === 'Long' ? 'text-[#10B981]' : 'text-[#EF4444]'}/>
                 <DetailItem label="Entry Type" value={trade.entry} />
-                <DetailItem label="Stoploss Type" value={trade.stoploss} />
-                <DetailItem label="Take Profit Type" value={trade.takeprofit} />
+                <DetailItem label="SL Type" value={trade.stoploss} />
+                <DetailItem label="TP Type" value={trade.takeprofit} />
                 <DetailItem label="Close Type" value={trade.closeType} />
              </div>
         </div>
       
         {/* --- ANALYSIS NOTES & CHARTS --- */}
-        <div>
-            <h3 className="text-xl font-semibold text-white mb-4">Analysis Breakdown</h3>
-            <div className="mb-4 border-b border-gray-700/50">
-                <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                    {(Object.keys(analysisContent) as AnalysisTab[]).map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={`${
-                                activeTab === tab
-                                    ? 'border-blue-500 text-blue-400'
-                                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                            } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors focus:outline-none`}
-                        >
-                            {tab} Analysis
-                        </button>
-                    ))}
-                </nav>
-            </div>
+        {filledTimeframes.length > 0 && (
             <div>
-                <AnalysisDetailSection 
-                    analysis={analysisContent[activeTab]}
-                    onImageClick={handleImageClick}
-                />
+                <h3 className="text-xl font-semibold text-white mb-4">Analysis Breakdown</h3>
+                <div className="mb-4 border-b border-gray-700/50">
+                    <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                        {filledTimeframes.map(tab => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`${
+                                    activeTab === tab
+                                        ? 'border-blue-500 text-blue-400'
+                                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                                } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors focus:outline-none`}
+                            >
+                                {tab} Analysis
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+                <div>
+                    <AnalysisDetailSection 
+                        analysis={trade[timeframeMap[activeTab].key] as Analysis}
+                        onImageClick={handleImageClick}
+                    />
+                </div>
             </div>
-        </div>
+        )}
 
         {/* --- AI Analysis Section --- */}
         <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">

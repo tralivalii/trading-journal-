@@ -141,10 +141,17 @@ const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File
     });
 };
 
+const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
+    '1D': { key: 'analysisD1', title: 'D1 Analysis' },
+    '1h': { key: 'analysis1h', title: '1h Analysis' },
+    '5m': { key: 'analysis5m', title: '5m Analysis' },
+    'Result': { key: 'analysisResult', title: 'Result Analysis' },
+};
+
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
   const { state, dispatch } = useAppContext();
   const { userData, currentUser, isGuest } = state;
-  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = userData!;
+  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes, analysisTimeframes } = userData!;
   
   const initialTradeStateRef = useRef<Omit<Trade, 'id' | 'pnl' | 'riskAmount'>>();
   const [isDirty, setIsDirty] = useState(false);
@@ -160,8 +167,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         risk: typeof defaultSettings.risk === 'number' ? defaultSettings.risk : (risks.length > 0 ? risks[0] : 1),
         rr: 1.2,
         commission: 0,
-        stoploss: stoplosses.length > 0 ? stoplosses[0] : '',
-        takeprofit: takeprofits.length > 0 ? takeprofits[0] : '',
+        stoploss: defaultSettings.stoploss || '',
+        takeprofit: defaultSettings.takeprofit || '',
         result: Result.InProgress,
         closeType: undefined,
         analysisD1: { ...emptyAnalysis },
@@ -227,22 +234,22 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     });
   };
 
-  const handleAnalysisChange = (section: keyof Omit<typeof trade, 'id' | 'pnl' | 'riskAmount'>, field: 'notes' | 'image', value: string | undefined) => {
+  const handleAnalysisChange = (sectionKey: keyof Trade, field: 'notes' | 'image', value: string | undefined) => {
       setTrade(prev => ({
           ...prev,
-          [section]: {
-              ...(prev[section] as Analysis),
+          [sectionKey]: {
+              ...(prev[sectionKey] as Analysis),
               [field]: value
           }
       }));
   };
 
-  const handleFileChange = async (section: keyof Omit<typeof trade, 'id' | 'pnl' | 'riskAmount'>, file: File | null) => {
+  const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
       if (isGuest) {
         dispatch({ type: 'SHOW_TOAST', payload: { message: "Image uploads are disabled in guest mode.", type: 'error' } });
         return;
       }
-      const currentImageKey = (trade[section] as Analysis).image;
+      const currentImageKey = (trade[sectionKey] as Analysis).image;
 
       if (currentImageKey) {
           try {
@@ -260,7 +267,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             const imageKey = `${crypto.randomUUID()}-${compressedFile.name}`;
             const { error } = await supabase.storage.from('screenshots').upload(`${currentUser!.id}/${imageKey}`, compressedFile, { contentType: compressedFile.type });
             if (error) throw error;
-            handleAnalysisChange(section, 'image', imageKey);
+            handleAnalysisChange(sectionKey, 'image', imageKey);
         } catch (error) {
             console.error("Error saving image to Supabase Storage:", error);
             dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not save image.", type: 'error' } });
@@ -268,7 +275,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             setIsUploading(false);
         }
       } else {
-        handleAnalysisChange(section, 'image', undefined);
+        handleAnalysisChange(sectionKey, 'image', undefined);
       }
   };
 
@@ -334,13 +341,13 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                     </FormField>
                     <FormField label="SL Type">
                         <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
-                            <option value="">Select Stoploss</option>
+                            <option value="">Select SL</option>
                             {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </FormField>
                     <FormField label="TP Type">
                         <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={selectClasses}>
-                            <option value="">Select Take Profit</option>
+                            <option value="">Select TP</option>
                             {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </FormField>
@@ -370,10 +377,21 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
                 <h3 className="text-xl font-semibold text-white">Analysis Breakdown</h3>
                 <div className="space-y-4">
-                    <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
-                    <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
-                    <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
-                    <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+                    {(analysisTimeframes || []).map(tf => {
+                       const map = timeframeMap[tf];
+                       if (!map) return null;
+                       const analysisKey = map.key;
+                       const analysisData = trade[analysisKey] as Analysis;
+                       return (
+                           <AnalysisSection 
+                                key={tf}
+                                title={map.title} 
+                                analysis={analysisData} 
+                                onFileChange={(file) => handleFileChange(analysisKey, file)} 
+                                onNotesChange={(notes) => handleAnalysisChange(analysisKey, 'notes', notes)} 
+                           />
+                       )
+                    })}
                 </div>
             </div>
             
