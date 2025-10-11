@@ -11,8 +11,9 @@ import TradeDetail from './components/TradeDetail';
 import DataView from './components/DataView';
 // FIX: Changed import to be a relative path
 import NotesView from './components/NotesView';
+import AnalysisView from './components/AnalysisView';
 import { calculateStats, filterTradesByPeriod } from './services/statisticsService';
-import { analyzeTradeGroups, calculateStreaks, generateTemporalData } from './services/analysisService';
+import { generateTemporalData } from './services/analysisService';
 import Auth from './components/Auth';
 import { ICONS } from './constants';
 import { supabase } from './services/supabase';
@@ -21,10 +22,8 @@ declare const Chart: any;
 
 const TRADES_PAGE_SIZE = 25;
 
-type View = 'journal' | 'dashboard' | 'notes' | 'data'; 
+type View = 'journal' | 'dashboard' | 'analysis' | 'notes' | 'data'; 
 type Period = 'week' | 'month' | 'quarter' | 'all';
-type AnalysisGroup = Result.Win | Result.Loss | Result.Breakeven | Result.Missed;
-
 
 const StatCard: React.FC<{ label: string, value: string | number, className?: string }> = ({ label, value, className }) => {
     const valueStr = String(value);
@@ -197,93 +196,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
 
     const mainCurrency = activeAccounts.length > 0 ? (activeAccounts[0].currency || 'USD') : 'USD';
     const totalBalance = useMemo(() => Array.from(accountBalances.values()).reduce((sum: number, balance: number) => sum + balance, 0), [accountBalances]);
-    
-    const [activeGroup, setActiveGroup] = useState<AnalysisGroup>(Result.Loss);
-
-    const analysisTrades = useMemo(() => {
-        const periodMap: { [key in Period]: 'week' | 'this-month' | 'this-quarter' | 'all' } = {
-            week: 'week',
-            month: 'this-month',
-            quarter: 'this-quarter',
-            all: 'all',
-        };
-        return filterTradesByPeriod(tradesForStats, periodMap[period]);
-    }, [tradesForStats, period]);
-
-    const analysisData = useMemo(() => analyzeTradeGroups(analysisTrades), [analysisTrades]);
-    const streaks = useMemo(() => calculateStreaks(analysisTrades), [analysisTrades]);
-
-    const selectedGroupStats = analysisData[activeGroup];
-    
-    const patterns = useMemo(() => {
-        if (!selectedGroupStats || selectedGroupStats.count < 3) {
-            return "Not enough trades to find meaningful patterns.";
-        }
-
-        const foundPatterns: { percentage: number, title: string, key: string }[] = [];
-        const total = selectedGroupStats.count;
-
-        const distributions: { title: string; data?: Record<string, number> }[] = [
-            { title: 'Entry Type', data: selectedGroupStats.distributionByEntry },
-            { title: 'Direction', data: selectedGroupStats.distributionByDirection },
-            { title: 'Pair', data: selectedGroupStats.distributionByPair },
-            { title: 'Day of Week', data: selectedGroupStats.distributionByDay },
-            { title: 'R:R', data: selectedGroupStats.distributionByRR },
-            { title: 'Take Profit', data: selectedGroupStats.distributionByTakeProfit },
-            { title: 'Stoploss', data: selectedGroupStats.distributionByStoploss },
-            { title: 'Close Type', data: selectedGroupStats.distributionByCloseType },
-        ];
-
-        for (const dist of distributions) {
-            if (dist.data) {
-                for (const [key, value] of Object.entries(dist.data)) {
-                    const percentage = (value / total) * 100;
-                    if (percentage >= 70) {
-                        foundPatterns.push({ percentage: parseFloat(percentage.toFixed(0)), title: dist.title, key });
-                    }
-                }
-            }
-        }
-
-        if (foundPatterns.length === 0) {
-            return "No single parameter shows a concentration of 70% or more.";
-        }
-
-        return foundPatterns;
-    }, [selectedGroupStats]);
-
-    const DistributionChart: React.FC<{ title: string; data: Record<string, number>; total: number }> = ({ title, data, total }) => {
-        const sortedData = Object.entries(data).sort(([, a], [, b]) => Number(b) - Number(a));
-
-        if (sortedData.length === 0) return (
-            <div>
-                 <h4 className="text-sm font-semibold text-[#8A91A8] mb-3 uppercase">{title}</h4>
-                 <div className="text-sm text-[#8A91A8]">No data available.</div>
-            </div>
-        );
-
-        return (
-            <div>
-                <h4 className="text-sm font-semibold text-[#8A91A8] mb-3 uppercase">{title}</h4>
-                <div className="space-y-4 text-sm">
-                    {sortedData.map(([key, value]) => {
-                        const percentage = total > 0 ? (Number(value) / total) * 100 : 0;
-                        return (
-                            <div key={key}>
-                                <div className="flex justify-between items-center mb-1">
-                                    <span className="text-[#F0F0F0] truncate">{key}</span>
-                                    <span className="text-right text-[#8A91A8] font-medium">{value} ({percentage.toFixed(0)}%)</span>
-                                </div>
-                                <div className="w-full bg-gray-700 rounded-full h-1.5">
-                                    <div className="bg-[#3B82F6] h-1.5 rounded-full" style={{ width: `${percentage}%` }}></div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        );
-    };
 
     return (
         <div>
@@ -327,121 +239,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                     <EquityChart trades={filteredTrades} />
                 </DataCard>
             </div>
-
-            <div className="mt-12 space-y-8">
-                 <div className="flex justify-between items-center flex-wrap gap-4">
-                     <h2 className="text-3xl font-bold text-white">Trade Analysis</h2>
-                </div>
-
-                {trades.length === 0 ? (
-                    <DataCard title="Performance Analysis">
-                        <NoData message="Add some trades to see your analysis." onAction={onAddTrade} actionText="Add New Trade" />
-                    </DataCard>
-                ) : (
-                    <div className="space-y-8">
-                        <DataCard title="Performance Group Comparison">
-                            <div className="flex flex-wrap gap-2 mb-4 border-b border-gray-700/50 pb-4">
-                                {(Object.keys(analysisData) as AnalysisGroup[]).map(group => (
-                                    <button 
-                                        key={group} 
-                                        onClick={() => setActiveGroup(group)}
-                                        className={`px-4 py-1.5 rounded-md text-sm transition-colors ${activeGroup === group ? 'bg-[#3B82F6] text-white' : 'bg-[#2A2F3B] hover:bg-gray-700 text-[#8A91A8] hover:text-white'}`}>
-                                        {group} ({analysisData[group]?.count || 0})
-                                    </button>
-                                ))}
-                            </div>
-                            {selectedGroupStats && selectedGroupStats.count > 0 ? (
-                                <div>
-                                    <h3 className="text-lg font-semibold text-white mb-4">Distributions for {activeGroup} Trades</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-8">
-                                        <DistributionChart title="By Entry Type" data={selectedGroupStats.distributionByEntry} total={selectedGroupStats.count} />
-                                        <DistributionChart title="By Direction" data={selectedGroupStats.distributionByDirection} total={selectedGroupStats.count} />
-                                        <DistributionChart title="By Pair" data={selectedGroupStats.distributionByPair} total={selectedGroupStats.count} />
-                                        <DistributionChart title="By Day of Week" data={selectedGroupStats.distributionByDay} total={selectedGroupStats.count} />
-                                        <DistributionChart title="By R:R" data={selectedGroupStats.distributionByRR} total={selectedGroupStats.count} />
-                                        {activeGroup === Result.Win && selectedGroupStats.distributionByTakeProfit && (
-                                            <DistributionChart title="By Take Profit" data={selectedGroupStats.distributionByTakeProfit} total={selectedGroupStats.count} />
-                                        )}
-                                        {activeGroup === Result.Loss && selectedGroupStats.distributionByStoploss && (
-                                            <DistributionChart title="By Stoploss" data={selectedGroupStats.distributionByStoploss} total={selectedGroupStats.count} />
-                                        )}
-                                        {activeGroup !== Result.Missed && selectedGroupStats.distributionByCloseType && (
-                                            <DistributionChart title="By Close Type" data={selectedGroupStats.distributionByCloseType} total={selectedGroupStats.count} />
-                                        )}
-                                    </div>
-                                </div>
-                            ) : <NoData message={`No trades found for ${activeGroup}s.`} />}
-                        </DataCard>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                             <DataCard title="Streak Analysis" className="lg:col-span-1">
-                                {streaks.longestWinStreak > 0 || streaks.longestLossStreak > 0 ? (
-                                    <div className="space-y-6 text-center">
-                                        <div>
-                                            <p className="text-[#8A91A8] text-xs uppercase">Longest Win Streak</p>
-                                            <p className="text-3xl font-bold text-[#10B981]">{streaks.longestWinStreak}</p>
-                                        </div>
-                                         <div>
-                                            <p className="text-[#8A91A8] text-xs uppercase">Longest Loss Streak</p>
-                                            <p className="text-3xl font-bold text-[#EF4444]">{streaks.longestLossStreak}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[#8A91A8] text-xs uppercase">Current Streak</p>
-                                            {streaks.currentStreak.type !== 'none' ? (
-                                                <>
-                                                    <p className={`text-5xl font-bold ${streaks.currentStreak.type === 'win' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                                                        {streaks.currentStreak.count}
-                                                    </p>
-                                                    <p className={`text-base ${streaks.currentStreak.type === 'win' ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                                                        {streaks.currentStreak.type === 'win' ? 'Wins' : 'Losses'}
-                                                    </p>
-                                                </>
-                                            ) : (
-                                                <p className="text-5xl font-bold text-[#8A91A8]">N/A</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                ) : <NoData />}
-                            </DataCard>
-
-                            <DataCard 
-                                title="Patterns & Correlations" 
-                                className="lg:col-span-2"
-                                headerAction={
-                                    <div className="relative group">
-                                        <button className="text-[#8A91A8] hover:text-white transition-colors" aria-label="View Details">
-                                            <span className="w-5 h-5">{ICONS.eye}</span>
-                                        </button>
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 bg-gray-900 text-white text-xs rounded-md border border-gray-700 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                            View Details
-                                        </div>
-                                    </div>
-                                }
-                            >
-                                <div className="text-[#F0F0F0] text-sm flex-grow">
-                                    {typeof patterns === 'string' ? (
-                                        <div className="flex items-center justify-center h-full text-[#8A91A8]">{patterns}</div>
-                                    ) : Array.isArray(patterns) && patterns.length > 0 ? (
-                                        <div className="space-y-3">
-                                            {patterns.map((p, i) => (
-                                                <div key={i}>
-                                                    <span className="text-[#8A91A8]">
-                                                        <span className="font-bold">{p.percentage}% </span>
-                                                        {p.title}: 
-                                                    </span>
-                                                    <span className="font-semibold text-[#F0F0F0] ml-2">{p.key}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center justify-center h-full text-[#8A91A8]">No significant patterns found.</div>
-                                    )}
-                                </div>
-                            </DataCard>
-                        </div>
-                    </div>
-                )}
-            </div>
             
             <Modal isOpen={isBalancesModalOpen} onClose={() => setIsBalancesModalOpen(false)} title="Account Balances">
                  <div className="space-y-3">
@@ -463,7 +260,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
 }
 
 // A more resilient function to get or create user settings.
-// It prioritizes returning valid settings over throwing an error, to prevent the app from getting stuck.
 const getUserSettings = async (userId: string): Promise<Omit<UserData, 'trades'|'accounts'|'notes'>> => {
     const defaultSettings = {
         pairs: ['EUR/USD', 'EUR/GBP', 'XAU/USD', 'BTC/USDT', 'ETH/USDT', 'XRP/USDT'],
@@ -475,36 +271,29 @@ const getUserSettings = async (userId: string): Promise<Omit<UserData, 'trades'|
         closeTypes: ['SL Hit', 'TP Hit', 'Manual', 'Breakeven'],
     };
 
-    // 1. Try to fetch existing settings
     const { data, error } = await supabase
         .from('user_data')
         .select('data')
         .eq('user_id', userId)
         .single();
 
-    // 2. If data is successfully fetched, return it
     if (data) {
         return data.data;
     }
 
-    // 3. If there was an error, but it's NOT "no rows found", log it and return defaults as a fallback.
-    // This handles network errors or RLS issues without crashing the app.
     if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user settings, falling back to defaults:', error);
         return defaultSettings;
     }
 
-    // 4. If no settings were found (PGRST116), try to create them.
     const { error: insertError } = await supabase
         .from('user_data')
         .insert({ user_id: userId, data: defaultSettings });
 
-    // 5. If the insert fails, log the error but still return defaults so the app can load.
     if (insertError) {
         console.error('Error creating default user data, falling back to defaults:', insertError);
     }
     
-    // 6. Return defaults in all failure or creation scenarios.
     return defaultSettings;
 };
 
@@ -532,6 +321,7 @@ function AppContent() {
   const { session, currentUser, userData, isLoading, isGuest, hasMoreTrades, isFetchingMore, toast } = state;
 
   const [isFormModalOpen, setFormModalOpen] = useState(false);
+  const tradeFormRef = useRef<{ handleCloseRequest: () => void }>(null);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
   const [isDeleteConfirmModalOpen, setDeleteConfirmModalOpen] = useState(false);
   const [isDeleteTradeModalOpen, setDeleteTradeModalOpen] = useState(false);
@@ -546,7 +336,6 @@ function AppContent() {
   const lastScrollY = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
   
-  // Effect to handle toast visibility and timeout
   useEffect(() => {
     if (toast) {
         if (toastTimerRef.current) {
@@ -569,6 +358,18 @@ function AppContent() {
     }
     dispatch({ type: 'HIDE_TOAST' });
   }, [dispatch]);
+  
+  const mapTradeFromDb = (t: any): Trade => ({
+    ...t,
+    accountId: t.account_id,
+    riskAmount: t.risk_amount,
+    closeType: t.close_type,
+    analysisD1: t.analysis_d1,
+    analysis1h: t.analysis_1h,
+    analysis5m: t.analysis_5m,
+    analysisResult: t.analysis_result,
+    aiAnalysis: t.ai_analysis,
+  });
 
   useEffect(() => {
     if (currentUser && !userData && !isGuest) {
@@ -604,7 +405,7 @@ function AppContent() {
                   currency: a.currency,
                   isArchived: a.is_archived
               })),
-              trades: (tradesData || []).map((t: any) => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result })),
+              trades: (tradesData || []).map(mapTradeFromDb),
               notes: (notesData || []).map((n: any) => ({
                 ...n,
                 tags: Array.isArray(n.tags) ? n.tags : (typeof n.tags === 'string' && n.tags.startsWith('[')) ? JSON.parse(n.tags) : []
@@ -612,11 +413,7 @@ function AppContent() {
             };
             
             dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
-            
-            // Check if there are more trades to load
-            if (tradesData && tradesData.length === TRADES_PAGE_SIZE) {
-                dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: true } });
-            }
+            dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: (tradesData || []).length === TRADES_PAGE_SIZE } });
 
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -645,9 +442,8 @@ function AppContent() {
         let actionType: 'UPDATE_TRADES' | 'UPDATE_ACCOUNTS' | 'UPDATE_NOTES' = 'UPDATE_TRADES';
         let currentItems: any[] = [];
         
-        // Map snake_case to camelCase for app state
         const mapRecord = (record: any) => {
-            if (table === 'trades') return {...record, accountId: record.account_id, riskAmount: record.risk_amount, closeType: record.close_type, analysisD1: record.analysis_d1, analysis1h: record.analysis_1h, analysis5m: record.analysis_5m, analysisResult: record.analysis_result };
+            if (table === 'trades') return mapTradeFromDb(record);
             if (table === 'accounts') return {...record, initialBalance: record.initial_balance, isArchived: record.is_archived };
             return record;
         };
@@ -715,7 +511,7 @@ function AppContent() {
 
         if (tradesError) throw tradesError;
         
-        const newTrades = (tradesData || []).map((t: any) => ({...t, accountId: t.account_id, riskAmount: t.risk_amount, closeType: t.close_type, analysisD1: t.analysis_d1, analysis1h: t.analysis_1h, analysis5m: t.analysis_5m, analysisResult: t.analysis_result }));
+        const newTrades = (tradesData || []).map(mapTradeFromDb);
 
         dispatch({
             type: 'FETCH_MORE_TRADES_SUCCESS',
@@ -727,7 +523,6 @@ function AppContent() {
     } catch (error) {
         console.error('Error fetching more trades:', error);
         dispatch({ type: 'SHOW_TOAST', payload: { message: 'Failed to load more trades.', type: 'error' } });
-        // Reset loading state on error
         dispatch({ type: 'FETCH_MORE_TRADES_SUCCESS', payload: { trades: [], hasMore: state.hasMoreTrades } });
     }
   }, [currentUser, userData, isGuest, dispatch, isFetchingMore, state.hasMoreTrades]);
@@ -823,42 +618,16 @@ function AppContent() {
   };
   
   const handleSaveFirstAccount = async (accountData: Omit<Account, 'id'>) => {
-    if (isGuest || !currentUser) {
-        return;
-    }
+    if (isGuest || !currentUser) return;
     try {
-        const dbPayload = {
-            name: accountData.name,
-            initial_balance: accountData.initialBalance,
-            currency: accountData.currency,
-            user_id: currentUser.id,
-        };
-
-        const { data: savedData, error } = await supabase
-            .from('accounts')
-            .insert(dbPayload)
-            .select()
-            .single();
-
+        const dbPayload = { name: accountData.name, initial_balance: accountData.initialBalance, currency: accountData.currency, user_id: currentUser.id };
+        const { data: savedData, error } = await supabase.from('accounts').insert(dbPayload).select().single();
         if (error) throw error;
-
-        const appAccount: Account = {
-            id: savedData.id,
-            name: savedData.name,
-            initialBalance: savedData.initial_balance,
-            currency: savedData.currency,
-            isArchived: savedData.is_archived
-        };
-        
+        const appAccount: Account = { id: savedData.id, name: savedData.name, initialBalance: savedData.initial_balance, currency: savedData.currency, isArchived: savedData.is_archived };
         dispatch({ type: 'UPDATE_ACCOUNTS', payload: [...(userData?.accounts || []), appAccount] });
         dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account created! Now you can add your first trade.', type: 'success' } });
         setFirstAccountModalOpen(false);
-        
-        setTimeout(() => {
-            setTradeToEdit(null);
-            setFormModalOpen(true);
-        }, 150);
-
+        setTimeout(() => { setTradeToEdit(null); setFormModalOpen(true); }, 150);
     } catch (error: any) {
         console.error('Failed to save first account:', error);
         dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to save account: ${error.message}`, type: 'error' } });
@@ -866,10 +635,7 @@ function AppContent() {
   };
 
   const handleLogout = () => {
-    if (isGuest) {
-        window.location.reload();
-        return;
-    }
+    if (isGuest) { window.location.reload(); return; }
     setLogoutConfirmModalOpen(true);
   };
 
@@ -885,17 +651,11 @@ function AppContent() {
         setDeleteConfirmModalOpen(false);
         return;
     }
-
     try {
-        // This RPC call assumes you have a `delete_user_account` function in your Supabase DB.
-        // This function should be SECURITY DEFINER and delete from auth.users where id = auth.uid().
         const { error } = await supabase.rpc('delete_user_account');
         if (error) throw error;
-        
-        // No success toast is needed, as the user will be logged out and redirected.
         await supabase.auth.signOut();
         dispatch({ type: 'SET_SESSION', payload: null });
-
     } catch (error: any) {
         console.error('Failed to delete user account:', error);
         dispatch({ type: 'SHOW_TOAST', payload: { message: `Failed to delete account: ${error.message}. This may require a database function to be set up.`, type: 'error' } });
@@ -913,17 +673,42 @@ function AppContent() {
         {activeView === view && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6] rounded-full"></span>}
       </button>
   );
+  
+  // A single reference to the form's child functions
+  const formRef = useRef<{ handleCloseRequest: () => void }>();
+  const handleTradeFormCloseRequest = () => {
+    const tradeForm = document.getElementById('trade-form-wrapper');
+    const dirty = tradeForm?.dataset.dirty === 'true';
+
+    if (dirty) {
+        if (window.confirm("You have unsaved changes. Are you sure you want to close?")) {
+            setFormModalOpen(false);
+        }
+    } else {
+        setFormModalOpen(false);
+    }
+  };
+
 
   if (!session && !isGuest) {
     return <Auth />;
   }
-
-  if (isLoading || !userData) {
+  
+  // Note: The main isLoading state is handled inside TradesList with a skeleton
+  if (isLoading && !userData) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] text-white">
             <div className="text-xl animate-pulse">Loading Your Journal...</div>
         </div>
     );
+  }
+  
+  if (!userData) {
+      return (
+         <div className="min-h-screen flex items-center justify-center bg-[#1A1D26] text-white">
+            <div className="text-xl">Could not load user data. Please refresh.</div>
+        </div>
+      )
   }
 
   return (
@@ -933,6 +718,7 @@ function AppContent() {
             <div className="flex items-center gap-4 w-full justify-center md:w-auto md:justify-start">
                 <NavItem view="journal" label="Journal" />
                 <NavItem view="dashboard" label="Dashboard" />
+                <NavItem view="analysis" label="Analysis" />
                 <NavItem view="notes" label="Notes" />
                 <NavItem view="data" label="Data" />
             </div>
@@ -957,6 +743,7 @@ function AppContent() {
         <main>
           {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade} onLoadMore={handleLoadMore} hasMore={hasMoreTrades} isFetchingMore={isFetchingMore} />}
           {activeView === 'dashboard' && <Dashboard onAddTrade={handleAddTrade} />}
+          {activeView === 'analysis' && <AnalysisView />}
           {activeView === 'notes' && <NotesView />}
           {activeView === 'data' && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} />}
         </main>
@@ -1004,8 +791,16 @@ function AppContent() {
         }
       `}</style>
 
-      <Modal isOpen={isFormModalOpen} onClose={() => setFormModalOpen(false)} title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} size="4xl">
-        <TradeForm onSave={handleSaveTrade} onCancel={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
+      <Modal 
+        isOpen={isFormModalOpen} 
+        onClose={() => setFormModalOpen(false)}
+        onCloseRequest={handleTradeFormCloseRequest} 
+        title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} 
+        size="4xl"
+      >
+        <div id="trade-form-wrapper">
+          <TradeForm onSave={handleSaveTrade} onClose={() => setFormModalOpen(false)} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
+        </div>
       </Modal>
       
       <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">

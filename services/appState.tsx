@@ -181,6 +181,18 @@ export const useAppContext = () => {
 
 // --- ASYNC ACTIONS ---
 
+const mapTradeFromDb = (t: any): Trade => ({
+    ...t,
+    accountId: t.account_id,
+    riskAmount: t.risk_amount,
+    closeType: t.close_type,
+    analysisD1: t.analysis_d1,
+    analysis1h: t.analysis_1h,
+    analysis5m: t.analysis_5m,
+    analysisResult: t.analysis_result,
+    aiAnalysis: t.ai_analysis,
+});
+
 export const saveTradeAction = async (
   dispatch: Dispatch<Action>,
   state: AppState,
@@ -221,29 +233,27 @@ export const saveTradeAction = async (
       analysis_1h: dbPayload.analysis1h,
       analysis_5m: dbPayload.analysis5m,
       analysis_result: dbPayload.analysisResult,
-      // pnl and risk_amount are calculated by the DB trigger, so we don't send them
+      ai_analysis: dbPayload.aiAnalysis,
     };
-    // remove camelCase keys from the root object to avoid inserting them as columns
     delete (supabasePayload as any).accountId;
     delete (supabasePayload as any).closeType;
     delete (supabasePayload as any).analysisD1;
     delete (supabasePayload as any).analysis1h;
     delete (supabasePayload as any).analysis5m;
     delete (supabasePayload as any).analysisResult;
+    delete (supabasePayload as any).aiAnalysis;
 
 
     if (isEditing) {
         const { data, error } = await supabase.from('trades').update(supabasePayload).eq('id', id!).select().single();
         if (error) throw error;
-        // The returned `data` will have the server-calculated pnl and risk_amount
-        const updatedTrade = { ...data, accountId: data.account_id, riskAmount: data.risk_amount, closeType: data.close_type, analysisD1: data.analysis_d1, analysis1h: data.analysis_1h, analysis5m: data.analysis_5m, analysisResult: data.analysis_result };
+        const updatedTrade = mapTradeFromDb(data);
         const updatedTrades = userData.trades.map(t => t.id === id ? updatedTrade : t);
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
     } else {
         const { data, error } = await supabase.from('trades').insert(supabasePayload).select().single();
         if (error) throw error;
-        const newTrade = { ...data, accountId: data.account_id, riskAmount: data.risk_amount, closeType: data.close_type, analysisD1: data.analysis_d1, analysis1h: data.analysis_1h, analysis5m: data.analysis_5m, analysisResult: data.analysis_result };
-        // Prepend the new trade to show it at the top of the list immediately
+        const newTrade = mapTradeFromDb(data);
         const updatedTrades = [newTrade, ...userData.trades];
         dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
     }
@@ -268,5 +278,28 @@ export const deleteTradeAction = async (
     if (error) throw error;
 
     const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
+    dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+};
+
+export const updateTradeWithAIAnalysisAction = async (
+  dispatch: Dispatch<Action>,
+  state: AppState,
+  tradeId: string,
+  analysisText: string
+) => {
+    const { userData } = state;
+    if (!userData) throw new Error('User data not available');
+    
+    const { data, error } = await supabase
+        .from('trades')
+        .update({ ai_analysis: analysisText })
+        .eq('id', tradeId)
+        .select()
+        .single();
+        
+    if (error) throw error;
+    
+    const updatedTrade = mapTradeFromDb(data);
+    const updatedTrades = userData.trades.map(t => t.id === tradeId ? updatedTrade : t);
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
 };

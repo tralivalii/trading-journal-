@@ -4,6 +4,7 @@ import { Trade, Result, Account } from '../types';
 import { ICONS } from '../constants';
 import { filterTradesByPeriod } from '../services/statisticsService';
 import { useAppContext } from '../services/appState';
+import Skeleton from './ui/Skeleton';
 
 interface TradesListProps {
   onEdit: (trade: Trade) => void;
@@ -99,10 +100,75 @@ const MobileTradeCard: React.FC<{
     );
 };
 
+const TradesListSkeleton: React.FC = () => (
+    <div className="space-y-8">
+        {[1, 2].map(i => (
+            <div key={i}>
+                <Skeleton className="h-7 w-48 mb-3" />
+                {/* Desktop Skeleton */}
+                <div className="hidden lg:block bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden">
+                    <table className="w-full">
+                        <thead className="text-xs text-[#8A91A8] uppercase bg-gray-800">
+                             <tr>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-16" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-24" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-20" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-12" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-10" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-20" /></th>
+                                <th className="px-6 py-3"><Skeleton className="h-4 w-28" /></th>
+                                <th className="px-6 py-3 text-center"><Skeleton className="h-4 w-32 mx-auto" /></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {[1, 2, 3].map(j => (
+                                <tr key={j} className="odd:bg-[#232733] even:bg-[#2A2F3B] border-b border-gray-700/50">
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-16" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-24" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-12" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-10" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-8" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-20" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-6 w-28 rounded-full" /></td>
+                                    <td className="px-6 py-4"><Skeleton className="h-5 w-32 mx-auto" /></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                {/* Mobile Skeleton */}
+                <div className="lg:hidden space-y-2">
+                    {[1, 2, 3].map(j => (
+                        <div key={j} className="bg-[#2A2F3B] rounded-lg p-3 border border-transparent">
+                            <div className="flex justify-between items-start mb-3">
+                                <Skeleton className="h-6 w-32" />
+                                <Skeleton className="h-4 w-16" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                                <div><Skeleton className="h-4 w-12 mx-auto" /><Skeleton className="h-5 w-10 mx-auto mt-1" /></div>
+                                <div><Skeleton className="h-4 w-8 mx-auto" /><Skeleton className="h-5 w-12 mx-auto mt-1" /></div>
+                                <div><Skeleton className="h-4 w-10 mx-auto" /><Skeleton className="h-5 w-16 mx-auto mt-1" /></div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <Skeleton className="h-6 w-28 rounded-full" />
+                                <div className="flex items-center gap-1">
+                                    <Skeleton className="w-8 h-8 rounded-full" />
+                                    <Skeleton className="w-8 h-8 rounded-full" />
+                                    <Skeleton className="w-8 h-8 rounded-full" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        ))}
+    </div>
+);
+
 
 const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade, onLoadMore, hasMore, isFetchingMore }) => {
   const { state } = useAppContext();
-  const { trades, accounts } = state.userData!;
+  const { trades, accounts, isLoading } = state.userData!;
   
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [period, setPeriod] = useState<JournalPeriod>('this-month');
@@ -141,6 +207,28 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
       {label}
     </button>
   );
+  
+  if (state.isLoading) {
+    return (
+        <div>
+             <div className="mb-6">
+                <Skeleton className="h-9 w-64" />
+                <div className="flex flex-wrap items-center gap-4 mt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Skeleton className="h-7 w-24 rounded-md" />
+                        <Skeleton className="h-7 w-24 rounded-md" />
+                        <Skeleton className="h-7 w-28 rounded-md" />
+                        <Skeleton className="h-7 w-20 rounded-md" />
+                    </div>
+                     <div>
+                        <Skeleton className="h-9 w-48 rounded-md" />
+                    </div>
+                </div>
+            </div>
+            <TradesListSkeleton />
+        </div>
+    );
+  }
 
   return (
     <div>

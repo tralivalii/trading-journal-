@@ -51,6 +51,9 @@ export interface Trade {
   analysis1h: Analysis;
   analysis5m: Analysis;
   analysisResult: Analysis;
+
+  // AI-powered analysis result
+  aiAnalysis?: string;
 }
 
 export interface Account {

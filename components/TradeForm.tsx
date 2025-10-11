@@ -1,6 +1,7 @@
 
 
-import React, { useState } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
 import { useAppContext } from '../services/appState';
@@ -9,7 +10,7 @@ import { ICONS } from '../constants';
 
 interface TradeFormProps {
   onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
-  onCancel: () => void;
+  onClose: () => void;
   tradeToEdit?: Trade | null;
   accounts: Account[];
 }
@@ -24,24 +25,6 @@ const getLocalDateTimeString = (date: Date): string => {
 };
 
 const emptyAnalysis: Analysis = { image: undefined, notes: '' };
-const initialTradeState = {
-  date: getLocalDateTimeString(new Date()), // Format for datetime-local
-  accountId: '',
-  pair: '',
-  entry: '',
-  direction: Direction.Long,
-  risk: 1,
-  rr: 1.2,
-  commission: 0,
-  stoploss: '',
-  takeprofit: '',
-  result: Result.InProgress,
-  closeType: undefined,
-  analysisD1: { ...emptyAnalysis },
-  analysis1h: { ...emptyAnalysis },
-  analysis5m: { ...emptyAnalysis },
-  analysisResult: { ...emptyAnalysis },
-};
 
 const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
     <div>
@@ -161,32 +144,55 @@ const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File
     });
 };
 
-const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, accounts }) => {
+const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
   const { state, dispatch } = useAppContext();
   const { userData, currentUser, isGuest } = state;
   const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes } = userData!;
-  const [step, setStep] = useState(1);
-  const [isUploading, setIsUploading] = useState(false);
+  
+  const initialTradeStateRef = useRef<Omit<Trade, 'id' | 'pnl' | 'riskAmount'>>();
+  const [isDirty, setIsDirty] = useState(false);
 
   const [trade, setTrade] = useState(() => {
-     const defaults = {
-        ...initialTradeState,
+     const initialTradeState = {
+        date: getLocalDateTimeString(new Date()),
         accountId: defaultSettings.accountId || (accounts.length > 0 ? accounts[0].id : ''),
         pair: defaultSettings.pair || (pairs.length > 0 ? pairs[0] : ''),
         entry: defaultSettings.entry || '',
+        direction: Direction.Long,
         risk: typeof defaultSettings.risk === 'number' ? defaultSettings.risk : (risks.length > 0 ? risks[0] : 1),
+        rr: 1.2,
+        commission: 0,
         stoploss: stoplosses.length > 0 ? stoplosses[0] : '',
         takeprofit: takeprofits.length > 0 ? takeprofits[0] : '',
+        result: Result.InProgress,
+        closeType: undefined,
+        analysisD1: { ...emptyAnalysis },
+        analysis1h: { ...emptyAnalysis },
+        analysis5m: { ...emptyAnalysis },
+        analysisResult: { ...emptyAnalysis },
      };
-     
+
      const stateToEdit = tradeToEdit ? {
         ...tradeToEdit,
         date: tradeToEdit.date ? getLocalDateTimeString(new Date(tradeToEdit.date)) : getLocalDateTimeString(new Date())
      } : null;
 
-     const { riskAmount, ...restOfTradeToEdit } = stateToEdit || {};
-     return tradeToEdit ? { ...defaults, ...restOfTradeToEdit } : defaults;
+     const { id, riskAmount, pnl, ...restOfTradeToEdit } = stateToEdit || {};
+     const finalInitialState = tradeToEdit ? { ...initialTradeState, ...restOfTradeToEdit } : initialTradeState;
+     initialTradeStateRef.current = finalInitialState;
+     return finalInitialState;
   });
+
+  useEffect(() => {
+    // Simple deep comparison for object structures without functions or undefined.
+    const currentStateString = JSON.stringify(trade);
+    const initialStateString = JSON.stringify(initialTradeStateRef.current);
+    setIsDirty(currentStateString !== initialStateString);
+  }, [trade]);
+  
+  const [step, setStep] = useState(1);
+  const [isUploading, setIsUploading] = useState(false);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -254,12 +260,22 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
       alert("Please select an account and a pair.");
       return;
     }
-    const { riskAmount, pnl, ...tradeData } = trade;
+    const { riskAmount, pnl, ...tradeData } = trade as any; // Cast to avoid TS errors on extra fields
     onSave({
         ...tradeData,
         id: tradeToEdit?.id,
         date: new Date(trade.date).toISOString(),
     });
+  };
+  
+  const handleCloseRequest = () => {
+    if (isDirty) {
+        if(window.confirm("You have unsaved changes. Are you sure you want to close?")) {
+            onClose();
+        }
+    } else {
+        onClose();
+    }
   };
 
   const isStep1Valid = trade.accountId && trade.pair;
@@ -377,9 +393,18 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
         )}
 
         <div className="flex justify-between pt-4">
-            <button type="button" onClick={() => setStep(s => s - 1)} disabled={step === 1} className="px-6 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium">
-                Back
-            </button>
+            <div>
+              {step > 1 ? (
+                <button type="button" onClick={() => setStep(s => s - 1)} className="px-6 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium">
+                    Back
+                </button>
+              ) : (
+                <button type="button" onClick={handleCloseRequest} className="px-6 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors font-medium">
+                    Cancel
+                </button>
+              )}
+            </div>
+
             {step < 3 ? (
                 <button type="button" onClick={() => setStep(s => s + 1)} disabled={!isStep1Valid} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
                     Next
