@@ -1,4 +1,5 @@
 // FIX: Provided full content for missing types.ts file.
+// REFACTORED: Expanded types to include all features like default settings and analysis timeframes.
 
 export enum Result {
   Win = 'Win',
@@ -31,17 +32,25 @@ export interface Trade {
   pnl: number;
   risk: number; // percentage
   entryType?: string;
-  takeProfitType?: string;
-  stoplossType?: string;
+  tpType?: string;
+  slType?: string;
   closeType?: string;
   entryPrice?: number;
-  stopLoss?: number;
-  takeProfit?: number;
-  setup?: string; // Markdown
-  execution?: string; // Markdown
-  outcome?: string; // Markdown
-  screenshotBeforeKey?: string | null;
-  screenshotAfterKey?: string | null;
+  sl?: number;
+  tp?: number;
+  notesD1?: string;
+  notes1h?: string;
+  notes5m?: string;
+  notesResult?: string;
+  // FIX: Added missing properties to the Trade interface.
+  setup?: string;
+  execution?: string;
+  outcome?: string;
+  screenshotD1Key?: string | null;
+  screenshot1hKey?: string | null;
+  screenshot5mKey?: string | null;
+  screenshotResultKey?: string | null;
+  aiAnalysis?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -81,17 +90,27 @@ export interface Note {
   updatedAt: string;
 }
 
-export interface UserSettings {
-    id?: string;
-    userId: string;
-    riskPerTrade: number; // default risk percentage
+export interface DefaultSettings {
+    pair: string;
+    direction: 'Long' | 'Short';
+    risk: number;
+    rr: number;
+    entryType: string;
+    slType: string;
+    tpType: string;
+    closeType: string;
 }
 
 export interface UserData {
-    trades: Trade[];
-    accounts: Account[];
-    notes: Note[];
-    settings: UserSettings;
+    id?: string;
+    userId: string;
+    riskPerTrade: number;
+    slTypes: string[];
+    tpTypes: string[];
+    entryTypes: string[];
+    closeTypes: string[];
+    defaultSettings: DefaultSettings;
+    analysisTimeframes: string[];
 }
 
 export interface Toast {

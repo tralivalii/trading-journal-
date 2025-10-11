@@ -60,8 +60,9 @@ export const analyzeTradeGroups = (trades: Trade[]) => {
             addToDistribution(group.distributionByPair, trade.pair);
             addToDistribution(group.distributionByDay, getDayOfWeek(trade.date));
             addToDistribution(group.distributionByRR, getRRCategory(trade.rr));
-            if (group.distributionByTakeProfit) addToDistribution(group.distributionByTakeProfit, trade.takeProfitType || 'N/A');
-            if (group.distributionByStoploss) addToDistribution(group.distributionByStoploss, trade.stoplossType || 'N/A');
+            // FIX: Corrected property names to match the Trade type.
+            if (group.distributionByTakeProfit) addToDistribution(group.distributionByTakeProfit, trade.tpType || 'N/A');
+            if (group.distributionByStoploss) addToDistribution(group.distributionByStoploss, trade.slType || 'N/A');
             if (group.distributionByCloseType) addToDistribution(group.distributionByCloseType, trade.closeType || 'N/A');
         }
     }

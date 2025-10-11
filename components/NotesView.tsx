@@ -323,7 +323,8 @@ const NotesView: React.FC<NotesViewProps> = () => {
     };
 
     const handleLoadMore = () => {
-        fetchMoreNotesAction(dispatch, state, NOTES_PAGE_SIZE);
+        // FIX: The function call expected 2 arguments but received 3. Removed the extra argument.
+        fetchMoreNotesAction(dispatch, state);
     };
 
     const filteredNotes = useMemo(() => {

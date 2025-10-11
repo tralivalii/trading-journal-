@@ -1,6 +1,7 @@
 // FIX: Provided full content for missing databaseService.ts file.
 import { supabase } from './supabase';
-import { Trade, Account, Note, UserSettings } from '../types';
+// FIX: Changed UserSettings to UserData as it's the correct type.
+import { Trade, Account, Note, UserData } from '../types';
 
 // Trades
 export const getTrades = async (userId: string, page: number, pageSize: number) => {
@@ -74,5 +75,6 @@ export const deleteNote = async (noteId: string) => {
 export const getSettings = async (userId: string) => {
     const { data, error } = await supabase.from('settings').select('*').eq('user_id', userId).maybeSingle();
     if (error) throw error;
-    return data as UserSettings | null;
+    // FIX: Changed UserSettings to UserData as it's the correct type.
+    return data as UserData | null;
 };
