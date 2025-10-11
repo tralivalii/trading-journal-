@@ -1,9 +1,11 @@
 
+
 import React, { useState } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
+import { ICONS } from '../constants';
 
 interface TradeFormProps {
   onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
@@ -52,6 +54,26 @@ const baseControlClasses = "w-full bg-[#1A1D26] border border-gray-600 rounded-m
 const selectClasses = `${baseControlClasses} pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4M8 15l4-4 4 4'/%3e%3c/svg%3e")] disabled:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500`;
 const textInputClasses = `${baseControlClasses} px-3 py-2`;
 const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
+
+const Accordion: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = false }) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    return (
+        <div className="bg-[#232733] rounded-lg border border-gray-700/50">
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex justify-between items-center p-4 text-left font-semibold text-white text-xl"
+                aria-expanded={isOpen}
+            >
+                {title}
+                <span className={`transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>
+                    {ICONS.chevronDown}
+                </span>
+            </button>
+            {isOpen && <div className="p-6 pt-2">{children}</div>}
+        </div>
+    );
+};
 
 
 const AnalysisSection: React.FC<{
@@ -218,7 +240,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
-        <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
+        <Accordion title="Trade Setup" defaultOpen={true}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
                 <FormField label="Date">
                     <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
@@ -282,17 +304,16 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onCancel, tradeToEdit, ac
                     </select>
                 </FormField>
             </div>
-        </div>
+        </Accordion>
       
-      <div>
-            <h3 className="text-xl font-semibold text-white mb-4">Analysis Breakdown</h3>
-            <div className="space-y-4">
-                <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
-                <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
-                <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
-                <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
-            </div>
-      </div>
+      <Accordion title="Analysis Breakdown">
+        <div className="space-y-4">
+            <AnalysisSection title="D1 Analysis" analysis={trade.analysisD1} onFileChange={(file) => handleFileChange('analysisD1', file)} onNotesChange={(notes) => handleAnalysisChange('analysisD1', 'notes', notes)} />
+            <AnalysisSection title="1h Analysis" analysis={trade.analysis1h} onFileChange={(file) => handleFileChange('analysis1h', file)} onNotesChange={(notes) => handleAnalysisChange('analysis1h', 'notes', notes)} />
+            <AnalysisSection title="5m Analysis" analysis={trade.analysis5m} onFileChange={(file) => handleFileChange('analysis5m', file)} onNotesChange={(notes) => handleAnalysisChange('analysis5m', 'notes', notes)} />
+            <AnalysisSection title="Result Analysis" analysis={trade.analysisResult} onFileChange={(file) => handleFileChange('analysisResult', file)} onNotesChange={(notes) => handleAnalysisChange('analysisResult', 'notes', notes)} />
+        </div>
+      </Accordion>
 
       <div className="flex justify-end pt-4">
         <button type="submit" disabled={!isFormValid} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed font-medium">
