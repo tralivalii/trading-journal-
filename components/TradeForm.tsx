@@ -274,7 +274,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
           await deleteImage(currentImageKey);
           if (!isGuest && currentUser) {
             try {
-                const { error } = await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);
+                // The key is the full path, so no need to prepend user ID.
+                const { error } = await supabase.storage.from('screenshots').remove([currentImageKey]);
                 if (error) throw error;
             } catch (e) {
                 console.error("Failed to delete old image from Supabase Storage", e);
@@ -287,17 +288,18 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         try {
             const compressedFile = await compressImage(file);
             
-            // Save to local DB first for immediate offline access
-            const localImageKey = await saveImage(currentUser?.id || 'guest', compressedFile);
-            handleAnalysisChange(sectionKey, 'image', localImageKey);
+            // Generate the full path here to be used as the key everywhere.
+            const imagePath = `${currentUser?.id || 'guest'}/${crypto.randomUUID()}-${file.name}`;
+            
+            // Save to local DB first for immediate offline access using the full path as the key
+            await saveImage(imagePath, compressedFile);
+            handleAnalysisChange(sectionKey, 'image', imagePath);
 
             // Then, upload to Supabase for backup/sync
             if (!isGuest && currentUser) {
-                // Use the same key for Supabase path to keep things consistent
-                const { error } = await supabase.storage.from('screenshots').upload(`${currentUser.id}/${localImageKey}`, compressedFile, { contentType: compressedFile.type });
+                // Use the same path for Supabase upload
+                const { error } = await supabase.storage.from('screenshots').upload(imagePath, compressedFile, { contentType: compressedFile.type });
                 if (error) {
-                    // If Supabase upload fails, the image is still saved locally.
-                    // We can show a warning but don't need to roll back the local save.
                     console.warn("Image saved locally, but Supabase upload failed:", error);
                     dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not sync image to cloud.", type: 'error' } });
                 }

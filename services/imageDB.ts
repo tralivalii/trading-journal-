@@ -27,12 +27,27 @@ const getDb = (): Promise<IDBPDatabase<ImageDB>> => {
     return dbPromise;
 };
 
-export async function saveImage(userId: string, file: File): Promise<string> {
+export async function saveImage(key: string, file: File): Promise<void> {
     const db = await getDb();
-    const key = `${userId}-${crypto.randomUUID()}-${file.name}`;
     await db.put(STORE_NAME, file, key);
-    return key;
 }
+
+// New function to download and cache an image from a URL
+export async function cacheImageFromUrl(key: string, url: string): Promise<void> {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch image for caching: ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        // Convert blob to file to match the DB schema type
+        const file = new File([blob], key.split('/').pop() || 'cached-image', { type: blob.type });
+        await saveImage(key, file);
+    } catch (error) {
+        console.error("Failed to cache image:", error);
+    }
+}
+
 
 export async function getImage(key: string | undefined | null): Promise<File | undefined> {
     if (!key) return undefined;
