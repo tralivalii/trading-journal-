@@ -88,17 +88,17 @@ const MobileTradeCard: React.FC<{
                         <span className="text-xs text-gray-500 block">Risk</span>
                         <span className="font-semibold text-white">{trade.risk}%</span>
                     </div>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                    <div>
+                     <div>
                         <span className="text-xs text-gray-500 block">Date</span>
                         <span className="font-semibold text-white">{formattedDate}</span>
                     </div>
+                </div>
+                
+                <div className="flex items-center">
                     <DropdownMenu 
                         trigger={
                             <button onPointerUp={e => e.stopPropagation()} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Trade actions">
-                               <span className="w-5 h-5 block">{ICONS.moreVertical}</span>
+                               <span className="w-5 h-5 block">{ICONS.moreHorizontal}</span>
                             </button>
                         }
                     >
@@ -388,7 +388,7 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
             ) : (
                 <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col items-center justify-center gap-4">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2-2z" />
                     </svg>
                     <p className="text-gray-500">
                         No trades found for the selected period.
