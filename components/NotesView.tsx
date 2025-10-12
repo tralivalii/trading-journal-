@@ -179,7 +179,7 @@ const NewNoteCreator: React.FC<{
 }
 
 const NotesEmptyState: React.FC<{ onNewNote: () => void }> = ({ onNewNote }) => (
-    <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 p-6">
+    <div className="flex flex-col items-center justify-center h-full min-h-[65vh] text-center text-gray-500 p-6">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
         </svg>
