@@ -100,48 +100,6 @@ const AnalysisSection: React.FC<{
     )
 };
 
-// Client-side image compression utility
-const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = event => {
-            const img = new Image();
-            img.src = event.target?.result as string;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const scale = maxWidth / img.width;
-                canvas.width = scale < 1 ? maxWidth : img.width;
-                canvas.height = scale < 1 ? img.height * scale : img.height;
-
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    return reject(new Error('Failed to get canvas context'));
-                }
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                canvas.toBlob(
-                    (blob) => {
-                        if (blob) {
-                            const newFile = new File([blob], file.name, {
-                                type: 'image/jpeg',
-                                lastModified: Date.now(),
-                            });
-                            resolve(newFile);
-                        } else {
-                            reject(new Error('Failed to process image.'));
-                        }
-                    },
-                    'image/jpeg',
-                    quality
-                );
-            };
-            img.onerror = (e) => reject(new Error('Failed to load image for processing.'));
-        };
-        reader.onerror = (e) => reject(new Error('Failed to read image file.'));
-    });
-};
-
 const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
     '1D': { key: 'analysisD1', title: 'D1 Analysis' },
     '1h': { key: 'analysis1h', title: '1h Analysis' },
@@ -281,12 +239,13 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
       if (file && currentUser) {
           setIsUploading(true);
           try {
-              const compressedFile = await compressImage(file);
-              const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${compressedFile.name}`;
+              // FIX: Removed image compression to fix mobile upload errors.
+              const fileToUpload = file;
+              const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${fileToUpload.name}`;
               
               const { error: uploadError } = await supabase.storage
                   .from('trade-attachments')
-                  .upload(storagePath, compressedFile);
+                  .upload(storagePath, fileToUpload);
 
               if (uploadError) {
                   throw uploadError;
