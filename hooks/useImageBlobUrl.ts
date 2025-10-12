@@ -8,8 +8,8 @@ interface ImageState {
     isLoading: boolean;
 }
 
-// This hook now takes a storage path instead of a full URL.
-// It's responsible for finding the image locally or generating a secure URL to fetch it.
+// This hook takes a storage path and resolves it to a usable URL.
+// It implements a robust offline-first strategy.
 const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => {
     const [imageState, setImageState] = useState<ImageState>({
         url: null,
@@ -38,29 +38,29 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
                     return;
                 }
 
-                // --- Priority 2: If not in cache, fetch from Supabase Storage ---
+                // --- Priority 2: If not in cache, fetch from Supabase Storage using a public URL ---
                 if (!navigator.onLine) {
                     throw new Error("Offline and image not found in cache.");
                 }
 
-                // Generate a short-lived signed URL to securely access the private object.
-                const { data, error: signedUrlError } = await supabase.storage
+                // Generate the public URL. This is the standard way for publicly readable buckets.
+                const { data } = supabase.storage
                     .from('trade-attachments')
-                    .createSignedUrl(storagePath, 300); // URL is valid for 5 minutes
+                    .getPublicUrl(storagePath);
 
-                if (signedUrlError) {
-                    throw signedUrlError;
+                if (!data || !data.publicUrl) {
+                    throw new Error(`Could not generate public URL for path: ${storagePath}`);
                 }
                 
-                const signedUrl = data.signedUrl;
+                const publicUrl = data.publicUrl;
 
                 if (isMounted) {
-                    // Show the image immediately using the signed URL
-                    setImageState({ url: signedUrl, error: false, isLoading: false });
+                    // Show the image immediately using the public URL
+                    setImageState({ url: publicUrl, error: false, isLoading: false });
                     
                     // In the background, cache the image for future offline access.
                     // This is a "read-through" cache strategy.
-                    cacheImageFromUrl(storagePath, signedUrl);
+                    cacheImageFromUrl(storagePath, publicUrl);
                 }
 
             } catch (err) {
@@ -75,7 +75,7 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
 
         return () => {
             isMounted = false;
-            // Clean up the created blob URL to prevent memory leaks
+            // Clean up any created blob URL to prevent memory leaks
             if (objectUrlToRevoke) {
                 URL.revokeObjectURL(objectUrlToRevoke);
             }
