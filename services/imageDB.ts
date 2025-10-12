@@ -42,17 +42,30 @@ const getDb = (): Promise<IDBPDatabase<ImageDB>> => {
 
 /**
  * Saves a File to IndexedDB by converting it to a more stable ArrayBuffer format.
+ * Includes specific error handling for storage quota issues.
  * @param key The unique identifier for the image (usually its storage path).
  * @param file The File object to save.
  */
 export async function saveImage(key: string, file: File): Promise<void> {
-    const db = await getDb();
-    const storedImage: StoredImage = {
-        arrayBuffer: await file.arrayBuffer(), // Convert file to ArrayBuffer
-        type: file.type,
-        name: file.name,
-    };
-    await db.put(STORE_NAME, storedImage, key);
+    try {
+        const db = await getDb();
+        const storedImage: StoredImage = {
+            arrayBuffer: await file.arrayBuffer(), // Convert file to ArrayBuffer
+            type: file.type,
+            name: file.name,
+        };
+        await db.put(STORE_NAME, storedImage, key);
+    } catch (error) {
+        // Check for QuotaExceededError, a common issue on mobile devices.
+        if (error instanceof Error && (error.name === 'QuotaExceededError' || (error.message && error.message.toLowerCase().includes('quota')))) {
+            console.error("Storage quota exceeded:", error);
+            // Throw a more user-friendly error message to be displayed in the UI.
+            throw new Error("Image could not be saved because your device's storage for this site is full. Please clear some space or remove older images.");
+        }
+        console.error("Failed to save image to IndexedDB:", error);
+        // Re-throw a generic error for other potential issues.
+        throw new Error("An unexpected error occurred while saving the image locally.");
+    }
 }
 
 /**
@@ -71,6 +84,7 @@ export async function cacheImageFromUrl(key: string, url: string): Promise<void>
         await saveImage(key, file); // Uses the new, robust saving mechanism
     } catch (error) {
         console.error("Failed to cache image:", error);
+        // We don't re-throw here because caching is a background task and shouldn't crash the UI.
     }
 }
 

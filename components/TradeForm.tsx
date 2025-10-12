@@ -130,17 +130,17 @@ const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File
                             });
                             resolve(newFile);
                         } else {
-                            reject(new Error('Canvas toBlob failed'));
+                            // This is a common failure point on memory-constrained devices.
+                            reject(new Error('Failed to process image. It might be too large for your device to handle.'));
                         }
                     },
                     'image/jpeg',
                     quality
                 );
             };
-            // FIX: Wrap reject calls in arrow functions to ensure proper context and argument passing. This is likely the cause of the reported error, even though the line number pointed elsewhere.
-            img.onerror = (e) => reject(e);
+            img.onerror = (e) => reject(new Error('Failed to load image for processing. The file might be corrupted.'));
         };
-        reader.onerror = (e) => reject(e);
+        reader.onerror = (e) => reject(new Error('Failed to read image file.'));
     });
 };
 
@@ -289,12 +289,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               let finalImagePath: string;
 
               if (isGuest || !currentUser) {
-                  // For guests, we can't upload, so we just save locally.
-                  // This is a simplified path; a real guest mode might need more complex handling.
                   finalImagePath = `guest/${crypto.randomUUID()}-${file.name}`;
                   await saveImage(finalImagePath, compressedFile);
               } else {
-                  // For logged-in users, upload to Supabase and get the permanent storage path.
                   const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
                   const { error: uploadError } = await supabase.storage
                       .from('trade-attachments')
@@ -305,8 +302,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                   }
                   
                   finalImagePath = storagePath;
-
-                  // Also cache the image locally using its permanent path for offline access.
                   await saveImage(finalImagePath, compressedFile);
               }
               
@@ -314,7 +309,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               
           } catch (error) {
               console.error("Error saving image:", error);
-              dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not save image.", type: 'error' } });
+              // Use the specific message from the thrown error for better user feedback.
+              const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
+              dispatch({ type: 'SHOW_TOAST', payload: { message: errorMessage, type: 'error' } });
               handleAnalysisChange(sectionKey, 'image', undefined); // Clear on failure
           } finally {
               setIsUploading(false);
@@ -345,14 +342,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             : commissionInputRef.current;
 
         if (fieldRef) {
-            // Scroll into view
             fieldRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            // Flash effect using Tailwind classes
             fieldRef.classList.add('ring-2', 'ring-red-500');
             setTimeout(() => {
                 fieldRef.classList.remove('ring-2', 'ring-red-500');
-            }, 1000); // Animation duration
+            }, 1000);
         }
         return;
     }
