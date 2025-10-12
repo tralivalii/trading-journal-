@@ -20,7 +20,7 @@ export enum Direction {
 
 // New type for analysis sections
 export interface Analysis {
-  image?: string; // This is now an ID/key for an image in IndexedDB
+  image?: string; // This is now a key for an image in IndexedDB
   notes?: string;
 }
 
@@ -80,7 +80,7 @@ export interface Note {
   attachments?: {
     name: string;
     type: string; // MIME type
-    data: string; // This is now an ID/key for an image in IndexedDB
+    data: string; // This is now a key for an image in IndexedDB
   }[];
 }
 

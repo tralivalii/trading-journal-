@@ -1,64 +1,44 @@
-
-
 import { useState, useEffect } from 'react';
-import { supabase } from '../services/supabase';
-import { useAppContext } from '../services/appState';
+import { getImage } from '../services/imageDB';
 
-interface SupabaseTransformOptions {
-    transform: {
-        width: number;
-        height?: number;
-        resize?: 'cover' | 'contain' | 'fill';
-        quality?: number;
-    }
-}
-
-const useImageBlobUrl = (
-    imageKey: string | undefined | null,
-    options?: SupabaseTransformOptions
-): string | null => {
-    const { state } = useAppContext();
-    const { currentUser, isGuest } = state;
+const useImageBlobUrl = (imageKey: string | undefined | null): string | null => {
     const [url, setUrl] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!imageKey || !currentUser || isGuest) {
+        if (!imageKey) {
             setUrl(null);
             return;
         }
 
         let isMounted = true;
-        
-        const getSignedUrl = async () => {
-            try {
-                // The third argument to createSignedUrl is the options object,
-                // which can include the 'transform' key for image processing.
-                const { data, error } = await supabase
-                    .storage
-                    .from('screenshots')
-                    .createSignedUrl(`${currentUser!.id}/${imageKey}`, 3600, options); // 3600 seconds = 1 hour
-                
-                if (error) {
-                    throw error;
-                }
+        let objectUrl: string | null = null;
 
-                if (isMounted) {
-                    setUrl(data.signedUrl);
+        const getLocalImage = async () => {
+            try {
+                const imageBlob = await getImage(imageKey);
+                if (isMounted && imageBlob) {
+                    objectUrl = URL.createObjectURL(imageBlob);
+                    setUrl(objectUrl);
+                } else if (isMounted) {
+                    setUrl(null);
                 }
             } catch (error) {
-                console.error("Error creating signed URL:", error);
+                console.error("Error loading image from IndexedDB:", error);
                 if (isMounted) {
-                    setUrl(null); // Set to null on error
+                    setUrl(null);
                 }
             }
         };
 
-        getSignedUrl();
+        getLocalImage();
 
         return () => {
             isMounted = false;
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
         };
-    }, [imageKey, currentUser, isGuest, options]);
+    }, [imageKey]);
 
     return url;
 };

@@ -4,6 +4,7 @@ import useImageBlobUrl from '../hooks/useImageBlobUrl';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
+import { saveImage, deleteImage } from '../services/imageDB';
 
 interface TradeFormProps {
   onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
@@ -238,7 +239,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
     if (name === 'rr' || name === 'commission') {
         const normalizedValue = value.replace(',', '.');
-        if (normalizedValue === '' || /^[0-9]*\.?[0-9]*$/.test(normalizedValue)) {
+        if (normalizedValue === '' || /^[0-9]*\.?[]*$/.test(normalizedValue)) {
             setTrade(prev => ({ ...prev, [name]: normalizedValue }));
         }
         return;
@@ -266,18 +267,18 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   };
 
   const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
-      if (isGuest) {
-        dispatch({ type: 'SHOW_TOAST', payload: { message: "Image uploads are disabled in guest mode.", type: 'error' } });
-        return;
-      }
       const currentImageKey = (trade[sectionKey] as Analysis).image;
 
+      // Delete old image from both DBs
       if (currentImageKey) {
-          try {
-              const { error } = await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);
-              if (error) throw error;
-          } catch (e) {
-              console.error("Failed to delete old image from Supabase Storage", e);
+          await deleteImage(currentImageKey);
+          if (!isGuest && currentUser) {
+            try {
+                const { error } = await supabase.storage.from('screenshots').remove([`${currentUser!.id}/${currentImageKey}`]);
+                if (error) throw error;
+            } catch (e) {
+                console.error("Failed to delete old image from Supabase Storage", e);
+            }
           }
       }
 
@@ -285,17 +286,31 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         setIsUploading(true);
         try {
             const compressedFile = await compressImage(file);
-            const imageKey = `${crypto.randomUUID()}-${compressedFile.name}`;
-            const { error } = await supabase.storage.from('screenshots').upload(`${currentUser!.id}/${imageKey}`, compressedFile, { contentType: compressedFile.type });
-            if (error) throw error;
-            handleAnalysisChange(sectionKey, 'image', imageKey);
+            
+            // Save to local DB first for immediate offline access
+            const localImageKey = await saveImage(currentUser?.id || 'guest', compressedFile);
+            handleAnalysisChange(sectionKey, 'image', localImageKey);
+
+            // Then, upload to Supabase for backup/sync
+            if (!isGuest && currentUser) {
+                // Use the same key for Supabase path to keep things consistent
+                const { error } = await supabase.storage.from('screenshots').upload(`${currentUser.id}/${localImageKey}`, compressedFile, { contentType: compressedFile.type });
+                if (error) {
+                    // If Supabase upload fails, the image is still saved locally.
+                    // We can show a warning but don't need to roll back the local save.
+                    console.warn("Image saved locally, but Supabase upload failed:", error);
+                    dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not sync image to cloud.", type: 'error' } });
+                }
+            }
+            
         } catch (error) {
-            console.error("Error saving image to Supabase Storage:", error);
+            console.error("Error saving image:", error);
             dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not save image.", type: 'error' } });
         } finally {
             setIsUploading(false);
         }
       } else {
+        // Handle file removal
         handleAnalysisChange(sectionKey, 'image', undefined);
       }
   };

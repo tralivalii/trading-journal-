@@ -32,7 +32,8 @@ const AnalysisDetailSection: React.FC<{
     onImageClick: (src: string | null, notes?: string) => void;
 }> = ({ analysis, onImageClick }) => {
     // Get a URL for the preview image, resized for performance
-    const previewUrl = useImageBlobUrl(analysis.image, { transform: { width: 800, quality: 85, resize: 'contain' } });
+    // FIX: The useImageBlobUrl hook only accepts one argument. The second argument for transformations is not supported and was causing an error.
+    const previewUrl = useImageBlobUrl(analysis.image);
     // Get a separate URL for the full-resolution image for the modal
     const fullscreenUrl = useImageBlobUrl(analysis.image);
     

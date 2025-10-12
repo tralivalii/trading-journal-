@@ -1,20 +1,23 @@
 // service-worker.js
 
-const CACHE_NAME = 'trading-journal-cache-v1';
+const CACHE_NAME = 'trading-journal-cache-v2'; // Bump version to force update
 const urlsToCache = [
   '/',
   '/index.html',
-  // Note: We don't cache index.tsx directly, but the bundled output if there was one.
-  // Since we use import maps, we cache the CDN URLs.
+  // App shell and crucial assets
   'https://cdn.tailwindcss.com',
   'https://cdn.jsdelivr.net/npm/chart.js',
   'https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js',
+  // CDN modules from importmap
   'https://aistudiocdn.com/react@^19.1.1',
   'https://aistudiocdn.com/react-dom@^19.1.1/',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.44.4/+esm'
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.44.4/+esm',
+  'https://aistudiocdn.com/idb@^8.0.3',
+  'https://aistudiocdn.com/@google/genai@^1.21.0'
 ];
 
 self.addEventListener('install', event => {
+  self.skipWaiting(); // Activate new worker immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
@@ -25,24 +28,34 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Use a "Network First, falling back to Cache" strategy for most requests
-  // This ensures users get the latest data when online, but can still use the app offline.
+  const { request } = event;
+
+  // For navigation requests, use a network-first strategy.
+  // If network fails, serve the cached index.html. This allows the SPA to handle routing.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() => {
+        return caches.match('/index.html');
+      })
+    );
+    return;
+  }
+
+  // For all other requests (CSS, JS, images from CDN), use a cache-first strategy
+  // to make the app load super fast.
   event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request)
-        .then(response => {
-          if (response) {
-            return response;
-          }
-          // If a specific request isn't in cache, you might want a generic fallback page
-          // For a single-page app, returning the main index.html often works well.
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
+    caches.match(request).then(response => {
+      return response || fetch(request).then(fetchResponse => {
+        // Optionally, cache new requests on the fly
+        return caches.open(CACHE_NAME).then(cache => {
+          cache.put(request, fetchResponse.clone());
+          return fetchResponse;
         });
+      });
     })
   );
 });
+
 
 self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
@@ -51,10 +64,11 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
-    })
+    }).then(() => self.clients.claim()) // Take control of all open clients
   );
 });
