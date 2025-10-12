@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useAppContext } from '../services/appState';
 import { Result, Trade } from '../types';
 import { filterTradesByPeriod } from '../services/statisticsService';
@@ -8,6 +8,7 @@ import { ICONS } from '../constants';
 
 type Period = 'this-month' | 'last-month' | 'this-quarter' | 'all';
 const availableResults = [Result.Win, Result.Loss, Result.Breakeven, Result.Missed];
+const PAGE_SIZE = 10;
 
 const getResultClasses = (result: Result) => {
     const baseClasses = 'font-semibold rounded-full text-xs text-center inline-block';
@@ -21,6 +22,13 @@ const getResultClasses = (result: Result) => {
     return `${baseClasses} ${colorMapping[result]}`;
 };
 
+const MetricItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
+    <div>
+        <p className="text-xs text-[#8A91A8] uppercase">{label}</p>
+        <p className="font-semibold text-white truncate" title={String(value)}>{value || 'N/A'}</p>
+    </div>
+);
+
 const ResultCard: React.FC<{ 
     trade: Trade; 
     onViewTrade: (trade: Trade) => void;
@@ -29,35 +37,43 @@ const ResultCard: React.FC<{
     const imageUrl = useImageBlobUrl(trade.analysisResult.image);
 
     return (
-        <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden group">
+        <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden group transition-all duration-300 hover:shadow-lg hover:border-blue-600/50">
+            {/* Image Section */}
             <div 
-                className="relative aspect-video bg-gray-800 cursor-pointer" 
+                className="relative w-full h-72 bg-gray-900 cursor-pointer overflow-hidden" 
                 onClick={() => imageUrl && onImageClick(imageUrl)}
             >
                 {imageUrl ? (
-                    <img src={imageUrl} alt={`Result for ${trade.pair}`} className="w-full h-full object-contain" />
+                    <img src={imageUrl} alt={`Result for ${trade.pair}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center">
                         <Skeleton className="w-full h-full" />
                     </div>
                 )}
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
             </div>
-            <div className="p-3">
+            
+            {/* Info Section */}
+            <div className="p-4 space-y-4">
                 <div className="flex justify-between items-start gap-2">
-                    <div>
-                        <p className="font-bold text-white truncate text-sm">{trade.pair}</p>
-                        <p className="text-xs text-gray-400">{new Date(trade.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-                    </div>
-                    <span className={`py-1 px-2 flex-shrink-0 ${getResultClasses(trade.result)}`}>{trade.result}</span>
+                    <p className="font-bold text-white text-lg truncate">{trade.pair}</p>
+                    <span className={`py-1 px-3 flex-shrink-0 ${getResultClasses(trade.result)}`}>{trade.result}</span>
                 </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <MetricItem label="Entry" value={trade.entry} />
+                    <MetricItem label="SL Type" value={trade.stoploss} />
+                    <MetricItem label="TP Type" value={trade.takeprofit} />
+                    <MetricItem label="R:R" value={trade.rr.toFixed(2)} />
+                </div>
+
                 <button 
                     onClick={() => onViewTrade(trade)}
-                    className="mt-3 w-full text-center py-1.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-xs font-medium"
+                    className="mt-2 w-full text-center py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
                 >
-                    View Details
+                    View Full Details
                 </button>
             </div>
         </div>
@@ -73,16 +89,46 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
     const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
     const [selectedResult, setSelectedResult] = useState<Result>(Result.Loss);
     const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
-
+    const [page, setPage] = useState(1);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    
     const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
 
     const filteredTrades = useMemo(() => {
         const accountFiltered = trades.filter(trade => selectedAccountId === 'all' || trade.accountId === selectedAccountId);
         const periodFiltered = filterTradesByPeriod(accountFiltered, period);
-        return periodFiltered
+        const results = periodFiltered
             .filter(trade => trade.result === selectedResult && trade.analysisResult?.image)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setPage(1); // Reset page when filters change
+        return results;
     }, [trades, selectedAccountId, period, selectedResult]);
+
+    const displayedTrades = useMemo(() => {
+        return filteredTrades.slice(0, page * PAGE_SIZE);
+    }, [filteredTrades, page]);
+
+    const hasMore = useMemo(() => {
+        return displayedTrades.length < filteredTrades.length;
+    }, [displayedTrades.length, filteredTrades.length]);
+
+    const observer = useRef<IntersectionObserver>();
+    const lastCardRef = useCallback(node => {
+        if (isLoadingMore) return;
+        if (observer.current) observer.current.disconnect();
+
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasMore) {
+                setIsLoadingMore(true);
+                setTimeout(() => {
+                    setPage(prevPage => prevPage + 1);
+                    setIsLoadingMore(false);
+                }, 500);
+            }
+        });
+
+        if (node) observer.current.observe(node);
+    }, [isLoadingMore, hasMore]);
     
     const PeriodButton: React.FC<{p: Period, label: string}> = ({ p, label }) => (
         <button 
@@ -137,16 +183,28 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
                  </div>
             </div>
 
-            {filteredTrades.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    {filteredTrades.map(trade => (
-                        <ResultCard 
-                            key={trade.id} 
-                            trade={trade} 
-                            onViewTrade={onViewTrade}
-                            onImageClick={setFullscreenSrc}
-                        />
-                    ))}
+            {displayedTrades.length > 0 ? (
+                <div className="max-w-2xl mx-auto space-y-8">
+                    {displayedTrades.map((trade, index) => {
+                        const isLastCard = displayedTrades.length === index + 1;
+                        return (
+                            <div ref={isLastCard ? lastCardRef : null} key={trade.id}>
+                                <ResultCard 
+                                    trade={trade} 
+                                    onViewTrade={onViewTrade}
+                                    onImageClick={setFullscreenSrc}
+                                />
+                            </div>
+                        );
+                    })}
+                    {isLoadingMore && (
+                        <div className="flex justify-center items-center p-4">
+                            <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </div>
+                    )}
                 </div>
             ) : (
                  <div className="text-center py-16 bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col items-center justify-center gap-4">
