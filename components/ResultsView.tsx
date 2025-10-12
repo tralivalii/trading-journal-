@@ -200,7 +200,7 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
             </div>
 
             {displayedTrades.length > 0 ? (
-                <div className="max-w-2xl mx-auto space-y-8">
+                <div className="max-w-3xl mx-auto space-y-8">
                     {displayedTrades.map((trade, index) => {
                         const isLastCard = displayedTrades.length === index + 1;
                         return (
