@@ -399,10 +399,36 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
                 <h3 className="text-xl font-semibold text-white">Risk & Management</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
-                     <FormField label="Entry Type">
+                    {/* --- Top Row --- */}
+                    <FormField label="SL Type">
+                        <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
+                            <option value="">Select SL</option>
+                            {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="TP Type">
+                        <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={selectClasses}>
+                            <option value="">Select TP</option>
+                            {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="Entry Type">
                         <select name="entry" value={trade.entry} onChange={handleChange} className={selectClasses}>
                             <option value="">Select Entry</option>
                             {entries.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </FormField>
+                    <FormField label="Close Type">
+                        <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
+                            <option value="">Select Type</option>
+                            {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                        </select>
+                    </FormField>
+                    
+                    {/* --- Bottom Row --- */}
+                    <FormField label="Risk (%)">
+                        <select name="risk" value={trade.risk} onChange={handleChange} className={selectClasses}>
+                            {risks.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                     </FormField>
                     <FormField label="R:R Ratio">
@@ -417,28 +443,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                         />
                         {errors.rr && <p className="text-red-500 text-xs mt-1">{errors.rr}</p>}
                     </FormField>
-                    <FormField label="SL Type">
-                        <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
-                            <option value="">Select SL</option>
-                            {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </FormField>
-                    <FormField label="TP Type">
-                        <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={selectClasses}>
-                            <option value="">Select TP</option>
-                            {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </FormField>
-                    <FormField label="Result">
-                        <select name="result" value={trade.result} onChange={handleChange} required className={selectClasses}>
-                            {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
-                        </select>
-                    </FormField>
-                    <FormField label="Risk (%)">
-                        <select name="risk" value={trade.risk} onChange={handleChange} className={selectClasses}>
-                            {risks.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                    </FormField>
                     <FormField label="Commission">
                         <input
                             ref={commissionInputRef}
@@ -451,10 +455,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                         />
                         {errors.commission && <p className="text-red-500 text-xs mt-1">{errors.commission}</p>}
                     </FormField>
-                    <FormField label="Close Type">
-                        <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
-                            <option value="">Select Type</option>
-                            {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                    <FormField label="Result">
+                        <select name="result" value={trade.result} onChange={handleChange} required className={selectClasses}>
+                            {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
                         </select>
                     </FormField>
                 </div>
