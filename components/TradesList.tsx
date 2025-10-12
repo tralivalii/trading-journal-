@@ -294,7 +294,7 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                         <th scope="col" className="px-6 py-3">Risk</th>
                                         <th scope="col" className="px-6 py-3">PnL</th>
                                         <th scope="col" className="px-6 py-3">Result</th>
-                                        <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                                        <th scope="col" className="px-6 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -324,8 +324,8 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                                     {trade.result}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-center whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
-                                                <div className="flex justify-center items-center gap-2">
+                                            <td className="px-6 py-4 text-right whitespace-nowrap" onPointerUp={(e) => e.stopPropagation()}>
+                                                <div className="flex justify-end items-center gap-2">
                                                     <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label={`View trade for ${trade.pair} on ${formattedDate}`}>
                                                         <span className="w-5 h-5 block">{ICONS.eye}</span>
                                                     </button>
