@@ -226,7 +226,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         return filteredTrades.reduce((summary: Record<string, number>, trade) => {
             const account = accountsMap.get(trade.accountId);
             const currency = account?.currency || 'USD';
-            // FIX: Explicitly cast trade.pnl to a number to prevent type errors.
             summary[currency] = (summary[currency] || 0) + Number(trade.pnl);
             return summary;
         }, {});
@@ -284,10 +283,9 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                 </p>
                 <div className="flex flex-wrap justify-center items-baseline gap-x-6 gap-y-2">
                     {Object.keys(balancesSummary).length > 0 ? (
-                        Object.entries(balancesSummary).map(([currency, total]) => (
+                        Object.keys(balancesSummary).map((currency) => (
                              <p key={currency} className="font-bold text-[#F0F0F0]" style={{fontSize: 'clamp(1.75rem, 5vw, 2.5rem)'}}>
-                                 {/* FIX: Explicitly cast `total` to a number, as Object.entries can have vague type inference. */}
-                                 {formatCurrency(Number(total), currency)}
+                                 {formatCurrency(Number(balancesSummary[currency]), currency)}
                              </p>
                         ))
                     ) : (
@@ -301,10 +299,9 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                     <p className="text-sm font-medium text-[#8A91A8] uppercase tracking-wider">Net Profit</p>
                     <div className="flex flex-col items-center justify-center gap-x-4 gap-y-1">
                         {Object.keys(netProfitSummary).length > 0 ? (
-                            Object.entries(netProfitSummary).map(([currency, value]) => (
-                                // FIX: Explicitly cast `value` to a number for comparison and formatting, as Object.entries can have vague type inference.
-                                <p key={currency} className={`font-bold text-2xl ${Number(value) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                                    {formatCurrency(Number(value), currency)}
+                            Object.keys(netProfitSummary).map((currency) => (
+                                <p key={currency} className={`font-bold text-2xl ${Number(netProfitSummary[currency]) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                    {formatCurrency(Number(netProfitSummary[currency]), currency)}
                                 </p>
                             ))
                         ) : (
@@ -833,7 +830,7 @@ function AppContent() {
       <SyncIndicator status={syncStatus} />
       <div className="container mx-auto p-4 md:p-8">
         <header className="flex justify-between items-center mb-8 flex-wrap gap-4">
-            <div className="flex items-center gap-2 md:gap-4 w-full justify-center md:w-auto md:justify-start">
+            <div className="flex items-center gap-1 md:gap-4 w-full justify-center md:w-auto md:justify-start">
                 <NavItem view="journal" label="Journal" />
                 <NavItem view="dashboard" label="Dashboard" />
                 <NavItem view="analysis" label="Analysis" />

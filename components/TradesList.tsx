@@ -51,11 +51,12 @@ const MobileTradeCard: React.FC<{
 }> = ({ trade, account, onView, onEdit, onDelete, formattedDate }) => {
     const currency = account?.currency || 'USD';
     const hasAlerts = account?.isArchived || trade.risk > 2;
+    const formattedPnl = trade.pnl.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
     return (
-        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors">
-            {/* Top row */}
-            <div className="flex justify-between items-start mb-3">
+        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors space-y-2">
+            {/* Top row: Pair and PnL */}
+            <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
                     <span className="font-bold text-white text-base">{trade.pair}</span>
                     {hasAlerts && (
@@ -65,28 +66,19 @@ const MobileTradeCard: React.FC<{
                         </div>
                     )}
                 </div>
-                <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{formattedDate}</span>
-            </div>
-
-            {/* Middle row */}
-            <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                <div>
-                    <div className="text-xs text-gray-400">Direction</div>
-                    <div className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</div>
-                </div>
-                <div>
-                    <div className="text-xs text-gray-400">R:R</div>
-                    <div className="font-semibold text-white">{trade.rr.toFixed(2)}</div>
-                </div>
-                <div>
-                    <div className="text-xs text-gray-400">PnL</div>
-                    <div className={`font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {trade.pnl.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                    </div>
+                <div className={`font-semibold text-lg ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {formattedPnl}
                 </div>
             </div>
 
-            {/* Bottom row */}
+            {/* Middle row: Direction, R:R, Date */}
+            <div className="flex justify-between items-center text-xs text-gray-400">
+                <div className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</div>
+                <div>R:R {trade.rr.toFixed(2)}</div>
+                <div>{formattedDate}</div>
+            </div>
+
+            {/* Bottom row: Result and Actions */}
             <div className="flex justify-between items-center" onPointerUp={e => e.stopPropagation()}>
                 <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center w-28 inline-block ${getResultClasses(trade.result)}`}>
                     {trade.result}
@@ -169,7 +161,6 @@ const TradesListSkeleton: React.FC = () => (
 
 const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAddTrade, onLoadMore, hasMore, isFetchingMore }) => {
   const { state } = useAppContext();
-  // FIX: Destructure `isLoading` from `state`, not `state.userData`.
   const { trades, accounts } = state.userData!;
   
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
