@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useAppContext } from '../services/appState';
 import { Result, Trade } from '../types';
 import { filterTradesByPeriod } from '../services/statisticsService';
@@ -44,7 +44,7 @@ const ResultCard: React.FC<{
                 onClick={() => imageUrl && onImageClick(imageUrl)}
             >
                 {imageUrl ? (
-                    <img src={imageUrl} alt={`Result for ${trade.pair}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    <img src={imageUrl} alt={`Result for ${trade.pair}`} className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center">
                         <Skeleton className="w-full h-full" />
@@ -129,6 +129,22 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
 
         if (node) observer.current.observe(node);
     }, [isLoadingMore, hasMore]);
+    
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setFullscreenSrc(null);
+            }
+        };
+
+        if (fullscreenSrc) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [fullscreenSrc]);
     
     const PeriodButton: React.FC<{p: Period, label: string}> = ({ p, label }) => (
         <button 
