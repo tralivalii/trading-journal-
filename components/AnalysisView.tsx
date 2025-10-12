@@ -160,7 +160,7 @@ const AnalysisView: React.FC = () => {
                                 <button 
                                     key={group} 
                                     onClick={() => setActiveGroup(group)}
-                                    className={`px-4 py-1.5 rounded-md text-sm transition-colors ${activeGroup === group ? 'bg-[#3B82F6] text-white' : 'bg-[#2A2F3B] hover:bg-gray-700 text-[#8A91A8] hover:text-white'}`}>
+                                    className={`px-3 py-1 rounded-md text-xs capitalize transition-colors flex-shrink-0 ${activeGroup === group ? 'bg-[#3B82F6] text-white' : 'bg-gray-700 hover:bg-gray-600 text-[#8A91A8] hover:text-white'}`}>
                                     {group} ({analysisData[group]?.count || 0})
                                 </button>
                             ))}

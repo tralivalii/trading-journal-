@@ -9,6 +9,7 @@ import TradeDetail from './components/TradeDetail';
 import DataView from './components/DataView';
 import NotesView from './components/NotesView';
 import AnalysisView from './components/AnalysisView';
+import ResultsView from './components/ResultsView'; // Import the new ResultsView component
 import { calculateStats, filterTradesByPeriod } from './services/statisticsService';
 import { generateTemporalData } from './services/analysisService';
 import Auth from './components/Auth';
@@ -22,7 +23,7 @@ declare const Chart: any;
 const TRADES_PAGE_SIZE = 25;
 const NOTES_PAGE_SIZE = 20;
 
-type View = 'journal' | 'dashboard' | 'analysis' | 'notes' | 'data'; 
+type View = 'journal' | 'dashboard' | 'analysis' | 'results' | 'notes' | 'data'; // Add 'results' to the View type
 type Period = 'week' | 'month' | 'quarter' | 'all' | 'this-month' | 'last-month' | 'this-quarter';
 
 const StatCard: React.FC<{ label: string, value: string | number, className?: string }> = ({ label, value, className }) => {
@@ -871,6 +872,7 @@ function AppContent() {
                 <NavItem view="journal" label="Journal" />
                 <NavItem view="dashboard" label="Dashboard" />
                 <NavItem view="analysis" label="Analysis" />
+                <NavItem view="results" label="Results" />
                 <NavItem view="notes" label="Notes" />
             </div>
             <div className="ml-6 md:ml-0">
@@ -917,6 +919,7 @@ function AppContent() {
           {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade} onLoadMore={handleLoadMore} hasMore={hasMoreTrades} isFetchingMore={isFetchingMore} />}
           {activeView === 'dashboard' && <Dashboard onAddTrade={handleAddTrade} />}
           {activeView === 'analysis' && <AnalysisView />}
+          {activeView === 'results' && <ResultsView onViewTrade={handleViewTrade} />}
           {activeView === 'notes' && <NotesView />}
           {activeView === 'data' && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} />}
         </main>
