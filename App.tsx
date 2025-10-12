@@ -79,18 +79,41 @@ const EquityChart: React.FC<{ trades: Trade[] }> = ({ trades }) => {
 
         const chartData = generateTemporalData(trades);
         
+        // Define colors for clarity
+        const green = '#10B981';
+        const red = '#EF4444';
+        const gray = '#8A91A8';
+        const greenTransparent = 'rgba(16, 185, 129, 0.1)';
+        const redTransparent = 'rgba(239, 68, 68, 0.1)';
+        const grayTransparent = 'rgba(138, 145, 168, 0.1)';
+
+        const datasetConfig = {
+            label: 'Equity Curve',
+            data: chartData.data,
+            segment: {
+                borderColor: (ctx: any) => {
+                    if (ctx.p1.parsed.y > ctx.p0.parsed.y) return green;
+                    if (ctx.p1.parsed.y < ctx.p0.parsed.y) return red;
+                    return gray;
+                },
+                backgroundColor: (ctx: any) => {
+                    if (ctx.p1.parsed.y > ctx.p0.parsed.y) return greenTransparent;
+                    if (ctx.p1.parsed.y < ctx.p0.parsed.y) return redTransparent;
+                    return grayTransparent;
+                },
+            },
+            pointBackgroundColor: chartData.pointColors,
+            fill: true,
+            tension: 0.2,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+        };
+        
         if (chartInstance.current) {
             chartInstance.current.data = {
                 labels: chartData.labels,
-                datasets: [{
-                    data: chartData.data,
-                    borderColor: '#3B82F6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    pointBackgroundColor: chartData.pointColors,
-                    fill: true,
-                    tension: 0.2,
-                    borderWidth: 2,
-                }]
+                datasets: [datasetConfig]
             };
             chartInstance.current.update();
         } else {
@@ -100,18 +123,7 @@ const EquityChart: React.FC<{ trades: Trade[] }> = ({ trades }) => {
                     type: 'line',
                     data: {
                         labels: chartData.labels,
-                        datasets: [{
-                            label: 'Equity Curve',
-                            data: chartData.data,
-                            borderColor: '#3B82F6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            pointBackgroundColor: chartData.pointColors,
-                            fill: true,
-                            tension: 0.2,
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                        }]
+                        datasets: [datasetConfig]
                     },
                     options: {
                         responsive: true,

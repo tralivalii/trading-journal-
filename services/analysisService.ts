@@ -166,12 +166,13 @@ export const generateTemporalData = (trades: Trade[]) => {
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     let cumulativePnl = 0;
-    const data = sortedTrades.map(t => {
+    const data = [0]; // Start at 0
+    sortedTrades.forEach(t => {
         cumulativePnl += t.pnl;
-        return cumulativePnl;
+        data.push(cumulativePnl);
     });
 
-    const labels = sortedTrades.map(t => new Date(t.date).toLocaleDateString('en-US'));
+    const labels = ['Start', ...sortedTrades.map(t => new Date(t.date).toLocaleDateString('en-US'))];
     
     const pointColors = sortedTrades.map(t => {
          switch (t.result) {
@@ -182,8 +183,11 @@ export const generateTemporalData = (trades: Trade[]) => {
             default: return 'rgba(255, 255, 255, 1)';
          }
     });
+    
+    // Add a neutral color for the starting '0' point
+    const finalPointColors = ['rgba(156, 163, 175, 1)', ...pointColors];
 
-    return { labels, data, pointColors };
+    return { labels, data, pointColors: finalPointColors };
 };
 
 export interface StreakStats {
