@@ -791,7 +791,7 @@ function AppContent() {
   const NavItem: React.FC<{view: View, label: string}> = ({view, label}) => (
       <button 
         onClick={() => setActiveView(view)} 
-        className={`px-2 md:px-3 py-2 rounded-md text-sm font-medium transition-colors relative ${activeView === view ? 'text-[#F0F0F0]' : 'text-[#8A91A8] hover:text-[#F0F0F0]'}`}
+        className={`px-1 md:px-3 py-2 rounded-md text-sm font-medium transition-colors relative ${activeView === view ? 'text-[#F0F0F0]' : 'text-[#8A91A8] hover:text-[#F0F0F0]'}`}
       >
         {label}
         {activeView === view && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#3B82F6] rounded-full"></span>}
