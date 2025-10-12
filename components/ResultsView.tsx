@@ -40,7 +40,7 @@ const ResultCard: React.FC<{
         <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden group transition-all duration-300 hover:shadow-lg hover:border-blue-600/50">
             {/* Image Section */}
             <div 
-                className="relative w-full h-72 bg-gray-900 cursor-pointer overflow-hidden" 
+                className="relative w-full h-[25rem] bg-gray-900 cursor-pointer overflow-hidden" 
                 onClick={() => imageUrl && onImageClick(imageUrl)}
             >
                 {imageUrl ? (
