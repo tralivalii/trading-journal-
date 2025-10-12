@@ -137,29 +137,22 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     // This effect handles the async parsing of markdown and sets the state for rendering.
     useEffect(() => {
         const processContent = async () => {
-            const imageRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/g;
-            const tempParts: ParsedPart[] = [];
-            let lastIndex = 0;
-            let match;
-
-            for (const m of note.content.matchAll(imageRegex)) {
-                 if (m.index! > lastIndex) {
-                    tempParts.push({ type: 'text', content: note.content.substring(lastIndex, m.index) });
+            // New, more robust parsing using split and map
+            const imageRegex = /(!\[.*?\]\((?:idb|storage):\/\/.*?\))/g;
+            const imageLinkRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/;
+    
+            const parts = note.content.split(imageRegex).filter(Boolean);
+    
+            const parsedParts: ParsedPart[] = parts.map(part => {
+                const match = part.match(imageLinkRegex);
+                if (match) {
+                    return { type: 'image', alt: match[1], protocol: match[2], key: match[3] };
                 }
-                tempParts.push({
-                    type: 'image',
-                    alt: m[1],
-                    protocol: m[2],
-                    key: m[3],
-                });
-                lastIndex = m.index! + m[0].length;
-            }
-            if (lastIndex < note.content.length) {
-                tempParts.push({ type: 'text', content: note.content.substring(lastIndex) });
-            }
+                return { type: 'text', content: part };
+            });
 
             const finalRenderedParts = await Promise.all(
-                tempParts.map(async (part, index): Promise<RenderedPart> => {
+                parsedParts.map(async (part, index): Promise<RenderedPart> => {
                     if (part.type === 'text') {
                         const withTags = part.content.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
                         const rawHtml = await marked.parse(withTags); // Correctly await the async function
