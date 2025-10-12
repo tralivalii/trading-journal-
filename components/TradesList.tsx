@@ -58,35 +58,59 @@ const MobileTradeCard: React.FC<{
             {/* Top Row: Main Info */}
             <div className="flex justify-between items-start mb-3">
                 <div className="flex flex-col items-start gap-1">
-                    <span className="font-bold text-white text-base">{trade.pair}</span>
-                    {hasAlerts && (
-                        <div className="flex items-center gap-1.5">
-                            {account?.isArchived && <AlertIcon message="Account Archived" />}
-                            {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
-                        </div>
-                    )}
+                    <span className="font-bold text-white text-lg">{trade.pair}</span>
+                     <div className="flex items-center gap-1.5">
+                        {account?.isArchived && <AlertIcon message="Account Archived" />}
+                        {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
+                    </div>
                 </div>
-                <div className="text-right">
-                    <div className={`font-semibold text-lg ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formattedPnl}</div>
+                <div className="text-right flex-shrink-0 pl-2">
+                    <div className={`font-bold text-lg ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formattedPnl}</div>
                     <div className="text-sm text-gray-400">{formattedDate}</div>
                 </div>
             </div>
 
             {/* Bottom Row: Details and Actions */}
-            <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
+            <div className="flex justify-between items-center text-sm">
+                <div className="flex items-center gap-4">
+                    <div>
+                        <span className="text-xs text-gray-500 block">Direction</span>
+                        <span className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</span>
+                    </div>
+                    <div>
+                        <span className="text-xs text-gray-500 block">R:R</span>
+                        <span className="font-semibold text-white">{trade.rr.toFixed(2)}</span>
+                    </div>
+                    <div>
+                        <span className="text-xs text-gray-500 block">Risk</span>
+                        <span className="font-semibold text-white">{trade.risk}%</span>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
                     <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center inline-block ${getResultClasses(trade.result)}`}>
                         {trade.result}
                     </span>
-                    <div className="flex items-center gap-4 text-sm">
-                        <div className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</div>
-                        <div className="text-gray-300 hidden xs:block"><span className="text-gray-500">R:R</span> {trade.rr.toFixed(2)}</div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-1" onPointerUp={e => e.stopPropagation()}>
-                    <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="View trade"><span className="w-5 h-5 block">{ICONS.eye}</span></button>
-                    <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Edit trade"><span className="w-5 h-5 block">{ICONS.pencil}</span></button>
-                    <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Delete trade"><span className="w-5 h-5 block">{ICONS.trash}</span></button>
+                    <DropdownMenu 
+                        trigger={
+                            <button onPointerUp={e => e.stopPropagation()} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Trade actions">
+                               <span className="w-5 h-5 block">{ICONS.moreVertical}</span>
+                            </button>
+                        }
+                    >
+                       <div className="p-1">
+                            <button onClick={() => onView(trade)} className="w-full text-left flex items-center gap-3 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 rounded-md transition-colors">
+                                <span className="w-4 h-4">{ICONS.eye}</span> View
+                            </button>
+                            <button onClick={() => onEdit(trade)} className="w-full text-left flex items-center gap-3 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 rounded-md transition-colors">
+                                <span className="w-4 h-4">{ICONS.pencil}</span> Edit
+                            </button>
+                            <div className="my-1 border-t border-gray-700/50"></div>
+                            <button onClick={() => onDelete(trade.id)} className="w-full text-left flex items-center gap-3 px-3 py-1.5 text-sm text-red-400 hover:bg-gray-700 rounded-md transition-colors">
+                                <span className="w-4 h-4">{ICONS.trash}</span> Delete
+                            </button>
+                       </div>
+                    </DropdownMenu>
                 </div>
             </div>
         </div>
