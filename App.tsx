@@ -221,18 +221,18 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         return summary;
     }, [accountBalances, activeAccounts, selectedAccountId]);
 
-    // FIX: Add explicit return type to useMemo and type the initial value of reduce to ensure correct type inference.
+    // FIX: Add explicit return type to useMemo and type the reduce accumulator and Map to ensure correct type inference, resolving 'unknown' type errors.
     const netProfitSummary = useMemo((): Record<string, number> => {
         if (filteredTrades.length === 0) return {};
         
-        const accountsMap = new Map(accounts.map(acc => [acc.id, acc]));
+        const accountsMap = new Map<string, Account>(accounts.map(acc => [acc.id, acc]));
     
-        return filteredTrades.reduce((summary, trade) => {
+        return filteredTrades.reduce<Record<string, number>>((summary, trade) => {
             const account = accountsMap.get(trade.accountId);
             const currency = account?.currency || 'USD';
             summary[currency] = (summary[currency] || 0) + trade.pnl;
             return summary;
-        }, {} as Record<string, number>);
+        }, {});
     }, [filteredTrades, accounts]);
 
 
@@ -304,9 +304,9 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                     <div className="flex flex-col items-center justify-center gap-x-4 gap-y-1">
                         {Object.keys(netProfitSummary).length > 0 ? (
                             Object.entries(netProfitSummary).map(([currency, value]) => (
-                                // FIX: Coerce `value` to a number. `Object.entries` on a union type can infer `value` as `unknown`, causing type errors.
-                                <p key={currency} className={`font-bold text-2xl ${Number(value) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                                    {formatCurrency(Number(value), currency)}
+                                // FIX: With `netProfitSummary` correctly typed, `value` is a number and the `Number()` cast is no longer needed.
+                                <p key={currency} className={`font-bold text-2xl ${value >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                    {formatCurrency(value, currency)}
                                 </p>
                             ))
                         ) : (
@@ -954,8 +954,8 @@ function AppContent() {
         <div className="text-center">
             <p className="text-gray-300 mb-6">Are you sure you want to permanently delete this trade? This action cannot be undone.</p>
             <div className="flex justify-center gap-4">
-                <button onClick={() => setDeleteTradeModalOpen(false)} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
-                <button onClick={handleConfirmDeleteTrade} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Yes, Delete Trade</button>
+                <button onClick={() => setDeleteTradeModalOpen(false)} className="px-6 py-2 bg-transparent border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors font-medium">Cancel</button>
+                <button onClick={handleConfirmDeleteTrade} className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#232733] focus:ring-red-500">Yes, Delete Trade</button>
             </div>
         </div>
       </Modal>

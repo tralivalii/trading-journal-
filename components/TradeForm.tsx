@@ -239,7 +239,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
     if (name === 'rr' || name === 'commission') {
         const normalizedValue = value.replace(',', '.');
-        if (normalizedValue === '' || /^[0-9]*\.?[]*$/.test(normalizedValue)) {
+        if (normalizedValue === '' || /^[0-9]*\.?[0-9]*$/.test(normalizedValue)) {
             setTrade(prev => ({ ...prev, [name]: normalizedValue }));
         }
         return;
