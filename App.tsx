@@ -226,12 +226,14 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         
         const accountsMap = new Map<string, Account>(accounts.map(acc => [acc.id, acc]));
     
-        return filteredTrades.reduce((summary, trade) => {
+        // FIX: Explicitly typing the 'summary' accumulator in the reduce function resolves type inference issues.
+        // This ensures 'summary[currency]' is treated as a number, and the result 'netProfitSummary' is correctly typed as Record<string, number>.
+        return filteredTrades.reduce((summary: Record<string, number>, trade) => {
             const account = accountsMap.get(trade.accountId);
             const currency = account?.currency || 'USD';
             summary[currency] = (summary[currency] || 0) + trade.pnl;
             return summary;
-        }, {} as Record<string, number>);
+        }, {});
     }, [filteredTrades, accounts]);
 
 

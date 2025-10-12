@@ -85,65 +85,67 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                 return;
             }
 
-            let processed = note.content.trim();
+            let tempContent = note.content;
+            const imageRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/g;
 
-            const idbRegex = /!\[(.*?)\]\(idb:\/\/(.*?)\)/g;
-            const idbMatches = [...processed.matchAll(idbRegex)];
+            // Find all image markdown matches
+            const matches = Array.from(tempContent.matchAll(imageRegex));
+            const replacements = new Map<string, string>();
 
-            if (idbMatches.length > 0) {
-                const replacements = await Promise.all(idbMatches.map(async (match) => {
-                    const alt = match[1];
-                    const key = match[2];
+            // Process all found images in parallel
+            await Promise.all(matches.map(async (match) => {
+                const [fullMatch, alt, protocol, keyOrPath] = match;
+
+                if (protocol === 'idb') {
                     try {
-                        const blob = await getImage(key);
+                        const blob = await getImage(keyOrPath);
                         if (blob) {
                             const url = URL.createObjectURL(blob);
                             createdUrls.push(url);
-                            const imgTag = `<img src="${url}" alt="${alt}" data-fullscreen-src="${url}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`;
-                            return { original: match[0], replacement: imgTag };
+                            replacements.set(fullMatch, `<img src="${url}" alt="${alt}" data-fullscreen-src="${url}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`);
+                        } else {
+                            replacements.set(fullMatch, `<p class="text-center text-sm text-yellow-400 my-2">[Local image not found: ${alt}]</p>`);
                         }
                     } catch (e) {
-                        console.error("Failed to get image from IndexedDB for key:", key, e);
+                        console.error("Failed to get image from IndexedDB for key:", keyOrPath, e);
+                        replacements.set(fullMatch, `<p class="text-center text-sm text-red-400 my-2">[Error loading local image: ${alt}]</p>`);
                     }
-                    return { original: match[0], replacement: `![${alt} (Error: Could not load local image)]()` };
-                }));
-                for (const { original, replacement } of replacements) {
-                    processed = processed.replace(original, replacement);
-                }
-            }
-            
-            const storageRegex = /!\[(.*?)\]\(storage:\/\/(.*?)\)/g;
-            if (navigator.onLine && processed.match(storageRegex)) {
-                const storageMatches = [...processed.matchAll(storageRegex)];
-                const replacements = await Promise.all(storageMatches.map(async (match) => {
-                    const alt = match[1];
-                    const path = match[2];
-                    try {
-                        const { data } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600);
-                        if (data) {
-                            const imgTag = `<img src="${data.signedUrl}" alt="${alt}" data-fullscreen-src="${data.signedUrl}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`;
-                            return { original: match[0], replacement: imgTag };
+                } else if (protocol === 'storage') {
+                    if (navigator.onLine) {
+                        try {
+                            const { data } = await supabase.storage.from('screenshots').createSignedUrl(keyOrPath, 3600);
+                            if (data?.signedUrl) {
+                                replacements.set(fullMatch, `<img src="${data.signedUrl}" alt="${alt}" data-fullscreen-src="${data.signedUrl}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`);
+                            }
+                        } catch (e) {
+                             console.error("Failed to create signed URL for", keyOrPath, e);
+                             replacements.set(fullMatch, `<p class="text-center text-sm text-red-400 my-2">[Error loading cloud image: ${alt}]</p>`);
                         }
-                    } catch (e) {
-                        console.error("Failed to create signed URL for", path, e);
+                    } else {
+                        replacements.set(fullMatch, `<p class="text-center text-sm text-gray-500 my-2 p-4 bg-gray-900/50 rounded-md">[Image unavailable offline: ${alt}]</p>`);
                     }
-                    return { original: match[0], replacement: `![${alt} (Error: Could not load cloud image)]()` };
-                }));
-                for (const { original, replacement } of replacements) {
-                    processed = processed.replace(original, replacement);
                 }
-            } else if (!navigator.onLine && processed.match(storageRegex)) {
-                processed = processed.replace(storageRegex, `\n[Image unavailable offline]\n`);
-            }
+            }));
             
-            processed = processed.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-            let html = marked.parse(processed);
-            const clean = DOMPurify.sanitize(html, {
+            // Apply all replacements to the content
+            for (const [original, replacement] of replacements.entries()) {
+                tempContent = tempContent.replace(original, replacement);
+            }
+
+            // Process hashtags and markdown formatting
+            let finalHtml = tempContent.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
+            // FIX: The modern version of the `marked` library returns a Promise. The result must be awaited
+            // to get the HTML string before passing it to DOMPurify. This resolves a type error, as a Promise
+            // object is not a valid input for DOMPurify. The reported iterator error on a different line is
+            // likely a misleading artifact of the build process.
+            finalHtml = await marked.parse(finalHtml);
+            const cleanHtml = DOMPurify.sanitize(finalHtml, {
                 ADD_TAGS: ['a', 'img', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
                 ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt', 'data-fullscreen-src'],
                 ALLOWED_URI_REGEXP: /.*/
             });
-            setRenderedContent(clean);
+
+            setRenderedContent(cleanHtml);
         };
 
         processContent();
@@ -208,7 +210,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            const localImageKey = await saveImage(currentUser!.id, file);
+            const localImageKey = await saveImage(currentUser?.id || 'guest', file);
             const finalMarkdown = `\n![${file.name}](idb://${localImageKey})\n`;
 
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));

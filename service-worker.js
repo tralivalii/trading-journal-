@@ -1,6 +1,6 @@
 // service-worker.js
 
-const CACHE_NAME = 'trading-journal-cache-v3'; // Bump version to force update
+const CACHE_NAME = 'trading-journal-cache-v4'; // Bump version to force update
 const urlsToCache = [
   '/',
   '/index.html',
@@ -32,12 +32,11 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
 
-  // For navigation requests, use a network-first strategy.
-  // If network fails, serve the cached index.html. This allows the SPA to handle routing.
+  // For navigation requests, use a cache-first strategy to ensure offline launch.
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match('/index.html');
+      caches.match(request).then(response => {
+        return response || fetch(request);
       })
     );
     return;
