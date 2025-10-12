@@ -1,17 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -315,7 +302,7 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                     <div className="flex flex-col items-center justify-center gap-x-4 gap-y-1">
                         {Object.keys(netProfitSummary).length > 0 ? (
                             Object.entries(netProfitSummary).map(([currency, value]) => (
-                                // FIX: With `netProfitSummary` correctly typed, `value` is a number, so the explicit `Number()` cast is removed.
+                                // FIX: With `netProfitSummary` correctly typed, `value` is a number, resolving type errors.
                                 <p key={currency} className={`font-bold text-2xl ${value >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                                     {formatCurrency(value, currency)}
                                 </p>

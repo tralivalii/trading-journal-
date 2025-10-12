@@ -294,7 +294,7 @@ const TradesList: React.FC<TradesListProps> = ({ onEdit, onView, onDelete, onAdd
                                         <th scope="col" className="px-6 py-3">Risk</th>
                                         <th scope="col" className="px-6 py-3">PnL</th>
                                         <th scope="col" className="px-6 py-3">Result</th>
-                                        <th scope="col" className="px-6 py-3 text-right">Actions</th>
+                                        <th scope="col" className="px-6 py-3 text-right"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
