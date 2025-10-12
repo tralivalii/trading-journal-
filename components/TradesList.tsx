@@ -90,8 +90,11 @@ const MobileTradeCard: React.FC<{
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-2"> {/* Increased gap for date and menu */}
-                    <div className="text-sm text-gray-400">{formattedDate}</div>
+                <div className="flex items-center gap-2">
+                    <div>
+                        <span className="text-xs text-gray-500 block">Date</span>
+                        <span className="font-semibold text-white">{formattedDate}</span>
+                    </div>
                     <DropdownMenu 
                         trigger={
                             <button onPointerUp={e => e.stopPropagation()} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Trade actions">
