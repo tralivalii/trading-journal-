@@ -264,7 +264,7 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
             <img 
               src={fullscreenData.src} 
               alt="Fullscreen view" 
-              className="block max-w-full max-h-[95vh] object-contain rounded-lg"
+              className="block max-w-[85vw] max-h-[85vh] object-contain rounded-lg"
             />
             {fullscreenData.notes && (
               <div

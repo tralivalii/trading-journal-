@@ -7,6 +7,8 @@
 
 
 
+
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -311,8 +313,8 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                         {Object.keys(netProfitSummary).length > 0 ? (
                             Object.entries(netProfitSummary).map(([currency, value]) => (
                                 // FIX: With `netProfitSummary` correctly typed, `value` is a number and the `Number()` cast is no longer needed.
-                                <p key={currency} className={`font-bold text-2xl ${value >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                                    {formatCurrency(value, currency)}
+                                <p key={currency} className={`font-bold text-2xl ${Number(value) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                    {formatCurrency(Number(value), currency)}
                                 </p>
                             ))
                         ) : (

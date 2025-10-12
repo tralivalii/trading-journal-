@@ -276,7 +276,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                     <img 
                       src={fullscreenSrc} 
                       alt="Fullscreen view" 
-                      className="block max-w-[95vw] max-h-[90vh] object-contain rounded-lg"
+                      className="block max-w-[85vw] max-h-[85vh] object-contain rounded-lg"
                     />
                   </div>
                   <button
