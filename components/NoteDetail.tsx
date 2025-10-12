@@ -3,8 +3,10 @@ import { Note } from '../types';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
+import NoteEditorToolbar from './ui/NoteEditorToolbar';
 
 declare const DOMPurify: any;
+declare const marked: any;
 
 interface NoteDetailProps {
     note: Note;
@@ -115,15 +117,14 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                 }
             }
             
-            let html = processed;
-            html = html.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-            // Handle external images without breaking Supabase ones
-            html = html.replace(/!\[(.*?)\]\((?!https:\/\/mppxwfiazsyxmrmoyzzk\.supabase\.co)(.*?)\)/g, '<img src="$2" alt="$1" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block" />');
+            processed = processed.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
+            
+            let html = marked.parse(processed);
 
             const clean = DOMPurify.sanitize(html, {
-                ADD_TAGS: ['a', 'img'],
+                ADD_TAGS: ['a', 'img', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
                 ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt', 'data-fullscreen-src'],
-                ALLOWED_URI_REGEXP: /.*/ // Allow all URIs for images after processing
+                ALLOWED_URI_REGEXP: /.*/
             });
 
             setRenderedContent(clean);
@@ -230,13 +231,14 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     if (isEditMode) {
         return (
             <div className="flex flex-col h-full">
+                <NoteEditorToolbar textareaRef={textareaRef} content={content} setContent={setContent} />
                 <textarea 
                     ref={textareaRef}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     onPaste={handlePaste}
                     placeholder="Write your thoughts..."
-                    className="w-full bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white flex-grow"
+                    className="w-full bg-[#1A1D26] border border-gray-600 rounded-b-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white flex-grow rounded-t-none"
                     style={{ minHeight: '300px' }}
                 />
                  <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" multiple hidden />
@@ -258,9 +260,18 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
              <div className="absolute top-4 right-4 z-10">
                 <KebabMenu onEdit={() => onSetEditMode(true)} onDelete={() => onDelete(note.id)} />
              </div>
+             <style>{`
+                .prose-custom h1 { font-size: 1.5rem; font-weight: 600; margin-top: 1.25em; margin-bottom: 0.5em; }
+                .prose-custom h2 { font-size: 1.25rem; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; }
+                .prose-custom p { margin-bottom: 1em; }
+                .prose-custom strong { color: #F0F0F0; }
+                .prose-custom ul { list-style-type: disc; margin-left: 1.5em; margin-bottom: 1em; }
+                .prose-custom ol { list-style-type: decimal; margin-left: 1.5em; margin-bottom: 1em; }
+                .prose-custom li { margin-bottom: 0.25em; }
+             `}</style>
              <div 
                  ref={viewRef}
-                 className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto prose prose-invert prose-img:rounded-lg"
+                 className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto prose-custom"
                  dangerouslySetInnerHTML={{ __html: renderedContent || (note.content ? '<p class="animate-pulse">Loading content...</p>' : '<p class="text-gray-500">This note is empty.</p>') }}
             >
             </div>

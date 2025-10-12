@@ -5,6 +5,7 @@ import NoteDetail from './NoteDetail';
 import { ICONS } from '../constants';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase'; // Kept for image upload logic
+import NoteEditorToolbar from './ui/NoteEditorToolbar';
 
 interface NotesViewProps {}
 const NOTES_PAGE_SIZE = 20;
@@ -157,13 +158,14 @@ const NewNoteCreator: React.FC<{
 
     return (
         <div className="flex flex-col h-full">
+            <NoteEditorToolbar textareaRef={textareaRef} content={content} setContent={setContent} />
              <textarea 
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 onPaste={handlePaste}
                 placeholder="Write your thoughts... #hashtags will be automatically detected."
-                className="w-full bg-[#1A1D26] border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white flex-grow"
+                className="w-full bg-[#1A1D26] border border-gray-600 rounded-b-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6] text-white flex-grow rounded-t-none"
                 style={{ minHeight: '300px' }}
                 autoFocus
             />
