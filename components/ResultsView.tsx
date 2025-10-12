@@ -40,7 +40,7 @@ const ResultCard: React.FC<{
         <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden group transition-all duration-300 hover:shadow-lg hover:border-blue-600/50">
             {/* Image Section */}
             <div 
-                className="relative w-full h-[25rem] bg-gray-900 cursor-pointer overflow-hidden" 
+                className="relative w-full h-[35rem] bg-gray-900 cursor-pointer overflow-hidden" 
                 onClick={() => imageUrl && onImageClick(imageUrl)}
             >
                 {imageUrl ? (
@@ -57,7 +57,7 @@ const ResultCard: React.FC<{
             
             {/* Info Section */}
             <div className="p-4 space-y-4">
-                <div className="flex justify-between items-start gap-2">
+                <div className="flex items-center gap-3">
                     <p className="font-bold text-white text-lg truncate">{trade.pair}</p>
                     <span className={`py-1 px-3 flex-shrink-0 ${getResultClasses(trade.result)}`}>{trade.result}</span>
                 </div>
