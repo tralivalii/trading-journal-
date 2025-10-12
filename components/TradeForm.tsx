@@ -4,7 +4,6 @@ import useImageBlobUrl from '../hooks/useImageBlobUrl';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
-import { saveImage, deleteImage } from '../services/imageDB';
 
 interface TradeFormProps {
   onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
@@ -130,15 +129,14 @@ const compressImage = (file: File, maxWidth = 1920, quality = 0.8): Promise<File
                             });
                             resolve(newFile);
                         } else {
-                            // This is a common failure point on memory-constrained devices.
-                            reject(new Error('Failed to process image. It might be too large for your device to handle.'));
+                            reject(new Error('Failed to process image.'));
                         }
                     },
                     'image/jpeg',
                     quality
                 );
             };
-            img.onerror = (e) => reject(new Error('Failed to load image for processing. The file might be corrupted.'));
+            img.onerror = (e) => reject(new Error('Failed to load image for processing.'));
         };
         reader.onerror = (e) => reject(new Error('Failed to read image file.'));
     });
@@ -153,7 +151,7 @@ const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
 
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
   const { state, dispatch } = useAppContext();
-  const { userData, currentUser, isGuest } = state;
+  const { userData, currentUser } = state;
   const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes, analysisTimeframes } = userData!;
   
   const initialTradeStateRef = useRef<any>();
@@ -270,48 +268,36 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
       const currentImagePath = (trade[sectionKey] as Analysis).image;
 
-      // Delete old image if it exists
-      if (currentImagePath) {
-          await deleteImage(currentImagePath); // Delete from local cache
-          if (!isGuest && currentUser && currentImagePath) {
-              try {
-                  await supabase.storage.from('trade-attachments').remove([currentImagePath]);
-              } catch (e) {
-                  console.error("Failed to delete old image from Supabase Storage", e);
-              }
+      // Delete old image if it exists in Supabase
+      if (currentImagePath && currentUser) {
+          try {
+              await supabase.storage.from('trade-attachments').remove([currentImagePath]);
+          } catch (e) {
+              console.error("Failed to delete old image from Supabase Storage", e);
           }
       }
 
-      if (file) {
+      // If a new file is provided, upload it
+      if (file && currentUser) {
           setIsUploading(true);
           try {
               const compressedFile = await compressImage(file);
-              let finalImagePath: string;
+              const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${compressedFile.name}`;
+              
+              const { error: uploadError } = await supabase.storage
+                  .from('trade-attachments')
+                  .upload(storagePath, compressedFile);
 
-              if (isGuest || !currentUser) {
-                  finalImagePath = `guest/${crypto.randomUUID()}-${file.name}`;
-                  await saveImage(finalImagePath, compressedFile);
-              } else {
-                  const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
-                  const { error: uploadError } = await supabase.storage
-                      .from('trade-attachments')
-                      .upload(storagePath, compressedFile);
-
-                  if (uploadError) {
-                      throw uploadError;
-                  }
-                  
-                  finalImagePath = storagePath;
-                  await saveImage(finalImagePath, compressedFile);
+              if (uploadError) {
+                  throw uploadError;
               }
               
-              handleAnalysisChange(sectionKey, 'image', finalImagePath);
+              handleAnalysisChange(sectionKey, 'image', storagePath);
               
           } catch (error) {
-              console.error("Error saving image:", error);
-              // Use the specific message from the thrown error for better user feedback.
+              console.error("Error uploading image to Supabase:", error);
               const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
-              dispatch({ type: 'SHOW_TOAST', payload: { message: errorMessage, type: 'error' } });
+              dispatch({ type: 'SHOW_TOAST', payload: { message: `Upload failed: ${errorMessage}`, type: 'error' } });
               handleAnalysisChange(sectionKey, 'image', undefined); // Clear on failure
           } finally {
               setIsUploading(false);

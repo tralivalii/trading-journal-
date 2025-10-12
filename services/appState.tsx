@@ -2,10 +2,8 @@
 
 import React, { createContext, useReducer, useContext, useEffect, Dispatch } from 'react';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
-import { Account, Note, Result, Trade, UserData, Currency } from '../types';
+import { Account, Note, Result, Trade, UserData } from '../types';
 import { supabase } from './supabase';
-import { bulkPut, clearAllData, getSyncQueue, getTable, putSyncQueue } from './offlineService';
-import { deleteImage } from './imageDB';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -15,27 +13,22 @@ interface Toast {
     id: number;
 }
 
-export type SyncStatus = 'online' | 'offline' | 'syncing';
-
 interface AppState {
   session: Session | null;
   currentUser: SupabaseUser | null;
   userData: UserData | null;
   isLoading: boolean;
-  isGuest: boolean;
   hasMoreTrades: boolean;
   isFetchingMore: boolean;
   hasMoreNotes: boolean;
   isFetchingMoreNotes: boolean;
   toasts: Toast[];
-  syncStatus: SyncStatus;
 }
 
 type Action =
   | { type: 'SET_SESSION'; payload: Session | null }
   | { type: 'SET_USER_DATA'; payload: UserData | null }
   | { type: 'SET_IS_LOADING'; payload: boolean }
-  | { type: 'SET_GUEST_MODE' }
   | { type: 'UPDATE_TRADES'; payload: Trade[] }
   | { type: 'UPDATE_ACCOUNTS'; payload: Account[] }
   | { type: 'UPDATE_NOTES'; payload: Note[] }
@@ -45,9 +38,7 @@ type Action =
   | { type: 'FETCH_MORE_NOTES_START' }
   | { type: 'FETCH_MORE_NOTES_SUCCESS'; payload: { notes: Note[]; hasMore: boolean } }
   | { type: 'SHOW_TOAST'; payload: Omit<Toast, 'id'> }
-  | { type: 'HIDE_TOAST'; payload: number }
-  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
-
+  | { type: 'HIDE_TOAST'; payload: number };
 
 // --- REDUCER ---
 
@@ -58,13 +49,11 @@ const initialState: AppState = {
   currentUser: null,
   userData: null,
   isLoading: true,
-  isGuest: false,
   hasMoreTrades: false,
   isFetchingMore: false,
   hasMoreNotes: false,
   isFetchingMoreNotes: false,
   toasts: [],
-  syncStatus: navigator.onLine ? 'online' : 'offline',
 };
 
 const appReducer = (state: AppState, action: Action): AppState => {
@@ -74,7 +63,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
         ...state,
         session: action.payload,
         currentUser: action.payload?.user ?? null,
-        isGuest: false, // Reset guest mode on session change
       };
     case 'SET_USER_DATA':
       const userData = action.payload;
@@ -89,32 +77,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
       return { ...state, userData };
     case 'SET_IS_LOADING':
       return { ...state, isLoading: action.payload };
-    case 'SET_GUEST_MODE':
-      const guestData: UserData = {
-        trades: [],
-        accounts: [{ id: 'guest-acc', name: 'Guest Account', initialBalance: 100000, currency: Currency.USD, isArchived: false }],
-        pairs: ['EUR/USD', 'GBP/USD', 'XAU/USD', 'BTC/USDT'],
-        entries: ['Market', 'Order Block', 'FVG'],
-        risks: [0.5, 1, 1.5, 2],
-        defaultSettings: { accountId: 'guest-acc', pair: 'EUR/USD', entry: 'Market', risk: 1, stoploss: 'Sessions High/Low', takeprofit: 'Fractal' },
-        notes: [],
-        stoplosses: ['Session High/Low', 'FVG', 'Fractal'],
-        takeprofits: ['Session High/Low', 'FVG', 'Fractal'],
-        closeTypes: ['SL Hit', 'TP Hit', 'Manual'],
-        analysisTimeframes: [...defaultTimeframes],
-      };
-      return { 
-        ...state, 
-        isGuest: true, 
-        isLoading: false,
-        currentUser: { id: 'guest', email: 'guest@example.com' } as any, 
-        userData: guestData,
-        hasMoreTrades: false,
-        isFetchingMore: false,
-        hasMoreNotes: false,
-        isFetchingMoreNotes: false,
-        syncStatus: 'online', // Guest mode is always online
-      };
     case 'UPDATE_TRADES':
       return state.userData ? { ...state, userData: { ...state.userData, trades: action.payload } } : state;
     case 'UPDATE_ACCOUNTS':
@@ -175,8 +137,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
             ...state, 
             toasts: state.toasts.filter(toast => toast.id !== action.payload) 
         };
-    case 'SET_SYNC_STATUS':
-        return { ...state, syncStatus: action.payload };
     default:
       return state;
   }
@@ -192,7 +152,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       dispatch({ type: 'SET_SESSION', payload: session });
-      // This is the key fix: only stop loading after the initial check is complete.
       if (!session) {
           dispatch({ type: 'SET_IS_LOADING', payload: false });
       }
@@ -200,10 +159,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        const currentSession = state.session;
-        if (session?.user.id !== currentSession?.user.id) {
-            await clearAllData();
-        }
         dispatch({ type: 'SET_SESSION', payload: session });
         if (!session) {
           dispatch({ type: 'SET_IS_LOADING', payload: false });
@@ -211,17 +166,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    // Online/Offline listeners
-    const handleOnline = () => dispatch({ type: 'SET_SYNC_STATUS', payload: 'online' });
-    const handleOffline = () => dispatch({ type: 'SET_SYNC_STATUS', payload: 'offline' });
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
     return () => {
       authListener.subscription.unsubscribe();
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -249,36 +195,27 @@ export const saveSettingsAction = async (
     state: AppState,
     settings: Partial<Omit<UserData, 'trades' | 'accounts' | 'notes'>>
 ) => {
-    const { userData, currentUser, syncStatus, isGuest } = state;
-    if (!userData || !currentUser || isGuest) return;
-
-    // Optimistically update UI
-    for (const [key, value] of Object.entries(settings)) {
-        dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field: key as any, value }});
-    }
+    const { userData, currentUser } = state;
+    if (!userData || !currentUser) return;
 
     const allSettingsData = { ...userData, ...settings };
-    // Remove data that is not part of settings
     delete (allSettingsData as any).trades;
     delete (allSettingsData as any).accounts;
     delete (allSettingsData as any).notes;
 
-    // Update local DB
-    await bulkPut('settings', [{ id: 'user-settings', data: allSettingsData }]);
-    
-    // Add to sync queue
-    await putSyncQueue({
-        id: crypto.randomUUID(),
-        type: 'settings',
-        action: 'update',
-        payload: allSettingsData,
-        timestamp: Date.now()
-    });
+    const { error } = await supabase
+        .from('user_data')
+        .upsert({ user_id: currentUser.id, data: allSettingsData });
 
-    if (syncStatus === 'online') {
-        window.dispatchEvent(new CustomEvent('sync-request'));
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving settings: ${error.message}`, type: 'error' } });
+        throw error;
     }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Settings saved locally.', type: 'success' } });
+    
+    for (const [key, value] of Object.entries(settings)) {
+        dispatch({ type: 'UPDATE_USER_DATA_FIELD', payload: { field: key as any, value }});
+    }
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Settings saved.', type: 'success' } });
 };
 
 
@@ -287,31 +224,10 @@ export const saveTradeAction = async (
   state: AppState,
   tradeData: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string },
   isEditing: boolean
-) => {
-    const { userData, currentUser, isGuest, syncStatus } = state;
+): Promise<Trade> => {
+    const { userData, currentUser } = state;
     if (!userData || !currentUser) throw new Error('User data not available');
     
-    if (isGuest) {
-      // Guest logic:
-      const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
-      if (!account) throw new Error("Account not found");
-      const riskAmount = (account.initialBalance * tradeData.risk) / 100;
-      let pnl = 0;
-      if(tradeData.result === Result.Win) pnl = riskAmount * tradeData.rr;
-      if(tradeData.result === Result.Loss) pnl = -riskAmount;
-      pnl -= (tradeData.commission || 0);
-
-      const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
-      const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
-      const updatedTrades = isEditing
-        ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
-        : [finalTrade, ...userData.trades];
-      dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-      dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} in guest mode.`, type: 'success' } });
-      return;
-    }
-    
-    // --- Offline-First Logic ---
     const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
     if (!account) throw new Error("Account not found");
 
@@ -323,16 +239,33 @@ export const saveTradeAction = async (
 
     const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
     const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
+    
+    const { accountId, closeType, analysisD1, analysis1h, analysis5m, analysisResult, aiAnalysis, ...rest } = finalTrade;
+    const supabasePayload = {
+        ...rest,
+        user_id: currentUser.id,
+        account_id: accountId,
+        close_type: closeType,
+        analysis_d1: analysisD1,
+        analysis_1h: analysis1h,
+        analysis_5m: analysis5m,
+        analysis_result: analysisResult,
+        ai_analysis: aiAnalysis
+    };
+
+    const { error } = await supabase.from('trades').upsert(supabasePayload);
+
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving trade: ${error.message}`, type: 'error' } });
+        throw error;
+    }
 
     const updatedTrades = isEditing
         ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
         : [finalTrade, ...userData.trades];
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    await bulkPut('trades', [finalTrade]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: isEditing ? 'update' : 'create', payload: finalTrade, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'} locally.`, type: 'success' } });
+    dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'}.`, type: 'success' } });
+    return finalTrade;
 };
 
 export const deleteTradeAction = async (
@@ -340,12 +273,10 @@ export const deleteTradeAction = async (
   state: AppState,
   tradeId: string
 ) => {
-    const { userData, isGuest, syncStatus } = state;
+    const { userData } = state;
     if (!userData) throw new Error('User data not available');
     
     const tradeToDelete = userData.trades.find(t => t.id === tradeId);
-
-    // --- Image Deletion Logic ---
     if (tradeToDelete) {
         const imagePaths = [
             tradeToDelete.analysisD1.image,
@@ -354,35 +285,24 @@ export const deleteTradeAction = async (
             tradeToDelete.analysisResult.image
         ].filter(Boolean) as string[];
 
-        for (const path of imagePaths) {
-            await deleteImage(path); // Delete from IndexedDB using the storage path as key
-            if (!isGuest && path) {
-                try {
-                    // The path is the direct path to the file in storage
-                    await supabase.storage.from('trade-attachments').remove([path]);
-                } catch (e) {
-                    console.error("Failed to delete image from Supabase during trade deletion:", e);
-                    // Don't block UI for this, just log it.
-                }
+        if (imagePaths.length > 0) {
+            const { error: storageError } = await supabase.storage.from('trade-attachments').remove(imagePaths);
+            if (storageError) {
+                console.error("Failed to delete images from storage:", storageError);
+                // Non-blocking error, we still want to delete the trade record.
             }
         }
     }
-    // --- End Image Deletion Logic ---
 
-    if (isGuest) {
-      const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
-      dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-      dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted in guest mode.', type: 'success' } });
-      return;
+    const { error } = await supabase.from('trades').delete().eq('id', tradeId);
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error deleting trade: ${error.message}`, type: 'error' } });
+        throw error;
     }
 
     const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    await bulkPut('trades', updatedTrades); // This re-saves the whole array, effectively deleting the item
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: 'delete', payload: { id: tradeId }, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted locally.', type: 'success' } });
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted.', type: 'success' } });
 };
 
 export const updateTradeWithAIAnalysisAction = async (
@@ -391,44 +311,50 @@ export const updateTradeWithAIAnalysisAction = async (
   tradeId: string,
   analysisText: string
 ) => {
-    const { userData, syncStatus } = state;
+    const { userData } = state;
     if (!userData) throw new Error('User data not available');
     
     const tradeToUpdate = userData.trades.find(t => t.id === tradeId);
     if (!tradeToUpdate) throw new Error("Trade not found");
     
+    const { error } = await supabase.from('trades').update({ ai_analysis: analysisText }).eq('id', tradeId);
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving AI analysis: ${error.message}`, type: 'error' } });
+        throw error;
+    }
+
     const updatedTrade: Trade = { ...tradeToUpdate, aiAnalysis: analysisText };
     const updatedTrades = userData.trades.map(t => t.id === tradeId ? updatedTrade : t);
     dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
-    await bulkPut('trades', [updatedTrade]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'trade', action: 'update', payload: updatedTrade, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
 };
 
-// --- ACCOUNT ACTIONS ---
 export const saveAccountAction = async (
     dispatch: Dispatch<Action>,
     state: AppState,
     accountData: Omit<Account, 'id'> & { id?: string },
     isEditing: boolean
 ) => {
-    const { userData, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
+    const { userData, currentUser } = state;
+    if (!userData || !currentUser) throw new Error('User data not available');
 
     const accountId = isEditing ? accountData.id! : crypto.randomUUID();
     const finalAccount: Account = { ...accountData, id: accountId };
+    
+    const { initialBalance, isArchived, ...rest } = finalAccount;
+    const supabasePayload = { ...rest, user_id: currentUser.id, initial_balance: initialBalance, is_archived: isArchived };
+    const { error } = await supabase.from('accounts').upsert(supabasePayload);
+    
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving account: ${error.message}`, type: 'error' } });
+        throw error;
+    }
 
     const updatedAccounts = isEditing
         ? userData.accounts.map(a => a.id === accountId ? finalAccount : a)
         : [...userData.accounts, finalAccount];
     
     dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-    await bulkPut('accounts', [finalAccount]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'account', action: isEditing ? 'update' : 'create', payload: finalAccount, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${isEditing ? 'updated' : 'saved'} locally.`, type: 'success' } });
+    dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${isEditing ? 'updated' : 'saved'}.`, type: 'success' } });
 };
 
 export const deleteAccountAction = async (
@@ -436,41 +362,47 @@ export const deleteAccountAction = async (
     state: AppState,
     accountId: string
 ) => {
-    const { userData, syncStatus } = state;
+    const { userData } = state;
     if (!userData) throw new Error('User data not available');
+
+    const { error } = await supabase.from('accounts').delete().eq('id', accountId);
+
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error deleting account: ${error.message}`, type: 'error' } });
+        throw error;
+    }
 
     const updatedAccounts = userData.accounts.filter(a => a.id !== accountId);
     dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
-    await bulkPut('accounts', updatedAccounts);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'account', action: 'delete', payload: { id: accountId }, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted locally.', type: 'success' } });
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted.', type: 'success' } });
 };
 
-// --- NOTE ACTIONS ---
 export const saveNoteAction = async (
     dispatch: Dispatch<Action>,
     state: AppState,
     noteData: Omit<Note, 'id'> & { id?: string },
     isEditing: boolean
-) => {
-    const { userData, syncStatus } = state;
-    if (!userData) throw new Error('User data not available');
+): Promise<Note> => {
+    const { userData, currentUser } = state;
+    if (!userData || !currentUser) throw new Error('User data not available');
 
     const noteId = isEditing ? noteData.id! : crypto.randomUUID();
     const finalNote: Note = { ...noteData, id: noteId };
+
+    const supabasePayload = { ...finalNote, user_id: currentUser.id };
+    const { error } = await supabase.from('notes').upsert(supabasePayload);
+    
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error saving note: ${error.message}`, type: 'error' } });
+        throw error;
+    }
 
     const updatedNotes = isEditing
         ? userData.notes.map(n => n.id === noteId ? finalNote : n)
         : [finalNote, ...userData.notes];
     
     dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-    await bulkPut('notes', [finalNote]);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'note', action: isEditing ? 'update' : 'create', payload: finalNote, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: `Note ${isEditing ? 'updated' : 'saved'} locally.`, type: 'success' } });
+    dispatch({ type: 'SHOW_TOAST', payload: { message: `Note ${isEditing ? 'updated' : 'saved'}.`, type: 'success' } });
     return finalNote;
 };
 
@@ -479,26 +411,28 @@ export const deleteNoteAction = async (
     state: AppState,
     noteId: string
 ) => {
-    const { userData, syncStatus } = state;
+    const { userData } = state;
     if (!userData) throw new Error('User data not available');
+    
+    const { error } = await supabase.from('notes').delete().eq('id', noteId);
+
+    if (error) {
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Error deleting note: ${error.message}`, type: 'error' } });
+        throw error;
+    }
     
     const updatedNotes = userData.notes.filter(n => n.id !== noteId);
     dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
-    await bulkPut('notes', updatedNotes);
-    await putSyncQueue({ id: crypto.randomUUID(), type: 'note', action: 'delete', payload: { id: noteId }, timestamp: Date.now() });
-
-    if (syncStatus === 'online') { window.dispatchEvent(new CustomEvent('sync-request')); }
-    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted locally.', type: 'success' } });
+    dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted.', type: 'success' } });
 };
 
-// --- PAGINATION ACTIONS ---
 export const fetchMoreNotesAction = async (
     dispatch: Dispatch<Action>,
     state: AppState,
     pageSize: number
 ) => {
-    const { currentUser, userData, isGuest, syncStatus } = state;
-    if (isGuest || !currentUser || !userData || syncStatus === 'offline') return;
+    const { currentUser, userData } = state;
+    if (!currentUser || !userData) return;
 
     dispatch({ type: 'FETCH_MORE_NOTES_START' });
     try {
@@ -512,7 +446,6 @@ export const fetchMoreNotesAction = async (
         if (error) throw error;
 
         const newNotes = data as Note[];
-        await bulkPut('notes', newNotes);
         dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: newNotes, hasMore: newNotes.length === pageSize } });
 
     } catch (error) {

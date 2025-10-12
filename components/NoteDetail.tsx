@@ -4,7 +4,6 @@ import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
-import { saveImage } from '../services/imageDB';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
 
 declare const DOMPurify: any;
@@ -58,11 +57,16 @@ const KebabMenu: React.FC<{
 };
 
 const NoteImage: React.FC<{
-    imageUrl: string;
+    imageUrl: string; // Expects "storage://path/to/image.png"
     altText: string;
     onClick: (src: string) => void;
 }> = ({ imageUrl, altText, onClick }) => {
-    const { url, isLoading, error } = useImageBlobUrl(imageUrl);
+    const storagePath = useMemo(() => {
+        const match = imageUrl.match(/^storage:\/\/(.*)/);
+        return match ? match[1] : null;
+    }, [imageUrl]);
+
+    const { url, isLoading, error } = useImageBlobUrl(storagePath);
 
     if (isLoading) {
         return (
@@ -93,17 +97,17 @@ const NoteImage: React.FC<{
 
 type ParsedPart =
   | { type: 'text'; content: string }
-  | { type: 'image'; alt: string; protocol: string; key: string };
+  | { type: 'image'; alt: string; key: string };
 
 type RenderedPart =
   | { type: 'text'; html: string; id: number }
-  | { type: 'image'; alt: string; protocol: string; key: string; id: number };
+  | { type: 'image'; alt: string; key: string; id: number };
 
 
 // Main NoteDetail Component
 const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete, onTagClick }) => {
     const { state, dispatch } = useAppContext();
-    const { currentUser, isGuest } = state;
+    const { currentUser } = state;
 
     const [content, setContent] = useState(note.content);
     const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
@@ -120,19 +124,17 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         }
     }, [note, isEditMode]);
     
-    // This effect handles the async parsing of markdown and sets the state for rendering.
     useEffect(() => {
         const processContent = async () => {
-            // New, more robust parsing using split and map
-            const imageRegex = /(!\[.*?\]\((?:idb|storage):\/\/.*?\))/g;
-            const imageLinkRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/;
+            const imageRegex = /(!\[.*?\]\(storage:\/\/.*?\))/g;
+            const imageLinkRegex = /!\[(.*?)\]\(storage:\/\/(.*?)\)/;
     
             const parts = note.content.split(imageRegex).filter(Boolean);
     
             const parsedParts: ParsedPart[] = parts.map(part => {
                 const match = part.match(imageLinkRegex);
                 if (match) {
-                    return { type: 'image', alt: match[1], protocol: match[2], key: match[3] };
+                    return { type: 'image', alt: match[1], key: match[2] };
                 }
                 return { type: 'text', content: part };
             });
@@ -141,7 +143,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                 parsedParts.map(async (part, index): Promise<RenderedPart> => {
                     if (part.type === 'text') {
                         const withTags = part.content.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-                        const rawHtml = await marked.parse(withTags); // Correctly await the async function
+                        const rawHtml = await marked.parse(withTags);
                         const cleanHtml = DOMPurify.sanitize(rawHtml, {
                             ADD_TAGS: ['a', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
                             ADD_ATTR: ['class', 'data-tag', 'href'],
@@ -198,8 +200,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     };
 
     const uploadAndInsertImage = async (file: File) => {
-        if (isGuest) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "Image upload is disabled in guest mode.", type: 'error' } });
+        if (!currentUser) {
+            dispatch({ type: 'SHOW_TOAST', payload: { message: "You must be logged in to upload images.", type: 'error' } });
             return;
         }
 
@@ -212,14 +214,20 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            const localImageKey = await saveImage(currentUser?.id || 'guest', file);
-            const finalMarkdown = `\n![${file.name}](idb://${localImageKey})\n`;
+            const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
+            const { error: uploadError } = await supabase.storage
+                .from('trade-attachments')
+                .upload(storagePath, file);
 
+            if (uploadError) throw uploadError;
+
+            const finalMarkdown = `\n![${file.name}](storage://${storagePath})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image saved locally', type: 'success' } });
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded.', type: 'success' } });
         } catch (error) {
-            setContent(currentContent => currentContent.replace(placeholder, '\n[Save failed]\n'));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image save failed.', type: 'error' } });
+            setContent(currentContent => currentContent.replace(placeholder, '\n[Upload failed]\n'));
+            const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
+            dispatch({ type: 'SHOW_TOAST', payload: { message: `Image upload failed: ${errorMessage}`, type: 'error' } });
             console.error(error);
         }
     };
@@ -289,8 +297,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
              <div ref={viewRef} className="text-[#F0F0F0] text-sm w-full flex-grow overflow-y-auto prose-custom">
                 {renderedParts.length > 0 ? renderedParts.map((part) => {
                     if (part.type === 'image') {
-                        const fullImageUrl = `${part.protocol}://${part.key}`;
-                        return <NoteImage key={`${part.key}-${part.id}`} imageUrl={fullImageUrl} altText={part.alt} onClick={setFullscreenSrc} />
+                        return <NoteImage key={`${part.key}-${part.id}`} imageUrl={`storage://${part.key}`} altText={part.alt} onClick={setFullscreenSrc} />
                     }
                     if (part.type === 'text') {
                         return <div key={part.id} dangerouslySetInnerHTML={{ __html: part.html }} />;

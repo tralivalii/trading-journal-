@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { getImage, cacheImageFromUrl } from '../services/imageDB';
 import { supabase } from '../services/supabase';
 
 interface ImageState {
@@ -8,8 +7,11 @@ interface ImageState {
     isLoading: boolean;
 }
 
-// This hook takes a storage path and resolves it to a usable URL.
-// It implements a robust offline-first strategy that works with private buckets.
+/**
+ * A simplified, online-only hook to get a secure, temporary URL for an image from Supabase Storage.
+ * @param storagePath The path to the file in the storage bucket (e.g., "user-id/image.png").
+ * @returns An object with the signed URL, loading state, and error state.
+ */
 const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => {
     const [imageState, setImageState] = useState<ImageState>({
         url: null,
@@ -24,62 +26,34 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
         }
 
         let isMounted = true;
-        let objectUrlToRevoke: string | null = null;
-        
         setImageState({ url: null, error: false, isLoading: true });
 
-        const getUrl = async () => {
+        const getSignedUrl = async () => {
             try {
-                // --- Priority 1: Check local cache (IndexedDB) first ---
-                const cachedFile = await getImage(storagePath);
-                if (isMounted && cachedFile) {
-                    objectUrlToRevoke = URL.createObjectURL(cachedFile);
-                    setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
-                    return;
-                }
-
-                // --- Priority 2: If not in cache, fetch from Supabase Storage using a signed URL ---
-                if (!navigator.onLine) {
-                    throw new Error("Offline and image not found in cache.");
-                }
-
-                // Generate a signed URL. This is the secure method for private buckets.
-                // The URL is valid for 1 minute, which is enough time to display and cache it.
-                const { data, error: signedUrlError } = await supabase.storage
+                // Generate a signed URL valid for 1 hour. This is the secure method for private buckets.
+                const { data, error } = await supabase.storage
                     .from('trade-attachments')
-                    .createSignedUrl(storagePath, 60); // 60 seconds validity
+                    .createSignedUrl(storagePath, 3600); // 1 hour validity
 
-                if (signedUrlError || !data?.signedUrl) {
-                    throw signedUrlError || new Error(`Could not generate signed URL for path: ${storagePath}`);
+                if (error) {
+                    throw error;
                 }
-                
-                const signedUrl = data.signedUrl;
 
                 if (isMounted) {
-                    // Show the image immediately using the signed URL
-                    setImageState({ url: signedUrl, error: false, isLoading: false });
-                    
-                    // In the background, cache the image for future offline access.
-                    // This is a "read-through" cache strategy.
-                    cacheImageFromUrl(storagePath, signedUrl);
+                    setImageState({ url: data.signedUrl, error: false, isLoading: false });
                 }
-
             } catch (err) {
-                console.error(`Failed to load image from path ${storagePath}:`, err);
+                console.error(`Failed to get signed URL for ${storagePath}:`, err);
                 if (isMounted) {
                     setImageState({ url: null, error: true, isLoading: false });
                 }
             }
         };
 
-        getUrl();
+        getSignedUrl();
 
         return () => {
             isMounted = false;
-            // Clean up any created blob URL to prevent memory leaks
-            if (objectUrlToRevoke) {
-                URL.revokeObjectURL(objectUrlToRevoke);
-            }
         };
     }, [storagePath]);
 

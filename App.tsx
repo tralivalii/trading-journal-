@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
-import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
+import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
 import TradesList from './components/TradesList';
 import Modal from './components/ui/Modal';
 import TradeForm from './components/TradeForm';
@@ -15,7 +15,6 @@ import { generateTemporalData } from './services/analysisService';
 import Auth from './components/Auth';
 import { ICONS } from './constants';
 import { supabase } from './services/supabase';
-import { getTable, bulkPut, getSyncQueue, clearSyncQueue } from './services/offlineService';
 import DropdownMenu from './components/ui/DropdownMenu';
 
 declare const Chart: any;
@@ -379,26 +378,6 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
     );
 }
 
-const SyncIndicator: React.FC<{ status: SyncStatus }> = ({ status }) => {
-    const indicator = useMemo(() => {
-        switch (status) {
-            case 'online': return { text: 'Online', color: 'bg-green-500', icon: '✓' };
-            case 'offline': return { text: 'Offline', color: 'bg-yellow-500', icon: '!' };
-            case 'syncing': return { text: 'Syncing...', color: 'bg-blue-500', icon: '⟳' };
-            default: return null;
-        }
-    }, [status]);
-
-    if (!indicator) return null;
-
-    return (
-        <div className="fixed bottom-4 left-4 z-50 text-xs font-medium text-white px-3 py-1.5 rounded-full flex items-center gap-2 bg-gray-800 border border-gray-700/50 shadow-lg">
-            <span className={`w-2.5 h-2.5 rounded-full ${indicator.color} ${status === 'syncing' ? 'animate-pulse' : ''}`}></span>
-            <span>{indicator.text}</span>
-        </div>
-    );
-};
-
 const mapTradeFromDb = (t: any): Trade => ({
     ...t,
     accountId: t.account_id,
@@ -417,83 +396,6 @@ const mapTradeFromDb = (t: any): Trade => ({
     stoplossPrice: t.stoploss_price ? Number(t.stoploss_price) : undefined,
     takeprofitPrice: t.takeprofit_price ? Number(t.takeprofit_price) : undefined,
 });
-
-async function processSyncQueue(userId: string) {
-    const queue = await getSyncQueue();
-    if (queue.length === 0) return true;
-
-    for (const item of queue) {
-        try {
-            switch (item.type) {
-                case 'trade': {
-                    const { accountId, riskAmount, closeType, analysisD1, analysis1h, analysis5m, analysisResult, aiAnalysis, ...rest } = item.payload;
-                    const supabasePayload = {
-                        ...rest,
-                        user_id: userId,
-                        account_id: accountId,
-                        risk_amount: riskAmount,
-                        close_type: closeType,
-                        analysis_d1: analysisD1,
-                        analysis_1h: analysis1h,
-                        analysis_5m: analysis5m,
-                        analysis_result: analysisResult,
-                        ai_analysis: aiAnalysis
-                    };
-                    
-                    if (item.action === 'create' || item.action === 'update') {
-                        const { error } = await supabase.from('trades').upsert(supabasePayload);
-                        if (error) throw error;
-                    } else if (item.action === 'delete') {
-                        const { error } = await supabase.from('trades').delete().eq('id', item.payload.id);
-                        if (error) throw error;
-                    }
-                    break;
-                }
-                case 'account': {
-                    const { initialBalance, isArchived, ...rest } = item.payload;
-                    const supabasePayload = {
-                        ...rest,
-                        user_id: userId,
-                        initial_balance: initialBalance,
-                        is_archived: isArchived
-                    };
-                    if (item.action === 'create' || item.action === 'update') {
-                        const { error } = await supabase.from('accounts').upsert(supabasePayload);
-                        if (error) throw error;
-                    } else if (item.action === 'delete') {
-                        const { error } = await supabase.from('accounts').delete().eq('id', item.payload.id);
-                        if (error) throw error;
-                    }
-                    break;
-                }
-                case 'note': {
-                    const payload = { ...item.payload, user_id: userId };
-                    if (item.action === 'create' || item.action === 'update') {
-                        const { error } = await supabase.from('notes').upsert(payload);
-                        if (error) throw error;
-                    } else if (item.action === 'delete') {
-                        const { error } = await supabase.from('notes').delete().eq('id', item.payload.id);
-                        if (error) throw error;
-                    }
-                    break;
-                }
-                 case 'settings': {
-                    const { error } = await supabase
-                        .from('user_data')
-                        .upsert({ user_id: userId, data: item.payload });
-                    if (error) throw error;
-                    break;
-                }
-            }
-        } catch (error) {
-            console.error(`Sync Error (${item.type} ${item.action}):`, error);
-            return false; // Stop processing on first error
-        }
-    }
-    
-    await clearSyncQueue();
-    return true;
-}
 
 const TOAST_ICONS = {
   success: (
@@ -564,10 +466,9 @@ const ToastComponent: React.FC<{
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { session, currentUser, userData, isLoading, isGuest, hasMoreTrades, isFetchingMore, toasts, syncStatus } = state;
+  const { session, currentUser, userData, isLoading, hasMoreTrades, isFetchingMore, toasts } = state;
 
   const [isFormModalOpen, setFormModalOpen] = useState(false);
-  const tradeFormRef = useRef<{ handleCloseRequest: () => void }>(null);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
   const [isDeleteConfirmModalOpen, setDeleteConfirmModalOpen] = useState(false);
   const [isDeleteTradeModalOpen, setDeleteTradeModalOpen] = useState(false);
@@ -580,116 +481,45 @@ function AppContent() {
   
   const [showFab, setShowFab] = useState(true);
   const lastScrollY = useRef(0);
-  const prevSyncStatusRef = useRef(syncStatus);
   
   const closeToast = useCallback((id: number) => {
     dispatch({ type: 'HIDE_TOAST', payload: id });
   }, [dispatch]);
 
-  // Stable sync handler
-  const handleSync = useCallback(async () => {
-      if (syncStatus === 'online' && currentUser && !isGuest) {
-          const queue = await getSyncQueue();
-          if (queue.length === 0) {
-              return; // Nothing to sync
-          }
-
-          dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-          const success = await processSyncQueue(currentUser.id);
-
-          if (success) {
-              dispatch({ type: 'SHOW_TOAST', payload: { message: 'Data synced successfully.', type: 'success' } });
-          } else {
-              dispatch({ type: 'SHOW_TOAST', payload: { message: 'Sync failed. Your changes are still saved locally.', type: 'error' } });
-          }
-          dispatch({ type: 'SET_SYNC_STATUS', payload: 'online' });
-      }
-  }, [syncStatus, currentUser, isGuest, dispatch]);
-
-  // Effect to listen for custom sync requests
   useEffect(() => {
-      const doSync = () => handleSync();
-      window.addEventListener('sync-request', doSync);
-      return () => window.removeEventListener('sync-request', doSync);
-  }, [handleSync]);
-
-  // Effect to trigger sync when coming back online
-  useEffect(() => {
-      const wasOffline = prevSyncStatusRef.current === 'offline';
-      const isOnlineNow = syncStatus === 'online';
-
-      if (wasOffline && isOnlineNow) {
-          console.log("App came back online. Triggering sync.");
-          handleSync();
-      }
-
-      prevSyncStatusRef.current = syncStatus;
-  }, [syncStatus, handleSync]);
-
-
-  useEffect(() => {
-    if (currentUser && !userData && !isGuest) {
+    if (currentUser && !userData) {
       const fetchInitialUserData = async () => {
         dispatch({ type: 'SET_IS_LOADING', payload: true });
         
         try {
-            // Offline-first: load from IndexedDB immediately
-            const [localTrades, localAccounts, localNotes, localSettings] = await Promise.all([
-                getTable<Trade>('trades'),
-                getTable<Account>('accounts'),
-                getTable<Note>('notes'),
-                getTable<any>('settings')
+            const [
+              { data: accountsData, error: accountsError },
+              { data: tradesData, error: tradesError },
+              { data: notesData, error: notesError },
+              { data: userSettingsData, error: settingsError }
+            ] = await Promise.all([
+              supabase.from('accounts').select('*').eq('user_id', currentUser.id),
+              supabase.from('trades').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }),
+              supabase.from('notes').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }).range(0, NOTES_PAGE_SIZE - 1),
+              supabase.from('user_data').select('data').eq('user_id', currentUser.id).single()
             ]);
             
-            const localDataExists = localTrades.length > 0 || localAccounts.length > 0;
-            if (localDataExists) {
-                const settings = localSettings.length > 0 ? localSettings[0].data : {};
-                dispatch({ type: 'SET_USER_DATA', payload: { trades: localTrades, accounts: localAccounts, notes: localNotes, ...settings } });
-                dispatch({ type: 'SET_IS_LOADING', payload: false });
+            if (accountsError || tradesError || notesError || settingsError) {
+                throw accountsError || tradesError || notesError || settingsError;
             }
+            
+            const serverTrades = (tradesData || []).map(mapTradeFromDb);
+            const serverAccounts: Account[] = (accountsData || []).map((a: any) => ({
+                ...a,
+                initialBalance: Number(a.initial_balance || 0),
+                isArchived: a.is_archived,
+            }));
+            const serverNotes = (notesData || []) as Note[];
+            const serverSettings = userSettingsData?.data || {};
 
-            // Then, fetch from network to update
-            if (navigator.onLine) {
-                 const [
-                  { data: accountsData, error: accountsError },
-                  { data: tradesData, error: tradesError },
-                  { data: notesData, error: notesError },
-                  { data: userSettingsData, error: settingsError }
-                ] = await Promise.all([
-                  supabase.from('accounts').select('*').eq('user_id', currentUser.id),
-                  supabase.from('trades').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }),
-                  supabase.from('notes').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }).range(0, NOTES_PAGE_SIZE - 1),
-                  supabase.from('user_data').select('data').eq('user_id', currentUser.id).single()
-                ]);
-                
-                if (accountsError || tradesError || notesError || settingsError) {
-                    if (!localDataExists) throw accountsError || tradesError || notesError || settingsError;
-                    console.warn("Network fetch failed, using local data.", accountsError || tradesError || notesError || settingsError);
-                    return; // Keep local data if network fails
-                }
-                
-                const serverTrades = (tradesData || []).map(mapTradeFromDb);
-                const serverAccounts: Account[] = (accountsData || []).map((a: any) => ({
-                    ...a,
-                    initialBalance: Number(a.initial_balance || 0),
-                    isArchived: a.is_archived,
-                }));
-                const serverNotes = (notesData || []) as Note[];
-                const serverSettings = userSettingsData?.data || {};
-
-                // Update IndexedDB with fresh data from server
-                await Promise.all([
-                    bulkPut('trades', serverTrades),
-                    bulkPut('accounts', serverAccounts),
-                    bulkPut('notes', serverNotes),
-                    bulkPut('settings', [{ id: 'user-settings', data: serverSettings }])
-                ]);
-                
-                // Update state
-                const fullUserData: UserData = { ...serverSettings, accounts: serverAccounts, trades: serverTrades, notes: serverNotes };
-                dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
-                dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: [], hasMore: serverNotes.length === NOTES_PAGE_SIZE } });
-            }
+            const fullUserData: UserData = { ...serverSettings, accounts: serverAccounts, trades: serverTrades, notes: serverNotes };
+            dispatch({ type: 'SET_USER_DATA', payload: fullUserData });
+            dispatch({ type: 'FETCH_MORE_NOTES_SUCCESS', payload: { notes: [], hasMore: serverNotes.length === NOTES_PAGE_SIZE } });
 
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -700,18 +530,16 @@ function AppContent() {
       };
       
       fetchInitialUserData();
-    } else if (!currentUser && !isGuest) {
+    } else if (!currentUser) {
        dispatch({ type: 'SET_USER_DATA', payload: null });
     }
-  }, [currentUser, userData, dispatch, isGuest]);
+  }, [currentUser, userData, dispatch]);
   
   const handleLoadMore = useCallback(async () => {
-    // This function needs to be re-evaluated in an offline-first context.
-    // For now, it will only work online.
-    if (isGuest || !currentUser || !userData || isFetchingMore || !navigator.onLine) return;
+    if (!currentUser || !userData || isFetchingMore) return;
     dispatch({ type: 'FETCH_MORE_TRADES_START' });
-    // ... rest of the online-only load more logic
-  }, [currentUser, userData, isGuest, dispatch, isFetchingMore]);
+    // This function remains online-only
+  }, [currentUser, userData, dispatch, isFetchingMore]);
 
 
   const controlFabVisibility = useCallback(() => {
@@ -733,10 +561,6 @@ function AppContent() {
   const activeAccounts = useMemo(() => userData?.accounts.filter(a => !a.isArchived) || [], [userData]);
 
   const handleAddTrade = () => {
-    if (isGuest) {
-        dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-        return;
-    }
     if (activeAccounts.length === 0) {
       setFirstAccountModalOpen(true);
     } else {
@@ -746,10 +570,6 @@ function AppContent() {
   };
 
   const handleEditTrade = (trade: Trade) => {
-    if (isGuest) {
-        dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-        return;
-    }
     setTradeToEdit(trade);
     setFormModalOpen(true);
   };
@@ -767,10 +587,6 @@ function AppContent() {
   };
 
   const handleDeleteTrade = (id: string) => {
-    if (isGuest) {
-        dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-        return;
-    }
     setTradeIdToDelete(id);
     setDeleteTradeModalOpen(true);
   };
@@ -798,7 +614,6 @@ function AppContent() {
   };
 
   const handleLogout = () => {
-    if (isGuest) { window.location.reload(); return; }
     setLogoutConfirmModalOpen(true);
   };
 
@@ -809,7 +624,7 @@ function AppContent() {
   };
   
   const handleDeleteUserAccount = async () => {
-     if (isGuest || !currentUser) return;
+     if (!currentUser) return;
      const { error } = await supabase.rpc('delete_user_account');
      if (error) {
         dispatch({ type: 'SHOW_TOAST', payload: { message: `Error deleting account: ${error.message}`, type: 'error' } });
@@ -851,7 +666,7 @@ function AppContent() {
     );
   }
   
-  if (!session && !isGuest) {
+  if (!session) {
     return <Auth />;
   }
   
@@ -865,7 +680,6 @@ function AppContent() {
 
   return (
     <div className="bg-[#1A1D26] text-[#F0F0F0] min-h-screen font-sans">
-      <SyncIndicator status={syncStatus} />
       <div className="container mx-auto p-4 md:p-8">
         <header className="flex justify-center md:justify-between items-center mb-8">
             <div className="flex items-center gap-1 md:gap-4">
@@ -887,7 +701,7 @@ function AppContent() {
                 >
                     <div className="p-2">
                         <div className="px-2 py-1 text-sm text-gray-400 truncate">
-                            {isGuest ? 'Guest Mode' : currentUser?.email}
+                            {currentUser?.email}
                         </div>
                         <button 
                             onClick={() => setActiveView('data')} 
@@ -900,20 +714,12 @@ function AppContent() {
                             onClick={handleLogout} 
                             className="w-full text-left px-2 py-1.5 text-sm text-red-400 hover:bg-gray-700 rounded-md transition-colors"
                         >
-                           {isGuest ? 'Login or Sign Up' : 'Logout'}
+                           Logout
                         </button>
                     </div>
                 </DropdownMenu>
             </div>
         </header>
-
-        {isGuest && (
-            <div className="container mx-auto -mt-4 mb-6">
-                <div className="bg-yellow-500/20 border border-yellow-500 text-yellow-300 px-4 py-3 rounded-lg text-center text-sm" role="alert">
-                    You are in <strong>Guest Mode</strong>. Your data will not be saved. <a href="/" className="font-bold underline hover:text-white">Sign Up or Sign In</a> to start your journal.
-                </div>
-            </div>
-        )}
 
         <main>
           {activeView === 'journal' && <TradesList onEdit={handleEditTrade} onView={handleViewTrade} onDelete={handleDeleteTrade} onAddTrade={handleAddTrade} onLoadMore={handleLoadMore} hasMore={hasMoreTrades} isFetchingMore={isFetchingMore} />}
@@ -947,7 +753,7 @@ function AppContent() {
         isOpen={isFormModalOpen} 
         onClose={handleFormClose}
         onCloseRequest={() => {
-            // Forward the close request to the form component itself to handle dirty state
+            // This logic is now simpler as we don't need to check complex sync states
             const tradeForm = document.getElementById('trade-form-wrapper');
             if (tradeForm) {
                  const event = new CustomEvent('closeRequest');

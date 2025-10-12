@@ -4,9 +4,8 @@ import { Note } from '../types';
 import NoteDetail from './NoteDetail';
 import { ICONS } from '../constants';
 import Modal from './ui/Modal';
-import { supabase } from '../services/supabase'; // Kept for image upload logic
+import { supabase } from '../services/supabase';
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
-import { saveImage } from '../services/imageDB';
 
 interface NotesViewProps {}
 const NOTES_PAGE_SIZE = 20;
@@ -97,14 +96,14 @@ const NewNoteCreator: React.FC<{
     isSaving: boolean;
 }> = ({ onSave, onCancel, isSaving }) => {
     const { state, dispatch } = useAppContext();
-    const { currentUser, isGuest } = state;
+    const { currentUser } = state;
     const [content, setContent] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const uploadAndInsertImage = async (file: File) => {
         const textarea = textareaRef.current;
-        if (!textarea) return;
+        if (!textarea || !currentUser) return;
 
         const cursorPosition = textarea.selectionStart;
         const placeholder = `\n![Uploading ${file.name}...]()\n`;
@@ -112,18 +111,23 @@ const NewNoteCreator: React.FC<{
         setContent(newContent);
 
         try {
-            // Save to local DB for offline access
-            const localImageKey = await saveImage(currentUser?.id || 'guest', file);
-            const finalMarkdown = `\n![${file.name}](idb://${localImageKey})\n`;
+            const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
+            const { error: uploadError } = await supabase.storage
+                .from('trade-attachments') // Assuming notes images go to the same bucket for simplicity
+                .upload(storagePath, file);
 
+            if (uploadError) {
+                throw uploadError;
+            }
+
+            const finalMarkdown = `\n![${file.name}](storage://${storagePath})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image saved locally', type: 'success' } });
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded successfully.', type: 'success' } });
 
-            // NOTE: Supabase upload can be moved to a background sync process.
-            // For now, we prioritize the offline experience.
         } catch (error) {
-            setContent(currentContent => currentContent.replace(placeholder, '\n[Save failed]\n'));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image save failed.', type: 'error' } });
+            setContent(currentContent => currentContent.replace(placeholder, '\n[Upload failed]\n'));
+            const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
+            dispatch({ type: 'SHOW_TOAST', payload: { message: `Image upload failed: ${errorMessage}`, type: 'error' } });
             console.error(error);
         }
     };
@@ -199,7 +203,7 @@ const NotesEmptyState: React.FC<{ onNewNote: () => void }> = ({ onNewNote }) => 
 
 const NotesView: React.FC<NotesViewProps> = () => {
     const { state, dispatch } = useAppContext();
-    const { userData, currentUser, isGuest, hasMoreNotes, isFetchingMoreNotes } = state;
+    const { userData, currentUser, hasMoreNotes, isFetchingMoreNotes } = state;
     const notes = userData?.notes || [];
 
     const [selectedNote, setSelectedNote] = useState<Note | null>(null);
@@ -232,10 +236,6 @@ const NotesView: React.FC<NotesViewProps> = () => {
     
     const handleInitiateNewNote = () => {
         if (isSavingNote) return;
-        if (isGuest) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-            return;
-        }
         setSelectedNote(null);
         setIsEditMode(false);
         setIsCreatingNewNote(true);
@@ -247,7 +247,7 @@ const NotesView: React.FC<NotesViewProps> = () => {
     };
     
     const handleCreateNote = async (content: string) => {
-        if (isGuest || !currentUser) return;
+        if (!currentUser) return;
         if (!content.trim()) {
             dispatch({ type: 'SHOW_TOAST', payload: { message: "Note cannot be empty.", type: 'error' } });
             return;
@@ -272,11 +272,6 @@ const NotesView: React.FC<NotesViewProps> = () => {
     };
 
     const handleUpdateNote = async (id: string, content: string) => {
-        if (isGuest) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-            setIsEditMode(false);
-            return;
-        }
         setIsSavingNote(true);
         const tags = parseTags(content);
         const originalNote = notes.find(n => n.id === id);
@@ -296,10 +291,6 @@ const NotesView: React.FC<NotesViewProps> = () => {
     };
     
     const handleDeleteNote = async (id: string) => {
-        if (isGuest) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "This feature is disabled in guest mode.", type: 'error' } });
-            return;
-        }
         if (!confirm('Are you sure you want to delete this note?')) return;
         
         await deleteNoteAction(dispatch, state, id);
