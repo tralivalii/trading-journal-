@@ -45,6 +45,7 @@ export async function cacheImageFromUrl(key: string, url: string): Promise<void>
         await saveImage(key, file);
     } catch (error) {
         console.error("Failed to cache image:", error);
+        // Do not re-throw, as caching is a background enhancement, not a critical failure.
     }
 }
 

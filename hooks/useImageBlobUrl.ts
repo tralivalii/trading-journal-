@@ -8,8 +8,6 @@ const useImageBlobUrl = (imagePath: string | undefined | null): string | null =>
     const [imageUrl, setImageUrl] = useState<string | null>(null);
 
     useEffect(() => {
-        // This effect manages the entire lifecycle of getting a URL for the image.
-        // It will also handle cleanup of blob URLs.
         if (!imagePath) {
             setImageUrl(null);
             return;
@@ -20,7 +18,7 @@ const useImageBlobUrl = (imagePath: string | undefined | null): string | null =>
 
         const getUrl = async () => {
             try {
-                // Priority 1: Check local cache (IndexedDB)
+                // Priority 1: Check local cache (IndexedDB). This is the fastest method.
                 const localFile = await getImage(imagePath);
                 if (isMounted && localFile) {
                     objectUrlToRevoke = URL.createObjectURL(localFile);
@@ -28,31 +26,28 @@ const useImageBlobUrl = (imagePath: string | undefined | null): string | null =>
                     return; // Found locally, we are done.
                 }
 
-                // Priority 2: Fetch from remote (Supabase) if online
+                // Priority 2: Not found locally. If online, fetch from remote (Supabase).
                 if (isMounted && state.syncStatus === 'online') {
                     const { data, error } = await supabase.storage.from('screenshots').createSignedUrl(imagePath, 3600);
                     
                     if (error) {
-                        // This is a likely failure point if the file doesn't exist or RLS fails.
-                        console.error(`Supabase createSignedUrl failed for "${imagePath}":`, error);
-                        if (isMounted) setImageUrl(null);
+                        console.error(`Supabase createSignedUrl failed for "${imagePath}":`, error.message);
+                        if (isMounted) setImageUrl(null); // Explicitly set to null on failure
                         return;
                     }
 
                     if (isMounted && data?.signedUrl) {
-                        // We have a remote URL. We will use it directly for display.
+                        // We have a remote URL. Use it for immediate display.
                         setImageUrl(data.signedUrl);
-                        // And we'll try to cache it for next time. This can happen in the background.
-                        cacheImageFromUrl(imagePath, data.signedUrl).catch(cacheError => {
-                            console.warn("Failed to cache remote image:", cacheError);
-                        });
+                        // In the background, cache this image locally for future offline access.
+                        cacheImageFromUrl(imagePath, data.signedUrl);
                     }
                 } else {
-                    // Not found locally and we are offline.
+                    // Not found locally and we are offline. Cannot display the image.
                     if (isMounted) setImageUrl(null);
                 }
             } catch (e) {
-                console.error(`Exception while fetching/loading image for path "${imagePath}":`, e);
+                console.error(`Exception while fetching image for path "${imagePath}":`, e);
                 if (isMounted) setImageUrl(null);
             }
         };
@@ -61,7 +56,8 @@ const useImageBlobUrl = (imagePath: string | undefined | null): string | null =>
 
         return () => {
             isMounted = false;
-            // The key part: revoke the blob URL if one was created to prevent memory leaks.
+            // Revoke the blob URL if one was created to prevent memory leaks.
+            // Supabase signed URLs do not need to be revoked.
             if (objectUrlToRevoke) {
                 URL.revokeObjectURL(objectUrlToRevoke);
             }
