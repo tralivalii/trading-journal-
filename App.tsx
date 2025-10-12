@@ -291,13 +291,13 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                     </div>
                 </div>
                 <div className="mt-4 flex justify-start md:justify-end">
-                    <div>
+                    <div className="flex items-center">
                         <label htmlFor="accountFilterDashboard" className="text-sm text-[#8A91A8] mr-2">Account:</label>
                         <select 
                             id="accountFilterDashboard"
                             value={selectedAccountId}
                             onChange={(e) => setSelectedAccountId(e.target.value)}
-                            className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                            className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
                         >
                             <option value="all">All Accounts</option>
                             {activeAccounts.map(acc => (
