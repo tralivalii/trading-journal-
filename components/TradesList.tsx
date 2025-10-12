@@ -50,27 +50,30 @@ const MobileTradeCard: React.FC<{
     formattedDate: string;
 }> = ({ trade, account, onView, onEdit, onDelete, formattedDate }) => {
     const currency = account?.currency || 'USD';
-    const hasAlerts = account?.isArchived || trade.risk > 2;
     const formattedPnl = trade.pnl.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
     return (
-        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors">
-            {/* Top Row: Main Info */}
-            <div className="flex justify-between items-start mb-3">
-                <div className="flex flex-col items-start gap-1">
-                    <span className="font-bold text-white text-lg">{trade.pair}</span>
-                     <div className="flex items-center gap-1.5">
+        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors space-y-3">
+            {/* Top Row: Pair, Result, Alerts, and PnL */}
+            <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3 min-w-0"> {/* min-w-0 for truncate to work in flex */}
+                    <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-bold text-white text-lg truncate" title={trade.pair}>{trade.pair}</span>
+                        <span className={`font-semibold py-1 px-2 rounded-full text-xs text-center inline-block flex-shrink-0 ${getResultClasses(trade.result)}`}>
+                            {trade.result}
+                        </span>
+                    </div>
+                     <div className="flex items-center gap-1.5 flex-shrink-0">
                         {account?.isArchived && <AlertIcon message="Account Archived" />}
                         {trade.risk > 2 && <AlertIcon message={`Risk: ${trade.risk}%`} />}
                     </div>
                 </div>
                 <div className="text-right flex-shrink-0 pl-2">
                     <div className={`font-bold text-lg ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formattedPnl}</div>
-                    <div className="text-sm text-gray-400">{formattedDate}</div>
                 </div>
             </div>
 
-            {/* Bottom Row: Details and Actions */}
+            {/* Bottom Row: Details, Date, and Actions */}
             <div className="flex justify-between items-center text-sm">
                 <div className="flex items-center gap-4">
                     <div>
@@ -87,10 +90,8 @@ const MobileTradeCard: React.FC<{
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
-                    <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center inline-block ${getResultClasses(trade.result)}`}>
-                        {trade.result}
-                    </span>
+                <div className="flex items-center gap-2"> {/* Increased gap for date and menu */}
+                    <div className="text-sm text-gray-400">{formattedDate}</div>
                     <DropdownMenu 
                         trigger={
                             <button onPointerUp={e => e.stopPropagation()} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Trade actions">
