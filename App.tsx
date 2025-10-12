@@ -79,27 +79,52 @@ const EquityChart: React.FC<{ trades: Trade[] }> = ({ trades }) => {
 
         const chartData = generateTemporalData(trades);
         
-        // Define colors for clarity
         const green = '#10B981';
         const red = '#EF4444';
         const gray = '#8A91A8';
-        const greenTransparent = 'rgba(16, 185, 129, 0.1)';
-        const redTransparent = 'rgba(239, 68, 68, 0.1)';
-        const grayTransparent = 'rgba(138, 145, 168, 0.1)';
+        const greenTransparent = 'rgba(16, 185, 129, 0.2)';
+        const redTransparent = 'rgba(239, 68, 68, 0.2)';
+
+        const createGradientFill = (chart: any) => {
+            const { ctx, chartArea, scales } = chart;
+            if (!chartArea) return null;
+            
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            const zeroPixel = scales.y.getPixelForValue(0);
+
+            const zeroPoint = (zeroPixel - chartArea.top) / chartArea.height;
+            const clampedZeroPoint = Math.max(0, Math.min(1, zeroPoint));
+
+            if (scales.y.min >= 0) { // All data is positive
+                return greenTransparent;
+            }
+            if (scales.y.max <= 0) { // All data is negative
+                return redTransparent;
+            }
+
+            gradient.addColorStop(0, greenTransparent);
+            gradient.addColorStop(clampedZeroPoint, greenTransparent);
+            gradient.addColorStop(clampedZeroPoint, redTransparent);
+            gradient.addColorStop(1, redTransparent);
+            
+            return gradient;
+        };
 
         const datasetConfig = {
             label: 'Equity Curve',
             data: chartData.data,
+            backgroundColor: (context: any) => {
+                const chart = context.chart;
+                if (chart.chartArea) {
+                    return createGradientFill(chart);
+                }
+                return 'rgba(0,0,0,0)';
+            },
             segment: {
                 borderColor: (ctx: any) => {
                     if (ctx.p1.parsed.y > ctx.p0.parsed.y) return green;
                     if (ctx.p1.parsed.y < ctx.p0.parsed.y) return red;
                     return gray;
-                },
-                backgroundColor: (ctx: any) => {
-                    if (ctx.p1.parsed.y > ctx.p0.parsed.y) return greenTransparent;
-                    if (ctx.p1.parsed.y < ctx.p0.parsed.y) return redTransparent;
-                    return grayTransparent;
                 },
             },
             pointBackgroundColor: chartData.pointColors,
