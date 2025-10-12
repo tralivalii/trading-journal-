@@ -266,7 +266,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             </div>
             {fullscreenSrc && (
                 <div 
-                  className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4" 
+                  className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-8" 
                   onClick={() => setFullscreenSrc(null)}
                 >
                   <div
@@ -276,7 +276,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                     <img 
                       src={fullscreenSrc} 
                       alt="Fullscreen view" 
-                      className="block max-w-full max-h-[90vh] object-contain rounded-lg"
+                      className="block max-w-[95vw] max-h-[90vh] object-contain rounded-lg"
                     />
                   </div>
                   <button

@@ -5,6 +5,8 @@
 
 
 
+
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -231,12 +233,12 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         
         const accountsMap = new Map<string, Account>(accounts.map(acc => [acc.id, acc]));
     
-        return filteredTrades.reduce<Record<string, number>>((summary, trade) => {
+        return filteredTrades.reduce((summary, trade) => {
             const account = accountsMap.get(trade.accountId);
             const currency = account?.currency || 'USD';
             summary[currency] = (summary[currency] || 0) + trade.pnl;
             return summary;
-        }, {});
+        }, {} as Record<string, number>);
     }, [filteredTrades, accounts]);
 
 
