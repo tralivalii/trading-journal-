@@ -20,7 +20,7 @@ export enum Direction {
 
 // New type for analysis sections
 export interface Analysis {
-  image?: string; // This is now a key for an image in IndexedDB
+  image?: string; // This now holds the Supabase Storage path, not a full URL
   notes?: string;
 }
 

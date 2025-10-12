@@ -347,24 +347,19 @@ export const deleteTradeAction = async (
 
     // --- Image Deletion Logic ---
     if (tradeToDelete) {
-        const imageUrls = [
+        const imagePaths = [
             tradeToDelete.analysisD1.image,
             tradeToDelete.analysis1h.image,
             tradeToDelete.analysis5m.image,
             tradeToDelete.analysisResult.image
         ].filter(Boolean) as string[];
 
-        for (const url of imageUrls) {
-            await deleteImage(url); // Delete from IndexedDB
-            if (!isGuest && url.startsWith('https://')) {
+        for (const path of imagePaths) {
+            await deleteImage(path); // Delete from IndexedDB using the storage path as key
+            if (!isGuest && path) {
                 try {
-                    const urlObject = new URL(url);
-                    // Path format is /storage/v1/object/public/trade-attachments/user_id/file.jpg
-                    // We need the part after the bucket name.
-                    const pathToDelete = urlObject.pathname.split(`/trade-attachments/`)[1];
-                    if (pathToDelete) {
-                        await supabase.storage.from('trade-attachments').remove([pathToDelete]);
-                    }
+                    // The path is the direct path to the file in storage
+                    await supabase.storage.from('trade-attachments').remove([path]);
                 } catch (e) {
                     console.error("Failed to delete image from Supabase during trade deletion:", e);
                     // Don't block UI for this, just log it.

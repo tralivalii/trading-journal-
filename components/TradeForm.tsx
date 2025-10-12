@@ -268,20 +268,14 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   };
 
   const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
-      const currentImageUrl = (trade[sectionKey] as Analysis).image;
+      const currentImagePath = (trade[sectionKey] as Analysis).image;
 
       // Delete old image if it exists
-      if (currentImageUrl) {
-          await deleteImage(currentImageUrl); // Delete from local cache
-          if (!isGuest && currentUser && currentImageUrl.startsWith('https://')) {
+      if (currentImagePath) {
+          await deleteImage(currentImagePath); // Delete from local cache
+          if (!isGuest && currentUser && currentImagePath) {
               try {
-                  // Extract path from the public URL to delete from Supabase Storage
-                  const url = new URL(currentImageUrl);
-                  // Path format can be public or signed, this logic robustly finds the path
-                  const pathToDelete = url.pathname.split(`/trade-attachments/`)[1];
-                  if (pathToDelete) {
-                      await supabase.storage.from('trade-attachments').remove([pathToDelete]);
-                  }
+                  await supabase.storage.from('trade-attachments').remove([currentImagePath]);
               } catch (e) {
                   console.error("Failed to delete old image from Supabase Storage", e);
               }
@@ -292,39 +286,31 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
           setIsUploading(true);
           try {
               const compressedFile = await compressImage(file);
-              let finalImageUrl: string;
+              let finalImagePath: string;
 
               if (isGuest || !currentUser) {
-                  // For guests, create a temporary local key. This image will only exist on this device.
-                  finalImageUrl = `local://${crypto.randomUUID()}-${file.name}`;
-                  await saveImage(finalImageUrl, compressedFile);
+                  // For guests, we can't upload, so we just save locally.
+                  // This is a simplified path; a real guest mode might need more complex handling.
+                  finalImagePath = `guest/${crypto.randomUUID()}-${file.name}`;
+                  await saveImage(finalImagePath, compressedFile);
               } else {
-                  // For logged-in users, upload to Supabase and get a secure, long-lived signed URL.
-                  const imagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
+                  // For logged-in users, upload to Supabase and get the permanent storage path.
+                  const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
                   const { error: uploadError } = await supabase.storage
                       .from('trade-attachments')
-                      .upload(imagePath, compressedFile, { contentType: compressedFile.type });
+                      .upload(storagePath, compressedFile);
 
                   if (uploadError) {
                       throw uploadError;
                   }
-
-                  // Use a signed URL for secure access, even from private buckets. Valid for 10 years.
-                  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-                      .from('trade-attachments')
-                      .createSignedUrl(imagePath, 315360000); // 10 years in seconds
                   
-                  if (signedUrlError) {
-                    throw signedUrlError;
-                  }
+                  finalImagePath = storagePath;
 
-                  finalImageUrl = signedUrlData.signedUrl;
-
-                  // Cache the image locally using its signed URL as the key for offline access.
-                  await saveImage(finalImageUrl, compressedFile);
+                  // Also cache the image locally using its permanent path for offline access.
+                  await saveImage(finalImagePath, compressedFile);
               }
               
-              handleAnalysisChange(sectionKey, 'image', finalImageUrl);
+              handleAnalysisChange(sectionKey, 'image', finalImagePath);
               
           } catch (error) {
               console.error("Error saving image:", error);
@@ -334,7 +320,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               setIsUploading(false);
           }
       } else {
-          // Handle file removal by clearing the URL
+          // Handle file removal by clearing the path
           handleAnalysisChange(sectionKey, 'image', undefined);
       }
   };

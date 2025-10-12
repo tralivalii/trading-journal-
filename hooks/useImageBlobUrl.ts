@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getImage, saveImage } from '../services/imageDB';
+import { getImage, cacheImageFromUrl } from '../services/imageDB';
+import { supabase } from '../services/supabase';
 
 interface ImageState {
     url: string | null;
@@ -7,7 +8,9 @@ interface ImageState {
     isLoading: boolean;
 }
 
-const useImageBlobUrl = (imageUrl: string | undefined | null): ImageState => {
+// This hook now takes a storage path instead of a full URL.
+// It's responsible for finding the image locally or generating a secure URL to fetch it.
+const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => {
     const [imageState, setImageState] = useState<ImageState>({
         url: null,
         error: false,
@@ -15,7 +18,7 @@ const useImageBlobUrl = (imageUrl: string | undefined | null): ImageState => {
     });
 
     useEffect(() => {
-        if (!imageUrl) {
+        if (!storagePath) {
             setImageState({ url: null, error: false, isLoading: false });
             return;
         }
@@ -27,57 +30,41 @@ const useImageBlobUrl = (imageUrl: string | undefined | null): ImageState => {
 
         const getUrl = async () => {
             try {
-                // Handle custom idb protocol for Notes
-                if (imageUrl.startsWith('idb://')) {
-                    const imageKey = imageUrl.substring(6);
-                    const file = await getImage(imageKey);
-                    if (!file) throw new Error('Local image not found in IndexedDB');
-                    if (isMounted) {
-                        objectUrlToRevoke = URL.createObjectURL(file);
-                        setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
-                    }
-                    return;
-                }
-                 // Handle guest/local-only images for Trades
-                if (imageUrl.startsWith('local://')) {
-                    const localFile = await getImage(imageUrl);
-                    if (!localFile) throw new Error('Local image not found in cache.');
-                    if (isMounted) {
-                        objectUrlToRevoke = URL.createObjectURL(localFile);
-                        setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
-                    }
+                // --- Priority 1: Check local cache (IndexedDB) first ---
+                const cachedFile = await getImage(storagePath);
+                if (isMounted && cachedFile) {
+                    objectUrlToRevoke = URL.createObjectURL(cachedFile);
+                    setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
                     return;
                 }
 
-                // Handle public https URLs
-                if (imageUrl.startsWith('https://') || imageUrl.startsWith('http://')) {
-                    // Priority 1: Check cache
-                    const cachedFile = await getImage(imageUrl);
-                    if (isMounted && cachedFile) {
-                        objectUrlToRevoke = URL.createObjectURL(cachedFile);
-                        setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
-                        return;
-                    }
+                // --- Priority 2: If not in cache, fetch from Supabase Storage ---
+                if (!navigator.onLine) {
+                    throw new Error("Offline and image not found in cache.");
+                }
 
-                    // Priority 2: Fetch from network
-                    const response = await fetch(imageUrl);
-                    if (!response.ok) throw new Error(`Network response not ok: ${response.statusText}`);
+                // Generate a short-lived signed URL to securely access the private object.
+                const { data, error: signedUrlError } = await supabase.storage
+                    .from('trade-attachments')
+                    .createSignedUrl(storagePath, 300); // URL is valid for 5 minutes
+
+                if (signedUrlError) {
+                    throw signedUrlError;
+                }
+                
+                const signedUrl = data.signedUrl;
+
+                if (isMounted) {
+                    // Show the image immediately using the signed URL
+                    setImageState({ url: signedUrl, error: false, isLoading: false });
                     
-                    const blob = await response.blob();
-                    if (isMounted) {
-                        const file = new File([blob], imageUrl.split('/').pop() || 'cached-image', { type: blob.type });
-                        saveImage(imageUrl, file); // Cache in background
-                        objectUrlToRevoke = URL.createObjectURL(file);
-                        setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
-                    }
-                    return;
+                    // In the background, cache the image for future offline access.
+                    // This is a "read-through" cache strategy.
+                    cacheImageFromUrl(storagePath, signedUrl);
                 }
-
-                // If protocol is unknown or unsupported
-                throw new Error(`Unsupported image URL protocol: ${imageUrl}`);
 
             } catch (err) {
-                console.error(`Failed to load image from ${imageUrl}:`, err);
+                console.error(`Failed to load image from path ${storagePath}:`, err);
                 if (isMounted) {
                     setImageState({ url: null, error: true, isLoading: false });
                 }
@@ -88,11 +75,12 @@ const useImageBlobUrl = (imageUrl: string | undefined | null): ImageState => {
 
         return () => {
             isMounted = false;
+            // Clean up the created blob URL to prevent memory leaks
             if (objectUrlToRevoke) {
                 URL.revokeObjectURL(objectUrlToRevoke);
             }
         };
-    }, [imageUrl]);
+    }, [storagePath]);
 
     return imageState;
 };
