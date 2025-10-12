@@ -32,10 +32,11 @@ const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
 };
 
 export const analyzeTradeWithAI = async (trade: Trade, imageUrls: string[]): Promise<string> => {
-    if (!process.env.API_KEY) {
-        throw new Error("API key is not configured.");
+    const apiKey = JSON.parse(localStorage.getItem('gemini-api-key') || '""');
+    if (!apiKey) {
+        throw new Error("API key is not configured. Please add it in the Settings page.");
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
 
     let notesSection = '';
     for (const tf in timeframeMap) {

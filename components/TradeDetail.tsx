@@ -78,6 +78,19 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
   const [activeTab, setActiveTab] = useState<string>(filledTimeframes[0] || '');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState(() => JSON.parse(localStorage.getItem('gemini-api-key') || '""'));
+
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'gemini-api-key') {
+        setApiKey(JSON.parse(event.newValue || '""'));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   const analysisD1ImageUrl = useImageBlobUrl(trade.analysisD1.image);
   const analysis1hImageUrl = useImageBlobUrl(trade.analysis1h.image);
@@ -123,7 +136,7 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
     } catch (error: any) {
         console.error("AI Analysis Error:", error);
         setAiError(error.message || "Failed to get AI analysis.");
-        dispatch({ type: 'SHOW_TOAST', payload: { message: "Failed to get AI analysis.", type: 'error' } });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: error.message || "Failed to get AI analysis.", type: 'error' } });
     } finally {
         setIsAiLoading(false);
     }
@@ -226,9 +239,9 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
 
         {/* --- AI Analysis Section --- */}
         <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                 <h3 className="text-xl font-semibold text-white">AI Coach Analysis</h3>
-                {!trade.aiAnalysis && (
+                {apiKey && !trade.aiAnalysis && (
                     <button onClick={handleAiAnalysis} disabled={isAiLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-wait font-medium flex items-center justify-center gap-2 text-sm">
                         {isAiLoading ? (
                             <>
@@ -246,8 +259,10 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
                     <p className="text-gray-400 animate-pulse">The AI is analyzing your trade, notes, and charts. This may take a moment...</p>
                 ) : aiError ? (
                     <p className="text-red-400">Error: {aiError}</p>
-                ) : (
+                ) : apiKey ? (
                     <p className="text-gray-500">Click the button to get an objective analysis of your trade from an AI trading coach.</p>
+                ) : (
+                    <p className="text-gray-500">Please add your Google Gemini API key in the <span className="font-bold">Settings</span> page to enable this feature.</p>
                 )}
             </div>
         </div>

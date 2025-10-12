@@ -6,6 +6,7 @@ import Modal from './ui/Modal';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
 import AccountForm from './AccountForm';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface DataViewProps {
     onInitiateDeleteAccount: () => void;
@@ -188,6 +189,15 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
     const [accountToEdit, setAccountToEdit] = useState<Account | null>(null);
     const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
     const [currentDefaults, setCurrentDefaults] = useState(defaultSettings);
+
+    const [apiKey, setApiKey] = useLocalStorage('gemini-api-key', '');
+    const [tempApiKey, setTempApiKey] = useState(apiKey);
+    const [isKeyVisible, setIsKeyVisible] = useState(false);
+
+    const handleSaveApiKey = () => {
+        setApiKey(tempApiKey);
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'API Key saved successfully.', type: 'success' } });
+    };
     
     const accountsWithTradeStatus = useMemo(() => {
         const tradeCounts = new Map<string, number>();
@@ -422,6 +432,42 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
 
                 {/* Right Column */}
                 <div className="space-y-8">
+                     <DataCard title="AI Coach Settings">
+                        <div className="space-y-4">
+                            <div>
+                                <p className="text-sm text-gray-400 mb-4">
+                                    Connect to the Google Gemini API to enable the AI Coach feature for trade analysis. You can get a free API key from{' '}
+                                    <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                                        Google AI Studio
+                                    </a>.
+                                </p>
+                                <FormField label="Gemini API Key">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type={isKeyVisible ? 'text' : 'password'}
+                                            value={tempApiKey}
+                                            onChange={(e) => setTempApiKey(e.target.value)}
+                                            placeholder="Enter your API key"
+                                            className={textInputClasses + " flex-grow"}
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={() => setIsKeyVisible(!isKeyVisible)}
+                                            className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors"
+                                            title={isKeyVisible ? "Hide key" : "Show key"}
+                                        >
+                                            <span className="w-5 h-5 block">
+                                                {isKeyVisible ? ICONS.eyeOff : ICONS.eye}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </FormField>
+                                <div className="text-right pt-2">
+                                    <button onClick={handleSaveApiKey} className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-sm font-medium">Save Key</button>
+                                </div>
+                            </div>
+                        </div>
+                    </DataCard>
                     <DataCard title="Journal Options">
                         <div className="space-y-6">
                             <EditableTagList title="Pairs" items={pairs} onSave={(newItems) => handleSaveSettings('pairs', newItems)} />
