@@ -835,7 +835,6 @@ function AppContent() {
                 <NavItem view="dashboard" label="Dashboard" />
                 <NavItem view="analysis" label="Analysis" />
                 <NavItem view="notes" label="Notes" />
-                <NavItem view="data" label="Settings" />
             </div>
             <div className="flex items-center gap-4 w-full justify-center md:w-auto mt-4 md:mt-0">
                 <DropdownMenu 
@@ -851,6 +850,12 @@ function AppContent() {
                         <div className="px-2 py-1 text-sm text-gray-400 truncate">
                             {isGuest ? 'Guest Mode' : currentUser?.email}
                         </div>
+                        <button 
+                            onClick={() => setActiveView('data')} 
+                            className="w-full text-left px-2 py-1.5 text-sm text-gray-200 hover:bg-gray-700 rounded-md transition-colors"
+                        >
+                           Settings
+                        </button>
                         <div className="my-1 border-t border-gray-700/50"></div>
                         <button 
                             onClick={handleLogout} 
