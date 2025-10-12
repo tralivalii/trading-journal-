@@ -5,6 +5,7 @@ import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { Account, Note, Result, Trade, UserData, Currency } from '../types';
 import { supabase } from './supabase';
 import { bulkPut, clearAllData, getSyncQueue, getTable, putSyncQueue } from './offlineService';
+import { deleteImage } from './imageDB';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -342,6 +343,37 @@ export const deleteTradeAction = async (
     const { userData, isGuest, syncStatus } = state;
     if (!userData) throw new Error('User data not available');
     
+    const tradeToDelete = userData.trades.find(t => t.id === tradeId);
+
+    // --- Image Deletion Logic ---
+    if (tradeToDelete) {
+        const imageUrls = [
+            tradeToDelete.analysisD1.image,
+            tradeToDelete.analysis1h.image,
+            tradeToDelete.analysis5m.image,
+            tradeToDelete.analysisResult.image
+        ].filter(Boolean) as string[];
+
+        for (const url of imageUrls) {
+            await deleteImage(url); // Delete from IndexedDB
+            if (!isGuest && url.startsWith('https://')) {
+                try {
+                    const urlObject = new URL(url);
+                    // Path format is /storage/v1/object/public/screenshots/user_id/file.jpg
+                    // We need the part after the bucket name.
+                    const pathToDelete = urlObject.pathname.split(`/screenshots/`)[1];
+                    if (pathToDelete) {
+                        await supabase.storage.from('screenshots').remove([pathToDelete]);
+                    }
+                } catch (e) {
+                    console.error("Failed to delete image from Supabase during trade deletion:", e);
+                    // Don't block UI for this, just log it.
+                }
+            }
+        }
+    }
+    // --- End Image Deletion Logic ---
+
     if (isGuest) {
       const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
       dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });

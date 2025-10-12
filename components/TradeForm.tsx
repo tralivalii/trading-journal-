@@ -267,53 +267,69 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   };
 
   const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
-      const currentImageKey = (trade[sectionKey] as Analysis).image;
+      const currentImageUrl = (trade[sectionKey] as Analysis).image;
 
-      // Delete old image from both DBs
-      if (currentImageKey) {
-          await deleteImage(currentImageKey);
-          if (!isGuest && currentUser) {
-            try {
-                // The key is the full path, so no need to prepend user ID.
-                const { error } = await supabase.storage.from('screenshots').remove([currentImageKey]);
-                if (error) throw error;
-            } catch (e) {
-                console.error("Failed to delete old image from Supabase Storage", e);
-            }
+      // Delete old image if it exists
+      if (currentImageUrl) {
+          await deleteImage(currentImageUrl); // Delete from local cache
+          if (!isGuest && currentUser && currentImageUrl.startsWith('https://')) {
+              try {
+                  // Extract path from the public URL to delete from Supabase Storage
+                  const url = new URL(currentImageUrl);
+                  // Path format: /storage/v1/object/public/screenshots/user_id/file.jpg
+                  const pathToDelete = url.pathname.split(`/screenshots/`)[1];
+                  if (pathToDelete) {
+                      await supabase.storage.from('screenshots').remove([pathToDelete]);
+                  }
+              } catch (e) {
+                  console.error("Failed to delete old image from Supabase Storage", e);
+              }
           }
       }
 
       if (file) {
-        setIsUploading(true);
-        try {
-            const compressedFile = await compressImage(file);
-            
-            // Generate the full path here to be used as the key everywhere.
-            const imagePath = `${currentUser?.id || 'guest'}/${crypto.randomUUID()}-${file.name}`;
-            
-            // Save to local DB first for immediate offline access using the full path as the key
-            await saveImage(imagePath, compressedFile);
-            handleAnalysisChange(sectionKey, 'image', imagePath);
+          setIsUploading(true);
+          try {
+              const compressedFile = await compressImage(file);
+              let finalImageUrl: string;
 
-            // Then, upload to Supabase for backup/sync
-            if (!isGuest && currentUser) {
-                // Use the same path for Supabase upload
-                const { error } = await supabase.storage.from('screenshots').upload(imagePath, compressedFile, { contentType: compressedFile.type });
-                if (error) {
-                    console.warn("Image saved locally, but Supabase upload failed:", error);
-                    dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not sync image to cloud.", type: 'error' } });
-                }
-            }
-            
-        } catch (error) {
-            console.error("Error saving image:", error);
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not save image.", type: 'error' } });
-        } finally {
-            setIsUploading(false);
-        }
+              if (isGuest || !currentUser) {
+                  // For guests, create a temporary local key. This image will only exist on this device.
+                  finalImageUrl = `local://${crypto.randomUUID()}-${file.name}`;
+                  await saveImage(finalImageUrl, compressedFile);
+              } else {
+                  // For logged-in users, upload to Supabase and get the permanent public URL.
+                  const imagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
+                  const { error: uploadError } = await supabase.storage
+                      .from('screenshots')
+                      .upload(imagePath, compressedFile, { contentType: compressedFile.type });
+
+                  if (uploadError) {
+                      throw uploadError;
+                  }
+
+                  const { data: publicUrlData } = supabase.storage
+                      .from('screenshots')
+                      .getPublicUrl(imagePath);
+                  
+                  finalImageUrl = publicUrlData.publicUrl;
+
+                  // Cache the image locally using its public URL as the key for offline access.
+                  await saveImage(finalImageUrl, compressedFile);
+              }
+              
+              handleAnalysisChange(sectionKey, 'image', finalImageUrl);
+              
+          } catch (error) {
+              console.error("Error saving image:", error);
+              dispatch({ type: 'SHOW_TOAST', payload: { message: "Could not save image.", type: 'error' } });
+              handleAnalysisChange(sectionKey, 'image', undefined); // Clear on failure
+          } finally {
+              setIsUploading(false);
+          }
       } else {
-        // Handle file removal
-        handleAnalysisChange(sectionKey, 'image', undefined);
+          // Handle file removal by clearing the URL
+          handleAnalysisChange(sectionKey, 'image', undefined);
       }
   };
 
