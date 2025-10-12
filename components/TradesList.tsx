@@ -54,10 +54,10 @@ const MobileTradeCard: React.FC<{
     const formattedPnl = trade.pnl.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
     return (
-        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors space-y-2">
-            {/* Top row: Pair and PnL */}
-            <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
+        <div onPointerUp={() => onView(trade)} className="bg-[#2A2F3B] rounded-lg p-3 cursor-pointer border border-transparent hover:border-blue-600/50 transition-colors">
+            {/* Top Row: Main Info */}
+            <div className="flex justify-between items-start mb-3">
+                <div className="flex flex-col items-start gap-1">
                     <span className="font-bold text-white text-base">{trade.pair}</span>
                     {hasAlerts && (
                         <div className="flex items-center gap-1.5">
@@ -66,24 +66,24 @@ const MobileTradeCard: React.FC<{
                         </div>
                     )}
                 </div>
-                <div className={`font-semibold text-lg ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formattedPnl}
+                <div className="text-right">
+                    <div className={`font-semibold text-lg ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formattedPnl}</div>
+                    <div className="text-sm text-gray-400">{formattedDate}</div>
                 </div>
             </div>
 
-            {/* Middle row: Direction, R:R, Date */}
-            <div className="flex justify-between items-center text-xs text-gray-400">
-                <div className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</div>
-                <div>R:R {trade.rr.toFixed(2)}</div>
-                <div>{formattedDate}</div>
-            </div>
-
-            {/* Bottom row: Result and Actions */}
-            <div className="flex justify-between items-center" onPointerUp={e => e.stopPropagation()}>
-                <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center w-28 inline-block ${getResultClasses(trade.result)}`}>
-                    {trade.result}
-                </span>
-                <div className="flex items-center gap-1">
+            {/* Bottom Row: Details and Actions */}
+            <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <span className={`font-semibold py-1 px-3 rounded-full text-xs text-center inline-block ${getResultClasses(trade.result)}`}>
+                        {trade.result}
+                    </span>
+                    <div className="flex items-center gap-4 text-sm">
+                        <div className={`font-semibold ${trade.direction === 'Long' ? 'text-green-400' : 'text-red-400'}`}>{trade.direction}</div>
+                        <div className="text-gray-300 hidden xs:block"><span className="text-gray-500">R:R</span> {trade.rr.toFixed(2)}</div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1" onPointerUp={e => e.stopPropagation()}>
                     <button onClick={() => onView(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="View trade"><span className="w-5 h-5 block">{ICONS.eye}</span></button>
                     <button onClick={() => onEdit(trade)} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Edit trade"><span className="w-5 h-5 block">{ICONS.pencil}</span></button>
                     <button onClick={() => onDelete(trade.id)} className="p-2 text-gray-400 hover:text-red-400 rounded-full hover:bg-gray-700/50 transition-colors" aria-label="Delete trade"><span className="w-5 h-5 block">{ICONS.trash}</span></button>
