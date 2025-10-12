@@ -11,7 +11,7 @@ interface ModalProps {
   size?: 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl';
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onCloseRequest, title, children, size = '2xl' }) => {
+const Modal: React.FC<ModalProps & { 'data-testid'?: string }> = ({ isOpen, onClose, onCloseRequest, title, children, size = '2xl', ...props }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const titleId = `modal-title-${Math.random().toString(36).substring(2, 9)}`;
 
@@ -40,6 +40,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onCloseRequest, title, c
     <div 
         className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center backdrop-blur-sm p-4" 
         onClick={handleCloseAttempt}
+        {...props}
     >
       <div 
         ref={modalRef}

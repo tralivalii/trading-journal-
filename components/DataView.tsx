@@ -497,7 +497,7 @@ const DataView: React.FC<DataViewProps> = ({ onInitiateDeleteAccount }) => {
             </div>
 
             {isAccountModalOpen && (
-                <Modal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} title={accountToEdit ? 'Edit Account' : 'Add New Account'}>
+                <Modal data-testid="account-form-modal" isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} title={accountToEdit ? 'Edit Account' : 'Add New Account'}>
                     <AccountForm onSave={handleSaveAccount} onCancel={() => setIsAccountModalOpen(false)} accountToEdit={accountToEdit} />
                 </Modal>
             )}

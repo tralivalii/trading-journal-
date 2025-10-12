@@ -8,8 +8,6 @@ interface ImageState {
     isLoading: boolean;
 }
 
-// This hook now takes a storage path instead of a full URL.
-// It's responsible for finding the image locally or generating a secure URL to fetch it.
 const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => {
     const [imageState, setImageState] = useState<ImageState>({
         url: null,
@@ -30,39 +28,37 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
 
         const getUrl = async () => {
             try {
-                // --- Priority 1: Check local cache (IndexedDB) first ---
-                const cachedFile = await getImage(storagePath);
-                if (isMounted && cachedFile) {
-                    objectUrlToRevoke = URL.createObjectURL(cachedFile);
-                    setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
-                    return;
-                }
+                // --- Online-First Strategy ---
+                if (navigator.onLine) {
+                    // Fetch a fresh signed URL from Supabase for online users.
+                    const { data, error: signedUrlError } = await supabase.storage
+                        .from('trade-attachments')
+                        .createSignedUrl(storagePath, 300); // 5-minute validity
 
-                // --- Priority 2: If not in cache, fetch from Supabase Storage ---
-                if (!navigator.onLine) {
-                    throw new Error("Offline and image not found in cache.");
-                }
-
-                // Generate a short-lived signed URL to securely access the private object.
-                const { data, error: signedUrlError } = await supabase.storage
-                    .from('trade-attachments')
-                    .createSignedUrl(storagePath, 300); // URL is valid for 5 minutes
-
-                if (signedUrlError) {
-                    throw signedUrlError;
-                }
-                
-                const signedUrl = data.signedUrl;
-
-                if (isMounted) {
-                    // Show the image immediately using the signed URL
-                    setImageState({ url: signedUrl, error: false, isLoading: false });
+                    if (signedUrlError) throw signedUrlError;
                     
-                    // In the background, cache the image for future offline access.
-                    // This is a "read-through" cache strategy.
-                    cacheImageFromUrl(storagePath, signedUrl);
-                }
+                    const signedUrl = data.signedUrl;
 
+                    if (isMounted) {
+                        // Display image immediately with the fresh URL
+                        setImageState({ url: signedUrl, error: false, isLoading: false });
+                        // Asynchronously update the local cache for future offline use.
+                        cacheImageFromUrl(storagePath, signedUrl).catch(err => {
+                            console.warn("Failed to cache image in background:", err);
+                        });
+                    }
+                } else {
+                    // --- Offline Fallback ---
+                    // Try to find the image in the local cache (IndexedDB).
+                    const cachedFile = await getImage(storagePath);
+                    if (isMounted && cachedFile) {
+                        objectUrlToRevoke = URL.createObjectURL(cachedFile);
+                        setImageState({ url: objectUrlToRevoke, error: false, isLoading: false });
+                    } else {
+                        // If offline and not in cache, we can't display it.
+                        throw new Error("Offline and image not found in cache.");
+                    }
+                }
             } catch (err) {
                 console.error(`Failed to load image from path ${storagePath}:`, err);
                 if (isMounted) {
@@ -75,7 +71,6 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
 
         return () => {
             isMounted = false;
-            // Clean up the created blob URL to prevent memory leaks
             if (objectUrlToRevoke) {
                 URL.revokeObjectURL(objectUrlToRevoke);
             }
