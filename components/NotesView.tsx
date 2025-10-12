@@ -6,6 +6,7 @@ import { ICONS } from '../constants';
 import Modal from './ui/Modal';
 import { supabase } from '../services/supabase'; // Kept for image upload logic
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
+import { saveImage } from '../services/imageDB';
 
 interface NotesViewProps {}
 const NOTES_PAGE_SIZE = 20;
@@ -102,11 +103,6 @@ const NewNoteCreator: React.FC<{
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const uploadAndInsertImage = async (file: File) => {
-        if (isGuest || !currentUser) {
-            dispatch({ type: 'SHOW_TOAST', payload: { message: "Image upload is disabled in guest mode.", type: 'error' } });
-            return;
-        }
-
         const textarea = textareaRef.current;
         if (!textarea) return;
 
@@ -116,21 +112,18 @@ const NewNoteCreator: React.FC<{
         setContent(newContent);
 
         try {
-            const fileExtension = file.name.split('.').pop();
-            const fileName = `${crypto.randomUUID()}.${fileExtension}`;
-            const filePath = `${currentUser.id}/${fileName}`;
-            const buffer = await file.arrayBuffer();
-
-            const { error: uploadError } = await supabase.storage.from('screenshots').upload(filePath, buffer, { contentType: file.type });
-            if (uploadError) throw uploadError;
-            
-            const finalMarkdown = `\n![${file.name}](storage://${filePath})\n`;
+            // Save to local DB for offline access
+            const localImageKey = await saveImage(currentUser?.id || 'guest', file);
+            const finalMarkdown = `\n![${file.name}](idb://${localImageKey})\n`;
 
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded successfully', type: 'success' } });
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image saved locally', type: 'success' } });
+
+            // NOTE: Supabase upload can be moved to a background sync process.
+            // For now, we prioritize the offline experience.
         } catch (error) {
-            setContent(currentContent => currentContent.replace(placeholder, '\n[Upload failed]\n'));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image upload failed.', type: 'error' } });
+            setContent(currentContent => currentContent.replace(placeholder, '\n[Save failed]\n'));
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image save failed.', type: 'error' } });
             console.error(error);
         }
     };

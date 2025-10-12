@@ -1,12 +1,14 @@
 // service-worker.js
 
-const CACHE_NAME = 'trading-journal-cache-v2'; // Bump version to force update
+const CACHE_NAME = 'trading-journal-cache-v3'; // Bump version to force update
 const urlsToCache = [
   '/',
   '/index.html',
+  '/index.tsx',
   // App shell and crucial assets
   'https://cdn.tailwindcss.com',
   'https://cdn.jsdelivr.net/npm/chart.js',
+  'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
   'https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js',
   // CDN modules from importmap
   'https://aistudiocdn.com/react@^19.1.1',

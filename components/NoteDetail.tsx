@@ -4,6 +4,8 @@ import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
+import { saveImage } from '../services/imageDB';
+import { getImage } from '../services/imageDB';
 
 declare const DOMPurify: any;
 declare const marked: any;
@@ -75,6 +77,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     }, [note, isEditMode]);
 
     useEffect(() => {
+        const createdUrls: string[] = [];
+
         const processContent = async () => {
             if (isEditMode || !note.content) {
                 setRenderedContent('');
@@ -82,55 +86,71 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             }
 
             let processed = note.content.trim();
-            const storageRegex = /!\[(.*?)\]\(storage:\/\/(.*?)\)/g;
-            const matches = [...processed.matchAll(storageRegex)];
 
-            if (matches.length > 0) {
-                const replacements = await Promise.all(matches.map(async (match) => {
+            const idbRegex = /!\[(.*?)\]\(idb:\/\/(.*?)\)/g;
+            const idbMatches = [...processed.matchAll(idbRegex)];
+
+            if (idbMatches.length > 0) {
+                const replacements = await Promise.all(idbMatches.map(async (match) => {
                     const alt = match[1];
-                    const path = match[2];
+                    const key = match[2];
                     try {
-                         const { data: previewData, error: previewError } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600, {
-                            transform: { width: 800, quality: 85, resize: 'contain' }
-                        });
-                        if (previewError) throw previewError;
-
-                        const { data: fullscreenData, error: fullscreenError } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600);
-                        if (fullscreenError) throw fullscreenError;
-
-                        const imgTag = `<img 
-                            src="${previewData.signedUrl}" 
-                            alt="${alt}" 
-                            data-fullscreen-src="${fullscreenData.signedUrl}"
-                            class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" 
-                        />`;
-
-                        return { original: match[0], replacement: imgTag };
+                        const blob = await getImage(key);
+                        if (blob) {
+                            const url = URL.createObjectURL(blob);
+                            createdUrls.push(url);
+                            const imgTag = `<img src="${url}" alt="${alt}" data-fullscreen-src="${url}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`;
+                            return { original: match[0], replacement: imgTag };
+                        }
                     } catch (e) {
-                        console.error("Failed to create signed URL for", path, e);
-                        return { original: match[0], replacement: `![${alt} (Error: Could not load image)]()` };
+                        console.error("Failed to get image from IndexedDB for key:", key, e);
                     }
+                    return { original: match[0], replacement: `![${alt} (Error: Could not load local image)]()` };
                 }));
-
                 for (const { original, replacement } of replacements) {
                     processed = processed.replace(original, replacement);
                 }
             }
             
-            processed = processed.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
+            const storageRegex = /!\[(.*?)\]\(storage:\/\/(.*?)\)/g;
+            if (navigator.onLine && processed.match(storageRegex)) {
+                const storageMatches = [...processed.matchAll(storageRegex)];
+                const replacements = await Promise.all(storageMatches.map(async (match) => {
+                    const alt = match[1];
+                    const path = match[2];
+                    try {
+                        const { data } = await supabase.storage.from('screenshots').createSignedUrl(path, 3600);
+                        if (data) {
+                            const imgTag = `<img src="${data.signedUrl}" alt="${alt}" data-fullscreen-src="${data.signedUrl}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`;
+                            return { original: match[0], replacement: imgTag };
+                        }
+                    } catch (e) {
+                        console.error("Failed to create signed URL for", path, e);
+                    }
+                    return { original: match[0], replacement: `![${alt} (Error: Could not load cloud image)]()` };
+                }));
+                for (const { original, replacement } of replacements) {
+                    processed = processed.replace(original, replacement);
+                }
+            } else if (!navigator.onLine && processed.match(storageRegex)) {
+                processed = processed.replace(storageRegex, `\n[Image unavailable offline]\n`);
+            }
             
+            processed = processed.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
             let html = marked.parse(processed);
-
             const clean = DOMPurify.sanitize(html, {
                 ADD_TAGS: ['a', 'img', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
                 ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt', 'data-fullscreen-src'],
                 ALLOWED_URI_REGEXP: /.*/
             });
-
             setRenderedContent(clean);
         };
 
         processContent();
+
+        return () => {
+            createdUrls.forEach(url => URL.revokeObjectURL(url));
+        };
     }, [note.content, isEditMode]);
 
 
@@ -174,7 +194,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
     };
 
     const uploadAndInsertImage = async (file: File) => {
-        if (isGuest || !currentUser) {
+        if (isGuest) {
             dispatch({ type: 'SHOW_TOAST', payload: { message: "Image upload is disabled in guest mode.", type: 'error' } });
             return;
         }
@@ -188,21 +208,14 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            const fileExtension = file.name.split('.').pop();
-            const fileName = `${crypto.randomUUID()}.${fileExtension}`;
-            const filePath = `${currentUser.id}/${fileName}`;
-            const buffer = await file.arrayBuffer();
-
-            const { error: uploadError } = await supabase.storage.from('screenshots').upload(filePath, buffer, { contentType: file.type });
-            if (uploadError) throw uploadError;
-            
-            const finalMarkdown = `\n![${file.name}](storage://${filePath})\n`;
+            const localImageKey = await saveImage(currentUser!.id, file);
+            const finalMarkdown = `\n![${file.name}](idb://${localImageKey})\n`;
 
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded successfully', type: 'success' } });
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image saved locally', type: 'success' } });
         } catch (error) {
-            setContent(currentContent => currentContent.replace(placeholder, '\n[Upload failed]\n'));
-            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image upload failed.', type: 'error' } });
+            setContent(currentContent => currentContent.replace(placeholder, '\n[Save failed]\n'));
+            dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image save failed.', type: 'error' } });
             console.error(error);
         }
     };
