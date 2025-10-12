@@ -57,7 +57,7 @@ const MobileTradeCard: React.FC<{
             {/* Top Row: Pair, Result, Alerts, and PnL */}
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3 min-w-0"> {/* min-w-0 for truncate to work in flex */}
-                    <div className="flex items-baseline gap-2 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
                         <span className="font-bold text-white text-lg truncate" title={trade.pair}>{trade.pair}</span>
                         <span className={`font-semibold py-1 px-2 rounded-full text-xs text-center inline-block flex-shrink-0 ${getResultClasses(trade.result)}`}>
                             {trade.result}
