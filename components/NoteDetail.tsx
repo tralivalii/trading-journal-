@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Note } from '../types';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
 import { saveImage } from '../services/imageDB';
-import { getImage } from '../services/imageDB';
+import useImageBlobUrl from '../hooks/useImageBlobUrl';
 
 declare const DOMPurify: any;
 declare const marked: any;
@@ -57,13 +57,60 @@ const KebabMenu: React.FC<{
     );
 };
 
+// A dedicated component to handle rendering a single image from a note
+const NoteImage: React.FC<{ 
+    imageKey: string;
+    protocol: string;
+    altText: string;
+    onClick: (src: string) => void;
+}> = ({ imageKey, protocol, altText, onClick }) => {
+    const isLocal = protocol === 'idb';
+    const blobUrl = useImageBlobUrl(isLocal ? imageKey : null);
+    const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
 
+    useEffect(() => {
+        let isMounted = true;
+        if (!isLocal && navigator.onLine) {
+            supabase.storage.from('screenshots').createSignedUrl(imageKey, 3600)
+                .then(({ data }) => {
+                    if (isMounted && data?.signedUrl) {
+                        setRemoteUrl(data.signedUrl);
+                    }
+                })
+                .catch(e => console.error("Failed to get signed URL for note image:", e));
+        }
+        return () => { isMounted = false; };
+    }, [imageKey, isLocal]);
+
+    const finalSrc = isLocal ? blobUrl : remoteUrl;
+
+    if (finalSrc) {
+        return (
+            <img 
+                src={finalSrc} 
+                alt={altText} 
+                onClick={() => onClick(finalSrc)}
+                className="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer"
+            />
+        );
+    }
+    
+    return (
+         <div className="text-center text-sm text-gray-500 my-2 p-4 bg-gray-900/50 rounded-md flex flex-col items-center justify-center min-h-[100px]">
+            {isLocal && !blobUrl && <p>Loading local image...</p>}
+            {!isLocal && !navigator.onLine && <p>[Image unavailable offline: {altText}]</p>}
+            {!isLocal && navigator.onLine && !remoteUrl && <p className="animate-pulse">Loading cloud image...</p>}
+        </div>
+    );
+};
+
+
+// Main NoteDetail Component
 const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode, onUpdate, onDelete, onTagClick }) => {
     const { state, dispatch } = useAppContext();
     const { currentUser, isGuest } = state;
 
     const [content, setContent] = useState(note.content);
-    const [renderedContent, setRenderedContent] = useState('');
     const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -76,104 +123,48 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         }
     }, [note, isEditMode]);
 
-    useEffect(() => {
-        const createdUrls: string[] = [];
+    const parsedContent = useMemo(() => {
+        const imageRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/g;
+        const parts = [];
+        let lastIndex = 0;
+        let match;
 
-        const processContent = async () => {
-            if (isEditMode || !note.content) {
-                setRenderedContent('');
-                return;
+        while ((match = imageRegex.exec(note.content)) !== null) {
+            if (match.index > lastIndex) {
+                parts.push({ type: 'text', content: note.content.substring(lastIndex, match.index) });
             }
-
-            let tempContent = note.content;
-            const imageRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/g;
-
-            // Find all image markdown matches
-            const matches = Array.from(tempContent.matchAll(imageRegex));
-            const replacements = new Map<string, string>();
-
-            // Process all found images in parallel
-            await Promise.all(matches.map(async (match) => {
-                const [fullMatch, alt, protocol, keyOrPath] = match;
-
-                if (protocol === 'idb') {
-                    try {
-                        const blob = await getImage(keyOrPath);
-                        if (blob) {
-                            const url = URL.createObjectURL(blob);
-                            createdUrls.push(url);
-                            replacements.set(fullMatch, `<img src="${url}" alt="${alt}" data-fullscreen-src="${url}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`);
-                        } else {
-                            replacements.set(fullMatch, `<p class="text-center text-sm text-yellow-400 my-2">[Local image not found: ${alt}]</p>`);
-                        }
-                    } catch (e) {
-                        console.error("Failed to get image from IndexedDB for key:", keyOrPath, e);
-                        replacements.set(fullMatch, `<p class="text-center text-sm text-red-400 my-2">[Error loading local image: ${alt}]</p>`);
-                    }
-                } else if (protocol === 'storage') {
-                    if (navigator.onLine) {
-                        try {
-                            const { data } = await supabase.storage.from('screenshots').createSignedUrl(keyOrPath, 3600);
-                            if (data?.signedUrl) {
-                                replacements.set(fullMatch, `<img src="${data.signedUrl}" alt="${alt}" data-fullscreen-src="${data.signedUrl}" class="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer" />`);
-                            }
-                        } catch (e) {
-                             console.error("Failed to create signed URL for", keyOrPath, e);
-                             replacements.set(fullMatch, `<p class="text-center text-sm text-red-400 my-2">[Error loading cloud image: ${alt}]</p>`);
-                        }
-                    } else {
-                        replacements.set(fullMatch, `<p class="text-center text-sm text-gray-500 my-2 p-4 bg-gray-900/50 rounded-md">[Image unavailable offline: ${alt}]</p>`);
-                    }
-                }
-            }));
-            
-            // Apply all replacements to the content
-            for (const [original, replacement] of replacements.entries()) {
-                tempContent = tempContent.replace(original, replacement);
-            }
-
-            // Process hashtags and markdown formatting
-            let finalHtml = tempContent.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-            // FIX: The modern version of the `marked` library returns a Promise. The result must be awaited
-            // to get the HTML string before passing it to DOMPurify. This resolves a type error, as a Promise
-            // object is not a valid input for DOMPurify. The reported iterator error on a different line is
-            // likely a misleading artifact of the build process.
-            finalHtml = await marked.parse(finalHtml);
-            const cleanHtml = DOMPurify.sanitize(finalHtml, {
-                ADD_TAGS: ['a', 'img', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
-                ADD_ATTR: ['class', 'data-tag', 'href', 'src', 'alt', 'data-fullscreen-src'],
-                ALLOWED_URI_REGEXP: /.*/
+            parts.push({
+                type: 'image',
+                alt: match[1],
+                protocol: match[2],
+                key: match[3],
             });
+            lastIndex = match.index + match[0].length;
+        }
 
-            setRenderedContent(cleanHtml);
-        };
-
-        processContent();
-
-        return () => {
-            createdUrls.forEach(url => URL.revokeObjectURL(url));
-        };
-    }, [note.content, isEditMode]);
+        if (lastIndex < note.content.length) {
+            parts.push({ type: 'text', content: note.content.substring(lastIndex) });
+        }
+        
+        return parts;
+    }, [note.content]);
 
 
     useEffect(() => {
         const viewEl = viewRef.current;
         if (!viewEl || isEditMode) return;
 
-        const handleContentClick = (e: MouseEvent) => {
+        const handleTagClick = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
             if (target.tagName === 'A' && target.dataset.tag) {
                 e.preventDefault();
                 onTagClick(target.dataset.tag);
-            } else if (target.tagName === 'IMG' && target.dataset.fullscreenSrc) {
-                e.preventDefault();
-                setFullscreenSrc(target.dataset.fullscreenSrc);
             }
         };
 
-        viewEl.addEventListener('click', handleContentClick);
-        return () => viewEl.removeEventListener('click', handleContentClick);
-    }, [renderedContent, isEditMode, onTagClick]);
+        viewEl.addEventListener('click', handleTagClick);
+        return () => viewEl.removeEventListener('click', handleTagClick);
+    }, [parsedContent, isEditMode, onTagClick]);
     
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -242,6 +233,17 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             }
         }
     };
+    
+    const renderTextPart = (text: string) => {
+        const withTags = text.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
+        const html = marked.parse(withTags);
+        const cleanHtml = DOMPurify.sanitize(html, {
+            ADD_TAGS: ['a', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
+            ADD_ATTR: ['class', 'data-tag', 'href'],
+            ALLOWED_URI_REGEXP: /.*/
+        });
+        return { __html: cleanHtml };
+    };
 
     if (isEditMode) {
         return (
@@ -278,17 +280,22 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
              <style>{`
                 .prose-custom h1 { font-size: 1.5rem; font-weight: 600; margin-top: 1.25em; margin-bottom: 0.5em; }
                 .prose-custom h2 { font-size: 1.25rem; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; }
-                .prose-custom p { margin-bottom: 1em; }
+                .prose-custom p { margin-bottom: 1em; line-height: 1.6; }
                 .prose-custom strong { color: #F0F0F0; }
                 .prose-custom ul { list-style-type: disc; margin-left: 1.5em; margin-bottom: 1em; }
                 .prose-custom ol { list-style-type: decimal; margin-left: 1.5em; margin-bottom: 1em; }
                 .prose-custom li { margin-bottom: 0.25em; }
              `}</style>
-             <div 
-                 ref={viewRef}
-                 className="text-[#F0F0F0] whitespace-pre-wrap text-sm w-full flex-grow overflow-y-auto prose-custom"
-                 dangerouslySetInnerHTML={{ __html: renderedContent || (note.content ? '<p class="animate-pulse">Loading content...</p>' : '<p class="text-gray-500">This note is empty.</p>') }}
-            >
+             <div ref={viewRef} className="text-[#F0F0F0] text-sm w-full flex-grow overflow-y-auto prose-custom">
+                {parsedContent.length > 0 ? parsedContent.map((part, index) => {
+                    if (part.type === 'image') {
+                        return <NoteImage key={`${part.key}-${index}`} imageKey={part.key} protocol={part.protocol} altText={part.alt} onClick={setFullscreenSrc} />
+                    }
+                    if (part.type === 'text') {
+                        return <div key={index} dangerouslySetInnerHTML={renderTextPart(part.content)} />;
+                    }
+                    return null;
+                }) : <p className="text-gray-500">This note is empty.</p>}
             </div>
             {fullscreenSrc && (
                 <div 
