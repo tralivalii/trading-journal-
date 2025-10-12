@@ -46,8 +46,8 @@ const ResultCard: React.FC<{
                 {imageUrl ? (
                     <img src={imageUrl} alt={`Result for ${trade.pair}`} className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                        <Skeleton className="w-full h-full" />
+                    <div className="w-full h-full flex items-center justify-center text-gray-500">
+                        <p>No Image</p>
                     </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
