@@ -3,6 +3,8 @@
 
 
 
+
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -223,7 +225,7 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         return summary;
     }, [accountBalances, activeAccounts, selectedAccountId]);
 
-    // FIX: Add explicit return type to useMemo and type the reduce accumulator and Map to ensure correct type inference, resolving 'unknown' type errors.
+    // FIX: Add explicit return type to useMemo and type the reduce accumulator to ensure correct type inference, resolving 'unknown' type errors.
     const netProfitSummary = useMemo((): Record<string, number> => {
         if (filteredTrades.length === 0) return {};
         
