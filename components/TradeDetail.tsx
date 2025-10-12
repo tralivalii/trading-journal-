@@ -237,35 +237,35 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
             </div>
         )}
 
-        {/* --- AI Analysis Section --- */}
-        <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
-            <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                <h3 className="text-xl font-semibold text-white">AI Coach Analysis</h3>
-                {apiKey && !trade.aiAnalysis && (
-                    <button onClick={handleAiAnalysis} disabled={isAiLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-wait font-medium flex items-center justify-center gap-2 text-sm">
-                        {isAiLoading ? (
-                            <>
-                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                Analyzing...
-                            </>
-                        ) : "Analyze with AI"}
-                    </button>
-                )}
+        {/* --- AI Analysis Section (Conditionally Rendered) --- */}
+        {apiKey && (
+            <div className="bg-[#232733] p-6 rounded-lg border border-gray-700/50">
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h3 className="text-xl font-semibold text-white">AI Coach Analysis</h3>
+                    {!trade.aiAnalysis && (
+                        <button onClick={handleAiAnalysis} disabled={isAiLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-wait font-medium flex items-center justify-center gap-2 text-sm">
+                            {isAiLoading ? (
+                                <>
+                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    Analyzing...
+                                </>
+                            ) : "Analyze with AI"}
+                        </button>
+                    )}
+                </div>
+                <div className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
+                    {trade.aiAnalysis ? (
+                        trade.aiAnalysis
+                    ) : isAiLoading ? (
+                        <p className="text-gray-400 animate-pulse">The AI is analyzing your trade, notes, and charts. This may take a moment...</p>
+                    ) : aiError ? (
+                        <p className="text-red-400">Error: {aiError}</p>
+                    ) : (
+                        <p className="text-gray-500">Click the button to get an objective analysis of your trade from an AI trading coach.</p>
+                    )}
+                </div>
             </div>
-            <div className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
-                {trade.aiAnalysis ? (
-                    trade.aiAnalysis
-                ) : isAiLoading ? (
-                    <p className="text-gray-400 animate-pulse">The AI is analyzing your trade, notes, and charts. This may take a moment...</p>
-                ) : aiError ? (
-                    <p className="text-red-400">Error: {aiError}</p>
-                ) : apiKey ? (
-                    <p className="text-gray-500">Click the button to get an objective analysis of your trade from an AI trading coach.</p>
-                ) : (
-                    <p className="text-gray-500">Please add your Google Gemini API key in the <span className="font-bold">Settings</span> page to enable this feature.</p>
-                )}
-            </div>
-        </div>
+        )}
       
       {fullscreenData && (
         <div 

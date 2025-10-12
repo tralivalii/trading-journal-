@@ -96,8 +96,8 @@ export const analyzeTradeGroups = (trades: Trade[]): AnalysisData => {
         }, 0);
         
         const distributionByRR = getRRDistribution(groupTrades);
-        const distributionByStoploss = result === Result.Loss ? getDistribution(groupTrades.map(t => t.stoploss)) : undefined;
-        const distributionByTakeProfit = result === Result.Win ? getDistribution(groupTrades.map(t => t.takeprofit)) : undefined;
+        const distributionByStoploss = getDistribution(groupTrades.map(t => t.stoploss));
+        const distributionByTakeProfit = getDistribution(groupTrades.map(t => t.takeprofit));
         const distributionByCloseType = result !== Result.Missed ? getDistribution(groupTrades.map(t => t.closeType)) : undefined;
 
 

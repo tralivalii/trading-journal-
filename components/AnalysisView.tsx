@@ -174,8 +174,8 @@ const AnalysisView: React.FC = () => {
                                     <DistributionChart title="By Pair" data={selectedGroupStats.distributionByPair} total={selectedGroupStats.count} />
                                     <DistributionChart title="By Day of Week" data={selectedGroupStats.distributionByDay} total={selectedGroupStats.count} />
                                     <DistributionChart title="By R:R" data={selectedGroupStats.distributionByRR} total={selectedGroupStats.count} />
-                                    {activeGroup === Result.Win && selectedGroupStats.distributionByTakeProfit && <DistributionChart title="By Take Profit" data={selectedGroupStats.distributionByTakeProfit} total={selectedGroupStats.count} />}
-                                    {activeGroup === Result.Loss && selectedGroupStats.distributionByStoploss && <DistributionChart title="By Stoploss" data={selectedGroupStats.distributionByStoploss} total={selectedGroupStats.count} />}
+                                    {selectedGroupStats.distributionByStoploss && <DistributionChart title="SL Type" data={selectedGroupStats.distributionByStoploss} total={selectedGroupStats.count} />}
+                                    {selectedGroupStats.distributionByTakeProfit && <DistributionChart title="TP Type" data={selectedGroupStats.distributionByTakeProfit} total={selectedGroupStats.count} />}
                                     {activeGroup !== Result.Missed && selectedGroupStats.distributionByCloseType && <DistributionChart title="By Close Type" data={selectedGroupStats.distributionByCloseType} total={selectedGroupStats.count} />}
                                 </div>
                             </div>
