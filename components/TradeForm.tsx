@@ -42,7 +42,7 @@ const AnalysisSection: React.FC<{
     onFileChange: (file: File | null) => void;
     onNotesChange: (notes: string) => void;
 }> = ({ title, analysis, onFileChange, onNotesChange }) => {
-    const imageUrl = useImageBlobUrl(analysis.image);
+    const { url: imageUrl, isLoading } = useImageBlobUrl(analysis.image);
 
     const handleImageRemove = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -76,6 +76,7 @@ const AnalysisSection: React.FC<{
                             className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
                         />
                     </FormField>
+                    {isLoading && <div className="mt-3 text-sm text-gray-400 animate-pulse">Loading preview...</div>}
                     {imageUrl && (
                         <div className="mt-3 relative inline-block">
                            <img src={imageUrl} alt={`${title} preview`} className="rounded-md h-40 w-auto border border-gray-700 object-contain" />
@@ -276,10 +277,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               try {
                   // Extract path from the public URL to delete from Supabase Storage
                   const url = new URL(currentImageUrl);
-                  // Path format: /storage/v1/object/public/screenshots/user_id/file.jpg
-                  const pathToDelete = url.pathname.split(`/screenshots/`)[1];
+                  // Path format: /storage/v1/object/public/trade-attachments/user_id/file.jpg
+                  const pathToDelete = url.pathname.split(`/trade-attachments/`)[1];
                   if (pathToDelete) {
-                      await supabase.storage.from('screenshots').remove([pathToDelete]);
+                      await supabase.storage.from('trade-attachments').remove([pathToDelete]);
                   }
               } catch (e) {
                   console.error("Failed to delete old image from Supabase Storage", e);
@@ -301,7 +302,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                   // For logged-in users, upload to Supabase and get the permanent public URL.
                   const imagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
                   const { error: uploadError } = await supabase.storage
-                      .from('screenshots')
+                      .from('trade-attachments')
                       .upload(imagePath, compressedFile, { contentType: compressedFile.type });
 
                   if (uploadError) {
@@ -309,7 +310,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                   }
 
                   const { data: publicUrlData } = supabase.storage
-                      .from('screenshots')
+                      .from('trade-attachments')
                       .getPublicUrl(imagePath);
                   
                   finalImageUrl = publicUrlData.publicUrl;

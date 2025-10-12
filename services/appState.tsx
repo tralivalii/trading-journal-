@@ -359,11 +359,11 @@ export const deleteTradeAction = async (
             if (!isGuest && url.startsWith('https://')) {
                 try {
                     const urlObject = new URL(url);
-                    // Path format is /storage/v1/object/public/screenshots/user_id/file.jpg
+                    // Path format is /storage/v1/object/public/trade-attachments/user_id/file.jpg
                     // We need the part after the bucket name.
-                    const pathToDelete = urlObject.pathname.split(`/screenshots/`)[1];
+                    const pathToDelete = urlObject.pathname.split(`/trade-attachments/`)[1];
                     if (pathToDelete) {
-                        await supabase.storage.from('screenshots').remove([pathToDelete]);
+                        await supabase.storage.from('trade-attachments').remove([pathToDelete]);
                     }
                 } catch (e) {
                     console.error("Failed to delete image from Supabase during trade deletion:", e);

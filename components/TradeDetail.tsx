@@ -31,25 +31,25 @@ const AnalysisDetailSection: React.FC<{
     analysis: Analysis;
     onImageClick: (src: string | null, notes?: string) => void;
 }> = ({ analysis, onImageClick }) => {
-    // Get a URL for the preview image, resized for performance
-    // FIX: The useImageBlobUrl hook only accepts one argument. The second argument for transformations is not supported and was causing an error.
-    const previewUrl = useImageBlobUrl(analysis.image);
-    // Get a separate URL for the full-resolution image for the modal
-    const fullscreenUrl = useImageBlobUrl(analysis.image);
+    const { url: imageUrl, isLoading, error } = useImageBlobUrl(analysis.image);
     
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
             <div className="space-y-4">
                  <div className="w-full">
-                    {previewUrl ? (
+                    {isLoading ? (
+                         <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full animate-pulse">Loading Image...</div>
+                    ) : imageUrl ? (
                         <img 
-                            src={previewUrl} 
+                            src={imageUrl} 
                             alt={`Analysis chart`} 
                             className="rounded-md border border-gray-700 w-full h-auto cursor-pointer hover:opacity-90 transition-opacity object-contain"
-                            onClick={() => onImageClick(fullscreenUrl, analysis.notes)}
+                            onClick={() => onImageClick(imageUrl, analysis.notes)}
                         />
                     ) : (
-                        <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full">No Image</div>
+                        <div className="flex items-center justify-center h-48 bg-gray-900/50 rounded-md text-gray-500 w-full">
+                            {error ? 'Error loading image' : 'No Image'}
+                        </div>
                     )}
                 </div>
                 <div>
@@ -92,10 +92,10 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
     };
   }, []);
 
-  const analysisD1ImageUrl = useImageBlobUrl(trade.analysisD1.image);
-  const analysis1hImageUrl = useImageBlobUrl(trade.analysis1h.image);
-  const analysis5mImageUrl = useImageBlobUrl(trade.analysis5m.image);
-  const analysisResultImageUrl = useImageBlobUrl(trade.analysisResult.image);
+  const { url: analysisD1ImageUrl } = useImageBlobUrl(trade.analysisD1.image);
+  const { url: analysis1hImageUrl } = useImageBlobUrl(trade.analysis1h.image);
+  const { url: analysis5mImageUrl } = useImageBlobUrl(trade.analysis5m.image);
+  const { url: analysisResultImageUrl } = useImageBlobUrl(trade.analysisResult.image);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

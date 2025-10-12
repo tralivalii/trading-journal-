@@ -34,25 +34,34 @@ const ResultCard: React.FC<{
     onViewTrade: (trade: Trade) => void;
     onImageClick: (src: string) => void;
 }> = ({ trade, onViewTrade, onImageClick }) => {
-    const imageUrl = useImageBlobUrl(trade.analysisResult.image);
+    const { url: imageUrl, isLoading, error } = useImageBlobUrl(trade.analysisResult.image);
 
     return (
         <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden group transition-all duration-300 hover:shadow-lg hover:border-blue-600/50">
             {/* Image Section */}
             <div 
-                className="relative w-full h-[28rem] bg-gray-900 cursor-pointer overflow-hidden" 
+                className="relative w-full h-[28rem] bg-gray-900 flex items-center justify-center overflow-hidden" 
                 onClick={() => imageUrl && onImageClick(imageUrl)}
             >
-                {imageUrl ? (
+                {isLoading && (
+                     <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                )}
+                {imageUrl && !isLoading && (
                     <img src={imageUrl} alt={`Result for ${trade.pair}`} className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-500">
-                        <p>No Image</p>
+                )}
+                {(!imageUrl && !isLoading) && (
+                    <div className="text-gray-500 text-center">
+                        <p>{error ? "Error loading image" : "No Image"}</p>
                     </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                </div>
+                {imageUrl && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                )}
             </div>
             
             {/* Info Section */}

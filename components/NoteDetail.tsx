@@ -58,49 +58,35 @@ const KebabMenu: React.FC<{
 };
 
 const NoteImage: React.FC<{
-    imageKey: string;
-    protocol: string;
+    imageUrl: string;
     altText: string;
     onClick: (src: string) => void;
-}> = ({ imageKey, protocol, altText, onClick }) => {
-    const { state } = useAppContext();
-    const isLocal = protocol === 'idb';
-    const blobUrl = useImageBlobUrl(isLocal ? imageKey : null);
-    const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
+}> = ({ imageUrl, altText, onClick }) => {
+    const { url, isLoading, error } = useImageBlobUrl(imageUrl);
 
-    useEffect(() => {
-        let isMounted = true;
-        if (!isLocal && state.syncStatus === 'online') {
-            supabase.storage.from('screenshots').createSignedUrl(imageKey, 3600)
-                .then(({ data }) => {
-                    if (isMounted && data?.signedUrl) {
-                        setRemoteUrl(data.signedUrl);
-                    }
-                })
-                .catch(e => console.error("Failed to get signed URL for note image:", e));
-        }
-        return () => { isMounted = false; };
-    }, [imageKey, isLocal, state.syncStatus]);
-
-    const finalSrc = isLocal ? blobUrl : remoteUrl;
-
-    if (finalSrc) {
+    if (isLoading) {
         return (
-            <img
-                src={finalSrc}
-                alt={altText}
-                onClick={() => onClick(finalSrc)}
-                className="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer"
-            />
+            <div className="text-center text-sm text-gray-500 my-2 p-4 bg-gray-900/50 rounded-md flex flex-col items-center justify-center min-h-[100px] animate-pulse">
+                Loading image...
+            </div>
+        );
+    }
+    
+    if (error || !url) {
+        return (
+            <div className="text-center text-sm text-red-400 my-2 p-4 bg-red-900/20 border border-red-500/30 rounded-md flex flex-col items-center justify-center min-h-[100px]">
+                [Image unavailable: {altText}]
+            </div>
         );
     }
 
     return (
-         <div className="text-center text-sm text-gray-500 my-2 p-4 bg-gray-900/50 rounded-md flex flex-col items-center justify-center min-h-[100px]">
-            {isLocal && !blobUrl && <p>Loading local image...</p>}
-            {!isLocal && state.syncStatus === 'offline' && <p>[Image unavailable offline: {altText}]</p>}
-            {!isLocal && state.syncStatus === 'online' && !remoteUrl && <p className="animate-pulse">Loading cloud image...</p>}
-        </div>
+        <img
+            src={url}
+            alt={altText}
+            onClick={() => onClick(url)}
+            className="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer"
+        />
     );
 };
 
@@ -303,7 +289,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
              <div ref={viewRef} className="text-[#F0F0F0] text-sm w-full flex-grow overflow-y-auto prose-custom">
                 {renderedParts.length > 0 ? renderedParts.map((part) => {
                     if (part.type === 'image') {
-                        return <NoteImage key={`${part.key}-${part.id}`} imageKey={part.key} protocol={part.protocol} altText={part.alt} onClick={setFullscreenSrc} />
+                        const fullImageUrl = `${part.protocol}://${part.key}`;
+                        return <NoteImage key={`${part.key}-${part.id}`} imageUrl={fullImageUrl} altText={part.alt} onClick={setFullscreenSrc} />
                     }
                     if (part.type === 'text') {
                         return <div key={part.id} dangerouslySetInnerHTML={{ __html: part.html }} />;
