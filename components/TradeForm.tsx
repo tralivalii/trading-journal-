@@ -277,7 +277,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               try {
                   // Extract path from the public URL to delete from Supabase Storage
                   const url = new URL(currentImageUrl);
-                  // Path format: /storage/v1/object/public/trade-attachments/user_id/file.jpg
+                  // Path format can be public or signed, this logic robustly finds the path
                   const pathToDelete = url.pathname.split(`/trade-attachments/`)[1];
                   if (pathToDelete) {
                       await supabase.storage.from('trade-attachments').remove([pathToDelete]);
@@ -299,7 +299,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                   finalImageUrl = `local://${crypto.randomUUID()}-${file.name}`;
                   await saveImage(finalImageUrl, compressedFile);
               } else {
-                  // For logged-in users, upload to Supabase and get the permanent public URL.
+                  // For logged-in users, upload to Supabase and get a secure, long-lived signed URL.
                   const imagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
                   const { error: uploadError } = await supabase.storage
                       .from('trade-attachments')
@@ -309,13 +309,18 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                       throw uploadError;
                   }
 
-                  const { data: publicUrlData } = supabase.storage
+                  // Use a signed URL for secure access, even from private buckets. Valid for 10 years.
+                  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
                       .from('trade-attachments')
-                      .getPublicUrl(imagePath);
+                      .createSignedUrl(imagePath, 315360000); // 10 years in seconds
                   
-                  finalImageUrl = publicUrlData.publicUrl;
+                  if (signedUrlError) {
+                    throw signedUrlError;
+                  }
 
-                  // Cache the image locally using its public URL as the key for offline access.
+                  finalImageUrl = signedUrlData.signedUrl;
+
+                  // Cache the image locally using its signed URL as the key for offline access.
                   await saveImage(finalImageUrl, compressedFile);
               }
               
