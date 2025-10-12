@@ -24,7 +24,10 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Opened cache');
-        return cache.addAll(urlsToCache);
+        // Use addAll with a catch to prevent installation failure if one resource fails
+        return cache.addAll(urlsToCache).catch(err => {
+          console.error('Failed to cache initial assets:', err);
+        });
       })
   );
 });
@@ -32,28 +35,44 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
 
-  // For navigation requests, use a cache-first strategy to ensure offline launch.
+  // For navigation requests, use a Cache First strategy.
+  // This ensures the app shell loads instantly when offline.
   if (request.mode === 'navigate') {
     event.respondWith(
-      caches.match(request).then(response => {
-        return response || fetch(request);
-      })
+      caches.match(request)
+        .then(cachedResponse => {
+          // If we have a cached response, return it.
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // Otherwise, try to fetch from the network.
+          return fetch(request).catch(() => {
+            // If the network fails (offline), return the cached index.html as a fallback.
+            return caches.match('/index.html');
+          });
+        })
     );
     return;
   }
 
-  // For all other requests (CSS, JS, images from CDN), use a cache-first strategy
-  // to make the app load super fast.
+  // For all other requests (assets, API calls), use a Network First strategy.
+  // This keeps data fresh while providing an offline fallback for assets.
   event.respondWith(
-    caches.match(request).then(response => {
-      return response || fetch(request).then(fetchResponse => {
-        // Optionally, cache new requests on the fly
-        return caches.open(CACHE_NAME).then(cache => {
-          cache.put(request, fetchResponse.clone());
-          return fetchResponse;
+    fetch(request)
+      .then(networkResponse => {
+        // If the fetch is successful, clone the response and cache it.
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then(cache => {
+          cache.put(request, responseToCache);
         });
-      });
-    })
+        return networkResponse;
+      })
+      .catch(() => {
+        // If the network request fails, try to serve from the cache.
+        return caches.match(request).then(cachedResponse => {
+          return cachedResponse; // This will be undefined if not in cache, resulting in a standard network error.
+        });
+      })
   );
 });
 

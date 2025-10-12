@@ -1,6 +1,9 @@
 
 
 
+
+
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -221,18 +224,16 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
         return summary;
     }, [accountBalances, activeAccounts, selectedAccountId]);
 
-    // FIX: Add explicit return type to useMemo and type the reduce accumulator to ensure correct type inference, resolving 'unknown' type errors.
     const netProfitSummary = useMemo((): Record<string, number> => {
         if (filteredTrades.length === 0) return {};
         
         const accountsMap = new Map<string, Account>(accounts.map(acc => [acc.id, acc]));
     
-        // FIX: Explicitly typing the 'summary' accumulator in the reduce function resolves type inference issues.
-        // This ensures 'summary[currency]' is treated as a number, and the result 'netProfitSummary' is correctly typed as Record<string, number>.
         return filteredTrades.reduce((summary: Record<string, number>, trade) => {
             const account = accountsMap.get(trade.accountId);
             const currency = account?.currency || 'USD';
-            summary[currency] = (summary[currency] || 0) + trade.pnl;
+            // FIX: Explicitly cast trade.pnl to a number to prevent type errors.
+            summary[currency] = (summary[currency] || 0) + Number(trade.pnl);
             return summary;
         }, {});
     }, [filteredTrades, accounts]);
@@ -306,9 +307,9 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                     <div className="flex flex-col items-center justify-center gap-x-4 gap-y-1">
                         {Object.keys(netProfitSummary).length > 0 ? (
                             Object.entries(netProfitSummary).map(([currency, value]) => (
-                                // FIX: With `netProfitSummary` correctly typed, `value` is a number, resolving type errors.
-                                <p key={currency} className={`font-bold text-2xl ${value >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                                    {formatCurrency(value, currency)}
+                                // FIX: Explicitly cast `value` to a number for comparison and formatting, as Object.entries can have vague type inference.
+                                <p key={currency} className={`font-bold text-2xl ${Number(value) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                    {formatCurrency(Number(value), currency)}
                                 </p>
                             ))
                         ) : (
@@ -368,7 +369,6 @@ const SyncIndicator: React.FC<{ status: SyncStatus }> = ({ status }) => {
     );
 };
 
-// FIX: Coerce numeric properties to numbers to prevent type errors.
 const mapTradeFromDb = (t: any): Trade => ({
     ...t,
     accountId: t.account_id,
@@ -639,7 +639,6 @@ function AppContent() {
                 }
                 
                 const serverTrades = (tradesData || []).map(mapTradeFromDb);
-                // FIX: Explicitly type serverAccounts and coerce numeric properties to ensure type safety.
                 const serverAccounts: Account[] = (accountsData || []).map((a: any) => ({
                     ...a,
                     initialBalance: Number(a.initial_balance || 0),

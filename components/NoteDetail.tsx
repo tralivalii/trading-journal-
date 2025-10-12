@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Note } from '../types';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
@@ -57,20 +57,20 @@ const KebabMenu: React.FC<{
     );
 };
 
-// A dedicated component to handle rendering a single image from a note
-const NoteImage: React.FC<{ 
+const NoteImage: React.FC<{
     imageKey: string;
     protocol: string;
     altText: string;
     onClick: (src: string) => void;
 }> = ({ imageKey, protocol, altText, onClick }) => {
+    const { state } = useAppContext();
     const isLocal = protocol === 'idb';
     const blobUrl = useImageBlobUrl(isLocal ? imageKey : null);
     const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
 
     useEffect(() => {
         let isMounted = true;
-        if (!isLocal && navigator.onLine) {
+        if (!isLocal && state.syncStatus === 'online') {
             supabase.storage.from('screenshots').createSignedUrl(imageKey, 3600)
                 .then(({ data }) => {
                     if (isMounted && data?.signedUrl) {
@@ -80,29 +80,38 @@ const NoteImage: React.FC<{
                 .catch(e => console.error("Failed to get signed URL for note image:", e));
         }
         return () => { isMounted = false; };
-    }, [imageKey, isLocal]);
+    }, [imageKey, isLocal, state.syncStatus]);
 
     const finalSrc = isLocal ? blobUrl : remoteUrl;
 
     if (finalSrc) {
         return (
-            <img 
-                src={finalSrc} 
-                alt={altText} 
+            <img
+                src={finalSrc}
+                alt={altText}
                 onClick={() => onClick(finalSrc)}
                 className="my-4 rounded-lg w-full h-auto border border-gray-700 mx-auto block cursor-pointer"
             />
         );
     }
-    
+
     return (
          <div className="text-center text-sm text-gray-500 my-2 p-4 bg-gray-900/50 rounded-md flex flex-col items-center justify-center min-h-[100px]">
             {isLocal && !blobUrl && <p>Loading local image...</p>}
-            {!isLocal && !navigator.onLine && <p>[Image unavailable offline: {altText}]</p>}
-            {!isLocal && navigator.onLine && !remoteUrl && <p className="animate-pulse">Loading cloud image...</p>}
+            {!isLocal && state.syncStatus === 'offline' && <p>[Image unavailable offline: {altText}]</p>}
+            {!isLocal && state.syncStatus === 'online' && !remoteUrl && <p className="animate-pulse">Loading cloud image...</p>}
         </div>
     );
 };
+
+
+type ParsedPart =
+  | { type: 'text'; content: string }
+  | { type: 'image'; alt: string; protocol: string; key: string };
+
+type RenderedPart =
+  | { type: 'text'; html: string; id: number }
+  | { type: 'image'; alt: string; protocol: string; key: string; id: number };
 
 
 // Main NoteDetail Component
@@ -112,6 +121,8 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
 
     const [content, setContent] = useState(note.content);
     const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
+    const [renderedParts, setRenderedParts] = useState<RenderedPart[]>([]);
+    
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const viewRef = useRef<HTMLDivElement>(null);
@@ -122,32 +133,53 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             textareaRef.current.focus();
         }
     }, [note, isEditMode]);
+    
+    // This effect handles the async parsing of markdown and sets the state for rendering.
+    useEffect(() => {
+        const processContent = async () => {
+            const imageRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/g;
+            const tempParts: ParsedPart[] = [];
+            let lastIndex = 0;
+            let match;
 
-    const parsedContent = useMemo(() => {
-        const imageRegex = /!\[(.*?)\]\((idb|storage):\/\/(.*?)\)/g;
-        const parts = [];
-        let lastIndex = 0;
-        let match;
-
-        while ((match = imageRegex.exec(note.content)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push({ type: 'text', content: note.content.substring(lastIndex, match.index) });
+            for (const m of note.content.matchAll(imageRegex)) {
+                 if (m.index! > lastIndex) {
+                    tempParts.push({ type: 'text', content: note.content.substring(lastIndex, m.index) });
+                }
+                tempParts.push({
+                    type: 'image',
+                    alt: m[1],
+                    protocol: m[2],
+                    key: m[3],
+                });
+                lastIndex = m.index! + m[0].length;
             }
-            parts.push({
-                type: 'image',
-                alt: match[1],
-                protocol: match[2],
-                key: match[3],
-            });
-            lastIndex = match.index + match[0].length;
-        }
+            if (lastIndex < note.content.length) {
+                tempParts.push({ type: 'text', content: note.content.substring(lastIndex) });
+            }
 
-        if (lastIndex < note.content.length) {
-            parts.push({ type: 'text', content: note.content.substring(lastIndex) });
+            const finalRenderedParts = await Promise.all(
+                tempParts.map(async (part, index): Promise<RenderedPart> => {
+                    if (part.type === 'text') {
+                        const withTags = part.content.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
+                        const rawHtml = await marked.parse(withTags); // Correctly await the async function
+                        const cleanHtml = DOMPurify.sanitize(rawHtml, {
+                            ADD_TAGS: ['a', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
+                            ADD_ATTR: ['class', 'data-tag', 'href'],
+                            ALLOWED_URI_REGEXP: /.*/
+                        });
+                        return { type: 'text', html: cleanHtml, id: index };
+                    }
+                    return { ...part, id: index };
+                })
+            );
+            setRenderedParts(finalRenderedParts);
+        };
+
+        if (!isEditMode) {
+             processContent();
         }
-        
-        return parts;
-    }, [note.content]);
+    }, [note.content, isEditMode]);
 
 
     useEffect(() => {
@@ -164,7 +196,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
 
         viewEl.addEventListener('click', handleTagClick);
         return () => viewEl.removeEventListener('click', handleTagClick);
-    }, [parsedContent, isEditMode, onTagClick]);
+    }, [renderedParts, isEditMode, onTagClick]);
     
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -233,17 +265,6 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             }
         }
     };
-    
-    const renderTextPart = (text: string) => {
-        const withTags = text.replace(/#(\p{L}[\p{L}\p{N}_]*)/gu, '<a href="#" data-tag="$1" class="text-blue-400 no-underline hover:underline">#$1</a>');
-        const html = marked.parse(withTags);
-        const cleanHtml = DOMPurify.sanitize(html, {
-            ADD_TAGS: ['a', 'h1', 'h2', 'strong', 'ul', 'ol', 'li', 'p', 'br', 'em'],
-            ADD_ATTR: ['class', 'data-tag', 'href'],
-            ALLOWED_URI_REGEXP: /.*/
-        });
-        return { __html: cleanHtml };
-    };
 
     if (isEditMode) {
         return (
@@ -287,12 +308,12 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
                 .prose-custom li { margin-bottom: 0.25em; }
              `}</style>
              <div ref={viewRef} className="text-[#F0F0F0] text-sm w-full flex-grow overflow-y-auto prose-custom">
-                {parsedContent.length > 0 ? parsedContent.map((part, index) => {
+                {renderedParts.length > 0 ? renderedParts.map((part) => {
                     if (part.type === 'image') {
-                        return <NoteImage key={`${part.key}-${index}`} imageKey={part.key} protocol={part.protocol} altText={part.alt} onClick={setFullscreenSrc} />
+                        return <NoteImage key={`${part.key}-${part.id}`} imageKey={part.key} protocol={part.protocol} altText={part.alt} onClick={setFullscreenSrc} />
                     }
                     if (part.type === 'text') {
-                        return <div key={index} dangerouslySetInnerHTML={renderTextPart(part.content)} />;
+                        return <div key={part.id} dangerouslySetInnerHTML={{ __html: part.html }} />;
                     }
                     return null;
                 }) : <p className="text-gray-500">This note is empty.</p>}
