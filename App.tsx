@@ -1,11 +1,3 @@
-
-
-
-
-
-
-
-
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Account, Trade, Stats, Result, User, Note, UserData } from './types';
 import { AppProvider, useAppContext, deleteTradeAction, saveTradeAction, SyncStatus, saveAccountAction, deleteAccountAction, saveNoteAction, deleteNoteAction } from './services/appState';
@@ -294,7 +286,8 @@ const Dashboard: React.FC<{ onAddTrade: () => void }> = ({ onAddTrade }) => {
                     {Object.keys(balancesSummary).length > 0 ? (
                         Object.entries(balancesSummary).map(([currency, total]) => (
                              <p key={currency} className="font-bold text-[#F0F0F0]" style={{fontSize: 'clamp(1.75rem, 5vw, 2.5rem)'}}>
-                                 {formatCurrency(total, currency)}
+                                 {/* FIX: Explicitly cast `total` to a number, as Object.entries can have vague type inference. */}
+                                 {formatCurrency(Number(total), currency)}
                              </p>
                         ))
                     ) : (
