@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Trade, Account, Result, Analysis } from '../types';
 import { ICONS } from '../constants';
 import useImageBlobUrl from '../hooks/useImageBlobUrl';
@@ -83,6 +83,22 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
   const analysis1hImageUrl = useImageBlobUrl(trade.analysis1h.image);
   const analysis5mImageUrl = useImageBlobUrl(trade.analysis5m.image);
   const analysisResultImageUrl = useImageBlobUrl(trade.analysisResult.image);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setFullscreenData(null);
+      }
+    };
+
+    if (fullscreenData) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [fullscreenData]);
 
   const handleImageClick = (src: string | null, notes?: string) => {
     if (src) {

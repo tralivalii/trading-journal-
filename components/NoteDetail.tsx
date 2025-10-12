@@ -152,6 +152,22 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         return () => viewEl.removeEventListener('click', handleContentClick);
     }, [renderedContent, isEditMode, onTagClick]);
     
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setFullscreenSrc(null);
+            }
+        };
+
+        if (fullscreenSrc) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [fullscreenSrc]);
+
     const handleSave = () => {
         onUpdate(note.id, content);
     };
