@@ -223,6 +223,50 @@ const AnalysisView: React.FC = () => {
                                 ) : <div className="flex items-center justify-center h-full text-[#8A91A8]">No significant patterns found.</div>}
                             </div>
                         </DataCard>
+                        
+                        <DataCard title="Win/Loss Statistics">
+                            {(() => {
+                                const wins = analysisData[Result.Win]?.count || 0;
+                                const losses = analysisData[Result.Loss]?.count || 0;
+                                const total = wins + losses;
+
+                                if (total === 0) {
+                                    return <NoData message="No wins or losses to compare." />;
+                                }
+
+                                const winPercentage = (wins / total) * 100;
+                                const lossPercentage = (losses / total) * 100;
+
+                                return (
+                                    <div className="flex flex-col h-full justify-center gap-4">
+                                        <div className="w-full flex h-8 rounded-full overflow-hidden bg-gray-700">
+                                            <div
+                                                className="bg-[#10B981] transition-all duration-500"
+                                                style={{ width: `${winPercentage}%` }}
+                                                title={`Wins: ${winPercentage.toFixed(0)}%`}
+                                            ></div>
+                                            <div
+                                                className="bg-[#EF4444] transition-all duration-500"
+                                                style={{ width: `${lossPercentage}%` }}
+                                                title={`Losses: ${lossPercentage.toFixed(0)}%`}
+                                            ></div>
+                                        </div>
+                                        <div className="flex justify-around text-center">
+                                            <div>
+                                                <p className="text-xs text-[#8A91A8] uppercase">Wins</p>
+                                                <p className="text-lg font-bold text-[#10B981]">{wins}</p>
+                                                <p className="text-sm text-gray-400">{winPercentage.toFixed(0)}%</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-[#8A91A8] uppercase">Losses</p>
+                                                <p className="text-lg font-bold text-[#EF4444]">{losses}</p>
+                                                <p className="text-sm text-gray-400">{lossPercentage.toFixed(0)}%</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </DataCard>
                     </div>
                 </div>
             )}
