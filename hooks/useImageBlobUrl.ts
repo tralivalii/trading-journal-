@@ -8,60 +8,31 @@ interface ImageState {
 }
 
 /**
- * A hook to get a signed URL for an image from a private Supabase Storage bucket.
+ * A hook to get a public URL for an image from Supabase Storage.
+ * This assumes the 'trade-attachments' bucket is public.
  * @param storagePath The path to the file in the storage bucket (e.g., "user-id/image.png").
- * @returns An object with the signed URL, loading state, and error state.
+ * @returns An object with the public URL, loading state, and error state.
  */
 const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => {
     const [imageState, setImageState] = useState<ImageState>({
         url: null,
         error: false,
-        isLoading: true,
+        isLoading: true, // Start with loading true
     });
 
     useEffect(() => {
-        // If there's no path, we're done.
-        if (!storagePath) {
-            setImageState({ url: null, error: false, isLoading: false });
-            return;
+        if (storagePath) {
+            // This hook now assumes all images are stored in Supabase Storage and the bucket is public.
+            // Remnants of blob URL logic for offline mode have been removed.
+            const { data } = supabase.storage
+                .from('trade-attachments')
+                .getPublicUrl(storagePath);
+            
+            setImageState({ url: data.publicUrl, isLoading: false, error: false });
+        } else {
+            // If there's no path, we're done loading and there's no URL.
+            setImageState({ url: null, isLoading: false, error: false });
         }
-        
-        // Handle old blob URLs from the previous offline implementation for backward compatibility.
-        if (storagePath.startsWith('blob:')) {
-            setImageState({ url: storagePath, error: false, isLoading: false });
-            return;
-        }
-
-        let isMounted = true;
-        setImageState({ url: null, error: false, isLoading: true });
-
-        const getSignedUrl = async () => {
-            try {
-                // Use createSignedUrl for private buckets. The URL is valid for 5 minutes.
-                const { data, error } = await supabase.storage
-                    .from('trade-attachments')
-                    .createSignedUrl(storagePath, 300); // 300 seconds = 5 minutes
-
-                if (error) {
-                    throw error;
-                }
-
-                if (isMounted) {
-                    setImageState({ url: data.signedUrl, error: false, isLoading: false });
-                }
-            } catch (err) {
-                console.error(`Failed to get signed URL for ${storagePath}:`, err);
-                if (isMounted) {
-                    setImageState({ url: null, error: true, isLoading: false });
-                }
-            }
-        };
-
-        getSignedUrl();
-
-        return () => {
-            isMounted = false;
-        };
     }, [storagePath]);
 
     return imageState;
