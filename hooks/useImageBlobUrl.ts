@@ -8,10 +8,9 @@ interface ImageState {
 }
 
 /**
- * A hook to get the public URL for an image from Supabase Storage.
- * This assumes the 'trade-attachments' bucket is public.
+ * A hook to get a signed URL for an image from a private Supabase Storage bucket.
  * @param storagePath The path to the file in the storage bucket (e.g., "user-id/image.png").
- * @returns An object with the public URL, loading state, and error state.
+ * @returns An object with the signed URL, loading state, and error state.
  */
 const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => {
     const [imageState, setImageState] = useState<ImageState>({
@@ -21,12 +20,13 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
     });
 
     useEffect(() => {
+        // If there's no path, we're done.
         if (!storagePath) {
             setImageState({ url: null, error: false, isLoading: false });
             return;
         }
         
-        // Handle old blob URLs that might still be in the data from the previous offline implementation
+        // Handle old blob URLs from the previous offline implementation for backward compatibility.
         if (storagePath.startsWith('blob:')) {
             setImageState({ url: storagePath, error: false, isLoading: false });
             return;
@@ -35,24 +35,29 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
         let isMounted = true;
         setImageState({ url: null, error: false, isLoading: true });
 
-        const getPublicUrl = () => {
+        const getSignedUrl = async () => {
             try {
-                const { data } = supabase.storage
+                // Use createSignedUrl for private buckets. The URL is valid for 5 minutes.
+                const { data, error } = await supabase.storage
                     .from('trade-attachments')
-                    .getPublicUrl(storagePath);
+                    .createSignedUrl(storagePath, 300); // 300 seconds = 5 minutes
+
+                if (error) {
+                    throw error;
+                }
 
                 if (isMounted) {
-                    setImageState({ url: data.publicUrl, error: false, isLoading: false });
+                    setImageState({ url: data.signedUrl, error: false, isLoading: false });
                 }
             } catch (err) {
-                console.error(`Failed to get public URL for ${storagePath}:`, err);
+                console.error(`Failed to get signed URL for ${storagePath}:`, err);
                 if (isMounted) {
                     setImageState({ url: null, error: true, isLoading: false });
                 }
             }
         };
 
-        getPublicUrl();
+        getSignedUrl();
 
         return () => {
             isMounted = false;
