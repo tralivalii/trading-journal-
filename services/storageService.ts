@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
+import { getFromCache, setInCache } from './urlCache';
 
 const BUCKET_NAME = 'screenshots';
+const SIGNED_URL_EXPIRATION = 60 * 120; // 2 hours
 
 /**
  * Uploads an image to the Supabase storage bucket.
@@ -42,16 +44,28 @@ export const getImageUrl = async (path: string | null | undefined): Promise<stri
     if (!path) {
         return null;
     }
+
+    // 1. Check cache first
+    const cachedUrl = getFromCache(path);
+    if (cachedUrl) {
+        return cachedUrl;
+    }
+
+    // 2. If not in cache, fetch from Supabase
     try {
         const { data, error } = await supabase.storage
             .from(BUCKET_NAME)
-            .createSignedUrl(path, 60 * 5); // URL valid for 5 minutes
+            .createSignedUrl(path, SIGNED_URL_EXPIRATION);
 
         if (error) {
             console.error('Error creating signed URL:', error);
             return null;
         }
+
+        // 3. Store the new URL in cache
+        setInCache(path, data.signedUrl, SIGNED_URL_EXPIRATION - 30); // Cache for slightly less time
         return data.signedUrl;
+
     } catch (error) {
         console.error('Error in getImageUrl service:', error);
         return null;
