@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Trade, Account, Result, Analysis } from '../types';
 import { ICONS } from '../constants';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import useSupabaseImage from '../hooks/useSupabaseImage';
 import { analyzeTradeWithAI } from '../services/aiService';
 import { useAppContext } from '../services/appState';
 import { updateTradeWithAIAnalysisAction } from '../services/appState';
@@ -31,7 +31,7 @@ const AnalysisDetailSection: React.FC<{
     analysis: Analysis;
     onImageClick: (src: string | null, notes?: string) => void;
 }> = ({ analysis, onImageClick }) => {
-    const { url: imageUrl, isLoading, error } = useImageBlobUrl(analysis.image);
+    const { url: imageUrl, isLoading, error } = useSupabaseImage(analysis.image);
     
     return (
         <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
@@ -92,10 +92,10 @@ const TradeDetail: React.FC<TradeDetailProps> = ({ trade, account, onEdit }) => 
     };
   }, []);
 
-  const { url: analysisD1ImageUrl } = useImageBlobUrl(trade.analysisD1.image);
-  const { url: analysis1hImageUrl } = useImageBlobUrl(trade.analysis1h.image);
-  const { url: analysis5mImageUrl } = useImageBlobUrl(trade.analysis5m.image);
-  const { url: analysisResultImageUrl } = useImageBlobUrl(trade.analysisResult.image);
+  const { url: analysisD1ImageUrl } = useSupabaseImage(trade.analysisD1.image);
+  const { url: analysis1hImageUrl } = useSupabaseImage(trade.analysis1h.image);
+  const { url: analysis5mImageUrl } = useSupabaseImage(trade.analysis5m.image);
+  const { url: analysisResultImageUrl } = useSupabaseImage(trade.analysisResult.image);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

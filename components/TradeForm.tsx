@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import useSupabaseImage from '../hooks/useSupabaseImage';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
@@ -41,7 +41,7 @@ const AnalysisSection: React.FC<{
     onFileChange: (file: File | null) => void;
     onNotesChange: (notes: string) => void;
 }> = ({ title, analysis, onFileChange, onNotesChange }) => {
-    const { url: imageUrl, isLoading } = useImageBlobUrl(analysis.image);
+    const { url: imageUrl, isLoading, error: imageError } = useSupabaseImage(analysis.image);
 
     const handleImageRemove = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -76,7 +76,8 @@ const AnalysisSection: React.FC<{
                         />
                     </FormField>
                     {isLoading && <div className="mt-3 text-sm text-gray-400 animate-pulse">Loading preview...</div>}
-                    {imageUrl && (
+                    {imageError && <div className="mt-3 text-sm text-red-500">Error loading image</div>}
+                    {imageUrl && !imageError && (
                         <div className="mt-3 relative inline-block">
                            <img src={imageUrl} alt={`${title} preview`} className="rounded-md h-40 w-auto border border-gray-700 object-contain" />
                            <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none" aria-label="Remove image">&times;</button>
@@ -245,7 +246,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               
               const { error: uploadError } = await supabase.storage
                   .from('trade-attachments')
-                  .upload(storagePath, fileToUpload);
+                  .upload(storagePath, fileToUpload, {
+                      upsert: true, // Overwrite file if it exists, useful for retries
+                  });
 
               if (uploadError) {
                   throw uploadError;

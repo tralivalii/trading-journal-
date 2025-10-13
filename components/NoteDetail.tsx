@@ -4,7 +4,7 @@ import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import useSupabaseImage from '../hooks/useSupabaseImage';
 
 declare const DOMPurify: any;
 declare const marked: any;
@@ -66,7 +66,7 @@ const NoteImage: React.FC<{
         return match ? match[1] : null;
     }, [imageUrl]);
 
-    const { url, isLoading, error } = useImageBlobUrl(storagePath);
+    const { url, isLoading, error } = useSupabaseImage(storagePath);
 
     if (isLoading) {
         return (
@@ -217,7 +217,9 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
             const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
             const { error: uploadError } = await supabase.storage
                 .from('trade-attachments')
-                .upload(storagePath, file);
+                .upload(storagePath, file, {
+                    upsert: true, // Overwrite file if it exists, useful for retries
+                });
 
             if (uploadError) throw uploadError;
 
