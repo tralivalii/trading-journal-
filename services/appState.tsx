@@ -4,6 +4,7 @@ import React, { createContext, useReducer, useContext, useEffect, Dispatch } fro
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { Account, Note, Result, Trade, UserData } from '../types';
 import { supabase } from './supabase';
+import { deleteImage } from './storageService';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -285,12 +286,11 @@ export const deleteTradeAction = async (
             tradeToDelete.analysisResult.image
         ].filter(Boolean) as string[];
 
+        // Asynchronously delete all associated images from storage.
+        // This is non-blocking for the UI.
         if (imagePaths.length > 0) {
-            const { error: storageError } = await supabase.storage.from('screenshots').remove(imagePaths);
-            if (storageError) {
-                console.error("Failed to delete images from storage:", storageError);
-                // Non-blocking error, we still want to delete the trade record.
-            }
+            Promise.all(imagePaths.map(path => deleteImage(path)))
+                .catch(err => console.error("One or more images failed to delete from storage:", err));
         }
     }
 

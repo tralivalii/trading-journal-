@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
 import useSupabaseImage from '../hooks/useSupabaseImage';
 import { useAppContext } from '../services/appState';
-import { supabase } from '../services/supabase';
+import { uploadImage, deleteImage } from '../services/storageService';
 import { ICONS } from '../constants';
 
 interface TradeFormProps {
@@ -227,45 +227,26 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
       const currentImagePath = (trade[sectionKey] as Analysis).image;
 
-      // Delete old image if it exists in Supabase
-      if (currentImagePath && currentUser) {
-          try {
-              await supabase.storage.from('screenshots').remove([currentImagePath]);
-          } catch (e) {
-              console.error("Failed to delete old image from Supabase Storage", e);
-          }
+      // Delete old image if it exists
+      if (currentImagePath) {
+          await deleteImage(currentImagePath);
       }
 
-      // If a new file is provided, upload it
       if (file && currentUser) {
           setIsUploading(true);
           try {
-              // FIX: Removed image compression to fix mobile upload errors.
-              const fileToUpload = file;
-              const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${fileToUpload.name}`;
-              
-              const { error: uploadError } = await supabase.storage
-                  .from('screenshots')
-                  .upload(storagePath, fileToUpload, {
-                      upsert: true, // Overwrite file if it exists, useful for retries
-                  });
-
-              if (uploadError) {
-                  throw uploadError;
-              }
-              
+              const storagePath = await uploadImage(file, currentUser.id);
               handleAnalysisChange(sectionKey, 'image', storagePath);
-              
           } catch (error) {
-              console.error("Error uploading image to Supabase:", error);
+              console.error("Error during image upload:", error);
               const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
               dispatch({ type: 'SHOW_TOAST', payload: { message: `Upload failed: ${errorMessage}`, type: 'error' } });
-              handleAnalysisChange(sectionKey, 'image', undefined); // Clear on failure
+              handleAnalysisChange(sectionKey, 'image', undefined); // Clear image path on failure
           } finally {
               setIsUploading(false);
           }
       } else {
-          // Handle file removal by clearing the path
+          // This handles the case where the "Remove" button is clicked
           handleAnalysisChange(sectionKey, 'image', undefined);
       }
   };

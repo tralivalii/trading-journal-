@@ -666,7 +666,7 @@ function AppContent() {
     );
   }
   
-  if (false) { // Temporarily disable Auth screen for verification
+  if (!session) {
     return <Auth />;
   }
   

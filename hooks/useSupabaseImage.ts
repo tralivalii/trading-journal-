@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../services/supabase';
+import { getImageUrl } from '../services/storageService';
 
 interface ImageState {
     url: string | null;
@@ -8,7 +8,8 @@ interface ImageState {
 }
 
 /**
- * A hook to get a signed URL for a private image from Supabase Storage.
+ * A hook to get a signed URL for a private image from Supabase Storage
+ * using the centralized storageService.
  * @param storagePath The path to the file in the storage bucket.
  * @returns An object with the signed URL, loading state, and error state.
  */
@@ -25,32 +26,18 @@ const useSupabaseImage = (storagePath: string | undefined | null): ImageState =>
             return;
         }
 
-        const getSignedUrl = async () => {
-            setImageState(prev => ({ ...prev, isLoading: true }));
-            try {
-                const { data, error } = await supabase.storage
-                    .from('screenshots')
-                    .createSignedUrl(storagePath, 60 * 5); // Signed URL valid for 5 minutes
-
-                if (error) {
-                    throw error;
-                }
-
-                setImageState({ url: data.signedUrl, isLoading: false, error: false });
-            } catch (error) {
-                console.error('Error creating signed URL:', error);
+        const fetchImageUrl = async () => {
+            setImageState({ url: null, isLoading: true, error: false });
+            const signedUrl = await getImageUrl(storagePath);
+            if (signedUrl) {
+                setImageState({ url: signedUrl, isLoading: false, error: false });
+            } else {
                 setImageState({ url: null, isLoading: false, error: true });
             }
         };
 
-        getSignedUrl();
+        fetchImageUrl();
 
-        // Optional: Clean up the object URL when the component unmounts or the path changes
-        return () => {
-            if (imageState.url && imageState.url.startsWith('blob:')) {
-                URL.revokeObjectURL(imageState.url);
-            }
-        };
     }, [storagePath]);
 
     return imageState;

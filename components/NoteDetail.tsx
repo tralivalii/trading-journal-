@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Note } from '../types';
 import { useAppContext } from '../services/appState';
-import { supabase } from '../services/supabase';
+import { uploadImage } from '../services/storageService';
 import { ICONS } from '../constants';
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
 import useSupabaseImage from '../hooks/useSupabaseImage';
@@ -214,15 +214,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
-            const { error: uploadError } = await supabase.storage
-                .from('screenshots')
-                .upload(storagePath, file, {
-                    upsert: true, // Overwrite file if it exists, useful for retries
-                });
-
-            if (uploadError) throw uploadError;
-
+            const storagePath = await uploadImage(file, currentUser.id);
             const finalMarkdown = `\n![${file.name}](storage://${storagePath})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
             dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded.', type: 'success' } });
