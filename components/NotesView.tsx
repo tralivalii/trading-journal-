@@ -113,7 +113,7 @@ const NewNoteCreator: React.FC<{
         try {
             const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
             const { error: uploadError } = await supabase.storage
-                .from('trade-attachments') // Assuming notes images go to the same bucket for simplicity
+                .from('screenshots') // Assuming notes images go to the same bucket for simplicity
                 .upload(storagePath, file);
 
             if (uploadError) {

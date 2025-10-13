@@ -216,7 +216,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         try {
             const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
             const { error: uploadError } = await supabase.storage
-                .from('trade-attachments')
+                .from('screenshots')
                 .upload(storagePath, file, {
                     upsert: true, // Overwrite file if it exists, useful for retries
                 });

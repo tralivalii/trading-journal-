@@ -29,7 +29,7 @@ const useSupabaseImage = (storagePath: string | undefined | null): ImageState =>
             setImageState(prev => ({ ...prev, isLoading: true }));
             try {
                 const { data, error } = await supabase.storage
-                    .from('trade-attachments')
+                    .from('screenshots')
                     .createSignedUrl(storagePath, 60 * 5); // Signed URL valid for 5 minutes
 
                 if (error) {

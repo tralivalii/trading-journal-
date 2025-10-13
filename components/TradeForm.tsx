@@ -230,7 +230,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
       // Delete old image if it exists in Supabase
       if (currentImagePath && currentUser) {
           try {
-              await supabase.storage.from('trade-attachments').remove([currentImagePath]);
+              await supabase.storage.from('screenshots').remove([currentImagePath]);
           } catch (e) {
               console.error("Failed to delete old image from Supabase Storage", e);
           }
@@ -245,7 +245,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${fileToUpload.name}`;
               
               const { error: uploadError } = await supabase.storage
-                  .from('trade-attachments')
+                  .from('screenshots')
                   .upload(storagePath, fileToUpload, {
                       upsert: true, // Overwrite file if it exists, useful for retries
                   });

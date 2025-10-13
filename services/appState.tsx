@@ -286,7 +286,7 @@ export const deleteTradeAction = async (
         ].filter(Boolean) as string[];
 
         if (imagePaths.length > 0) {
-            const { error: storageError } = await supabase.storage.from('trade-attachments').remove(imagePaths);
+            const { error: storageError } = await supabase.storage.from('screenshots').remove(imagePaths);
             if (storageError) {
                 console.error("Failed to delete images from storage:", storageError);
                 // Non-blocking error, we still want to delete the trade record.
