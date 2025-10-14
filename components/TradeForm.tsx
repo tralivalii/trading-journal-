@@ -123,7 +123,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const [trade, setTrade] = useState(() => {
      const initialTradeState = {
         date: getLocalDateTimeString(new Date()),
-        accountId: accounts.length === 1 ? accounts[0].id : (defaultSettings.accountId || ''),
+        accountId: defaultSettings.accountId || '',
         pair: defaultSettings.pair || (pairs.length > 0 ? pairs[0] : ''),
         entry: defaultSettings.entry || '',
         direction: Direction.Long,
@@ -139,6 +139,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         analysis5m: { ...emptyAnalysis },
         analysisResult: { ...emptyAnalysis },
      };
+     
+     // FIX: Auto-select account if only one exists for a NEW trade.
+     if (!tradeToEdit && accounts.length === 1) {
+         initialTradeState.accountId = accounts[0].id;
+     }
 
      const stateToEdit = tradeToEdit ? {
         ...tradeToEdit,
@@ -294,10 +299,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
         if (fieldRef) {
             fieldRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            fieldRef.classList.add('ring-2', 'ring-red-500');
-            setTimeout(() => {
-                fieldRef.classList.remove('ring-2', 'ring-red-500');
-            }, 1000);
+            // Use classes to indicate error instead of direct style manipulation
+            // The classes will be picked up by the JSX for consistent styling.
         }
         return;
     }
@@ -327,7 +330,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                 <h3 className="text-xl font-semibold text-white">Trade Setup</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                     <FormField label="Date">
-                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
+                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={`${textInputClasses} min-w-0`} />
                     </FormField>
                     <FormField label="Account">
                         <select 
@@ -335,7 +338,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                             name="accountId" 
                             value={trade.accountId} 
                             onChange={handleChange} 
-                            className={`${selectClasses} ${errors.accountId ? 'border-red-500 focus:ring-red-500' : ''}`}
+                            className={`${selectClasses} ${errors.accountId ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
                         >
                             <option value="">Select Account</option>
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
@@ -401,7 +404,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                             name="rr"
                             value={trade.rr}
                             onChange={handleChange}
-                            className={`${numberInputClasses} ${errors.rr ? 'border-red-500 focus:ring-red-500' : ''}`}
+                            className={`${numberInputClasses} ${errors.rr ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
                         />
                         {errors.rr && <p className="text-red-500 text-xs mt-1">{errors.rr}</p>}
                     </FormField>
@@ -413,7 +416,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                             name="commission"
                             value={trade.commission}
                             onChange={handleChange}
-                            className={`${numberInputClasses} ${errors.commission ? 'border-red-500 focus:ring-red-500' : ''}`}
+                            className={`${numberInputClasses} ${errors.commission ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
                         />
                         {errors.commission && <p className="text-red-500 text-xs mt-1">{errors.commission}</p>}
                     </FormField>
