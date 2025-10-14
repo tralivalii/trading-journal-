@@ -18,7 +18,7 @@ type TradeFormData = Omit<Trade, 'pnl' | 'riskAmount'>;
 
 // --- STYLES & HELPERS ---
 
-const baseControlClasses = "w-full bg-[#1A1D26] border rounded-md text-sm text-white focus:outline-none focus:ring-2 transition-colors";
+const baseControlClasses = "w-full bg-[#1A1D26] border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors";
 const textInputClasses = `${baseControlClasses} px-3 py-2`;
 const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
 const selectClasses = `${textInputClasses} pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4M8 15l4-4 4 4'/%3e%3c/svg%3e")]`;
@@ -120,7 +120,7 @@ const AnalysisSection: React.FC<AnalysisSectionProps> = ({ analysis, onAnalysisC
                     <textarea 
                         value={analysis.notes || ''} 
                         onChange={handleNotesChange} 
-                        className={textInputClasses + " h-48 resize-none border-gray-600"}
+                        className={textInputClasses + " h-48 resize-none"}
                         placeholder={`Notes for ${title}...`}
                     />
                 </FormField>
@@ -138,20 +138,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     
     const getInitialState = useCallback((): Omit<TradeFormData, 'riskAmount' | 'pnl'> => {
         const defaults = userData?.defaultSettings;
-        
-        let initialAccountId = '';
-        if (!tradeToEdit) { // Only apply special logic for new trades
-            if (accounts.length === 1) {
-                initialAccountId = accounts[0].id;
-            } else if (defaults?.accountId && accounts.some(a => a.id === defaults.accountId)) {
-                initialAccountId = defaults.accountId;
-            }
-        }
-
         const baseState = {
-            id: crypto.randomUUID(),
+            id: crypto.randomUUID(), // for keying, not saved
             date: new Date().toISOString().substring(0, 16),
-            accountId: initialAccountId,
+            accountId: accounts.some(a => a.id === defaults?.accountId) ? defaults!.accountId : accounts[0]?.id || '',
             pair: defaults?.pair || '',
             direction: Direction.Long,
             entry: defaults?.entry || '',
@@ -171,16 +161,13 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             analysisResult: { image: undefined, notes: '' },
             aiAnalysis: '',
         };
-
         if (tradeToEdit) {
             return {
                 ...baseState,
                 ...tradeToEdit,
-                accountId: tradeToEdit.accountId,
                 date: new Date(tradeToEdit.date).toISOString().substring(0, 16),
             };
         }
-
         return baseState;
     }, [tradeToEdit, accounts, userData?.defaultSettings]);
 
@@ -188,13 +175,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     const [activeTab, setActiveTab] = useState('D1');
     const [isDirty, setIsDirty] = useState(false);
     const initialStateRef = useRef(getInitialState());
-    const [errors, setErrors] = useState<{ accountId?: string }>({});
 
     useEffect(() => {
         const initialState = getInitialState();
         setTradeData(initialState);
         initialStateRef.current = initialState;
-        setErrors({});
     }, [tradeToEdit, getInitialState]);
     
     useEffect(() => {
@@ -218,11 +203,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
-        
-        if (name === 'accountId' && errors.accountId) {
-            setErrors(prev => ({ ...prev, accountId: undefined }));
-        }
-
         let finalValue: any = value;
         if (type === 'number' || name === 'risk' || name === 'rr' || name === 'commission') {
             finalValue = parseFloat(value) || 0;
@@ -237,21 +217,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         setTradeData(prev => ({ ...prev, [fieldName]: analysis }));
     };
 
-    const validateForm = (): boolean => {
-        const newErrors: { accountId?: string } = {};
-        if (!tradeData.accountId) {
-            newErrors.accountId = 'Please select an account.';
-        }
-        setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
-    };
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (validateForm()) {
-            const { ...saveData } = tradeData;
-            onSave({ ...saveData, date: new Date(tradeData.date).toISOString() });
-        }
+        const { ...saveData } = tradeData;
+        onSave({ ...saveData, date: new Date(tradeData.date).toISOString() });
     };
 
     const timeframeMap = (userData?.analysisTimeframes || ['D1', '1h', '5m', 'Result']).reduce((acc, tf) => {
@@ -271,33 +240,25 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
     return (
         <div id="trade-form-wrapper">
-            <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+            <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Core Details */}
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <FormField label="Account" className="lg:col-span-1">
-                        <select 
-                            name="accountId" 
-                            value={tradeData.accountId} 
-                            onChange={handleChange} 
-                            required 
-                            className={`${selectClasses} ${errors.accountId ? 'border-red-500 focus:ring-red-500' : 'border-gray-600 focus:ring-blue-500'}`}
-                        >
-                            <option value="" disabled>Select an account...</option>
+                        <select name="accountId" value={tradeData.accountId} onChange={handleChange} required className={selectClasses}>
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                         </select>
-                        {errors.accountId && <p className="text-red-500 text-xs mt-1">{errors.accountId}</p>}
                     </FormField>
                     <FormField label="Pair" className="lg:col-span-1">
-                        <input list="pairs" name="pair" value={tradeData.pair} onChange={handleChange} required className={textInputClasses + " border-gray-600"} />
+                        <input list="pairs" name="pair" value={tradeData.pair} onChange={handleChange} required className={textInputClasses} />
                         <datalist id="pairs">
                             {userData?.pairs?.map(p => <option key={p} value={p} />)}
                         </datalist>
                     </FormField>
                     <FormField label="Date & Time" className="lg:col-span-1">
-                        <input type="datetime-local" name="date" value={tradeData.date} onChange={handleChange} required className={textInputClasses + " border-gray-600"} />
+                        <input type="datetime-local" name="date" value={tradeData.date} onChange={handleChange} required className={textInputClasses} />
                     </FormField>
                     <FormField label="Direction" className="lg:col-span-1">
-                         <select name="direction" value={tradeData.direction} onChange={handleChange} required className={`${selectClasses} ${tradeData.direction === Direction.Long ? 'text-green-400' : 'text-red-400'} border-gray-600`}>
+                         <select name="direction" value={tradeData.direction} onChange={handleChange} required className={`${selectClasses} ${tradeData.direction === Direction.Long ? 'text-green-400' : 'text-red-400'}`}>
                             <option value={Direction.Long}>Long</option>
                             <option value={Direction.Short}>Short</option>
                         </select>
@@ -315,23 +276,23 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                 {/* Risk & Types */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                      <FormField label="Risk (%)">
-                        <select name="risk" value={tradeData.risk} onChange={handleChange} required className={selectClasses + " border-gray-600"}>
+                        <select name="risk" value={tradeData.risk} onChange={handleChange} required className={selectClasses}>
                             {userData?.risks?.map(r => <option key={r} value={r}>{r}%</option>)}
                         </select>
                     </FormField>
                     <FormField label="R:R Ratio">
-                        <input type="number" step="0.1" name="rr" value={tradeData.rr} onChange={handleChange} required className={numberInputClasses + " border-gray-600"} />
+                        <input type="number" step="0.1" name="rr" value={tradeData.rr} onChange={handleChange} required className={numberInputClasses} />
                     </FormField>
                     <FormField label="Entry Type">
-                        <input list="entries" name="entry" value={tradeData.entry} onChange={handleChange} className={textInputClasses + " border-gray-600"} />
+                        <input list="entries" name="entry" value={tradeData.entry} onChange={handleChange} className={textInputClasses} />
                         <datalist id="entries">{userData?.entries?.map(e => <option key={e} value={e} />)}</datalist>
                     </FormField>
                     <FormField label="SL Type">
-                        <input list="stoplosses" name="stoploss" value={tradeData.stoploss} onChange={handleChange} className={textInputClasses + " border-gray-600"} />
+                        <input list="stoplosses" name="stoploss" value={tradeData.stoploss} onChange={handleChange} className={textInputClasses} />
                         <datalist id="stoplosses">{userData?.stoplosses?.map(s => <option key={s} value={s} />)}</datalist>
                     </FormField>
                     <FormField label="TP Type">
-                        <input list="takeprofits" name="takeprofit" value={tradeData.takeprofit} onChange={handleChange} className={textInputClasses + " border-gray-600"} />
+                        <input list="takeprofits" name="takeprofit" value={tradeData.takeprofit} onChange={handleChange} className={textInputClasses} />
                         <datalist id="takeprofits">{userData?.takeprofits?.map(t => <option key={t} value={t} />)}</datalist>
                     </FormField>
                 </div>
@@ -339,19 +300,19 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                 {/* Price Levels & Close */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                      <FormField label="Entry Price">
-                        <input type="number" step="any" name="entryPrice" value={tradeData.entryPrice || ''} onChange={handleChange} className={numberInputClasses + " border-gray-600"} />
+                        <input type="number" step="any" name="entryPrice" value={tradeData.entryPrice || ''} onChange={handleChange} className={numberInputClasses} />
                     </FormField>
                     <FormField label="Stoploss Price">
-                        <input type="number" step="any" name="stoplossPrice" value={tradeData.stoplossPrice || ''} onChange={handleChange} className={numberInputClasses + " border-gray-600"} />
+                        <input type="number" step="any" name="stoplossPrice" value={tradeData.stoplossPrice || ''} onChange={handleChange} className={numberInputClasses} />
                     </FormField>
                     <FormField label="Takeprofit Price">
-                        <input type="number" step="any" name="takeprofitPrice" value={tradeData.takeprofitPrice || ''} onChange={handleChange} className={numberInputClasses + " border-gray-600"} />
+                        <input type="number" step="any" name="takeprofitPrice" value={tradeData.takeprofitPrice || ''} onChange={handleChange} className={numberInputClasses} />
                     </FormField>
                     <FormField label="Commission ($)">
-                        <input type="number" step="0.01" name="commission" value={tradeData.commission || ''} onChange={handleChange} className={numberInputClasses + " border-gray-600"} />
+                        <input type="number" step="0.01" name="commission" value={tradeData.commission || ''} onChange={handleChange} className={numberInputClasses} />
                     </FormField>
                     <FormField label="Close Type">
-                        <input list="closeTypes" name="closeType" value={tradeData.closeType || ''} onChange={handleChange} className={textInputClasses + " border-gray-600"} />
+                        <input list="closeTypes" name="closeType" value={tradeData.closeType || ''} onChange={handleChange} className={textInputClasses} />
                         <datalist id="closeTypes">{userData?.closeTypes?.map(c => <option key={c} value={c} />)}</datalist>
                     </FormField>
                 </div>
