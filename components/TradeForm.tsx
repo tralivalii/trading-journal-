@@ -1,475 +1,365 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Trade, Account, Direction, Result, Analysis } from '../types';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import { Trade, Account, Result, Direction, Analysis } from '../types';
 import { useAppContext } from '../services/appState';
 import { supabase } from '../services/supabase';
 import { ICONS } from '../constants';
+import CustomSelect from './ui/CustomSelect';
+import useImageBlobUrl from '../hooks/useImageBlobUrl';
 
-interface TradeFormProps {
-  onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
-  onClose: () => void;
-  tradeToEdit?: Trade | null;
-  accounts: Account[];
-}
-
-const getLocalDateTimeString = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
-const emptyAnalysis: Analysis = { image: undefined, notes: '' };
-
-const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-    <div>
+// Reusable FormField component for consistency (similar to AccountForm)
+const FormField: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className }) => (
+    <div className={className}>
         <label className="block text-sm text-[#8A91A8] uppercase tracking-wider mb-2">{label}</label>
         {children}
     </div>
 );
 
+// Shared styles for form controls
 const baseControlClasses = "w-full bg-[#1A1D26] border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors";
-const selectClasses = `${baseControlClasses} pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4M8 15l4-4 4 4'/%3e%3c/svg%3e")] disabled:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500`;
 const textInputClasses = `${baseControlClasses} px-3 py-2`;
 const numberInputClasses = `${textInputClasses} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
+const selectClasses = `${textInputClasses} pl-3 pr-10 py-2 appearance-none bg-no-repeat bg-right [background-position-x:calc(100%-0.75rem)] [background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m8 9 4 4 4-4'/%3e%3c/svg%3e")]`;
 
-const AnalysisSection: React.FC<{
-    title: string;
-    analysis: Analysis;
-    onFileChange: (file: File | null) => void;
-    onNotesChange: (notes: string) => void;
-}> = ({ title, analysis, onFileChange, onNotesChange }) => {
-    const { url: imageUrl, isLoading } = useImageBlobUrl(analysis.image);
+const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
+    '1D': { key: 'analysisD1', title: 'Daily Analysis' },
+    '1h': { key: 'analysis1h', title: '1-Hour Analysis' },
+    '5m': { key: 'analysis5m', title: '5-Minute Analysis' },
+    'Result': { key: 'analysisResult', title: 'Result Analysis' },
+};
 
-    const handleImageRemove = (e: React.MouseEvent) => {
-        e.preventDefault();
-        onFileChange(null);
-    }
-    
-    const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-        const items = e.clipboardData.items;
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type.startsWith('image/')) {
-                const file = items[i].getAsFile();
-                if (file) {
-                    e.preventDefault();
-                    onFileChange(file);
-                    return; // Process only the first image found
-                }
+
+interface ImageUploaderProps {
+    storagePath?: string;
+    onUpload: (path: string) => void;
+    onRemove: () => void;
+}
+
+const ImageUploader: React.FC<ImageUploaderProps> = ({ storagePath, onUpload, onRemove }) => {
+    const { state } = useAppContext();
+    const { currentUser } = state;
+    const { url: imageUrl, isLoading: isUrlLoading } = useImageBlobUrl(storagePath);
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !currentUser) return;
+
+        setIsUploading(true);
+        try {
+            // Remove existing image if one exists
+            if (storagePath) {
+                await supabase.storage.from('trade-attachments').remove([storagePath]);
             }
+
+            const newPath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
+            const { error } = await supabase.storage.from('trade-attachments').upload(newPath, file);
+            if (error) throw error;
+            onUpload(newPath);
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            // Optionally dispatch a toast notification
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleRemove = async () => {
+        if (!storagePath) return;
+        try {
+            await supabase.storage.from('trade-attachments').remove([storagePath]);
+            onRemove();
+        } catch (error) {
+            console.error('Error removing image:', error);
         }
     };
 
     return (
-        <div className="bg-[#1A1D26] p-4 rounded-lg border border-gray-700/50">
-            <h3 className="text-lg font-semibold text-white mb-3">{title}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <FormField label="Chart Screenshot">
-                        <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => onFileChange(e.target.files ? e.target.files[0] : null)}
-                            className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
-                        />
-                    </FormField>
-                    {isLoading && <div className="mt-3 text-sm text-gray-400 animate-pulse">Loading preview...</div>}
-                    {imageUrl && (
-                        <div className="mt-3 relative inline-block">
-                           <img src={imageUrl} alt={`${title} preview`} className="rounded-md h-40 w-auto border border-gray-700 object-contain" />
-                           <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none" aria-label="Remove image">&times;</button>
-                        </div>
-                    )}
+        <div className="w-full bg-gray-900/50 p-3 rounded-md border border-dashed border-gray-600">
+            {isUrlLoading || isUploading ? (
+                <div className="flex items-center justify-center h-40 text-gray-500">
+                     <svg className="animate-spin h-5 w-5 text-white mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {isUploading ? 'Uploading...' : 'Loading...'}
                 </div>
-                <div>
-                    <FormField label="Notes">
-                        <textarea
-                            value={analysis.notes || ''}
-                            onChange={(e) => onNotesChange(e.target.value)}
-                            onPaste={handlePaste}
-                            rows={5}
-                            placeholder="Type notes or paste a screenshot..."
-                            className={textInputClasses}
-                        ></textarea>
-                    </FormField>
+            ) : imageUrl ? (
+                <div className="relative group">
+                    <img src={imageUrl} alt="Trade analysis" className="rounded-md w-full h-auto max-h-60 object-contain" />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button type="button" onClick={handleRemove} className="p-2 bg-red-600 text-white rounded-full hover:bg-red-500 transition-colors">
+                            <span className="w-5 h-5 block">{ICONS.trash}</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="flex items-center justify-center h-40">
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors">
+                        <span className="w-5 h-5">{ICONS.plus}</span>
+                        Upload Chart
+                    </button>
+                </div>
+            )}
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
         </div>
-    )
+    );
 };
 
-const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
-    '1D': { key: 'analysisD1', title: 'D1 Analysis' },
-    '1h': { key: 'analysis1h', title: '1h Analysis' },
-    '5m': { key: 'analysis5m', title: '5m Analysis' },
-    'Result': { key: 'analysisResult', title: 'Result Analysis' },
-};
+interface TradeFormProps {
+  onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
+  onClose: () => void;
+  tradeToEdit: Trade | null;
+  accounts: Account[];
+}
 
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
-  const { state, dispatch } = useAppContext();
-  const { userData, currentUser } = state;
-  const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes, analysisTimeframes } = userData!;
-  
-  const initialTradeStateRef = useRef<any>();
-  const [isDirty, setIsDirty] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const accountSelectRef = useRef<HTMLSelectElement>(null);
-  const rrInputRef = useRef<HTMLInputElement>(null);
-  const commissionInputRef = useRef<HTMLInputElement>(null);
-
-  const [trade, setTrade] = useState(() => {
-     const initialTradeState = {
-        date: getLocalDateTimeString(new Date()),
-        accountId: defaultSettings.accountId || '',
-        pair: defaultSettings.pair || (pairs.length > 0 ? pairs[0] : ''),
-        entry: defaultSettings.entry || '',
+    const { state } = useAppContext();
+    const { defaultSettings, pairs, entries, risks, stoplosses, takeprofits, closeTypes, analysisTimeframes } = state.userData!;
+    
+    const getInitialState = useCallback(() => {
+      if (tradeToEdit) {
+        return { ...tradeToEdit };
+      }
+      return {
+        date: new Date().toISOString(),
+        accountId: defaultSettings.accountId || (accounts.length > 0 ? accounts[0].id : ''),
+        pair: defaultSettings.pair || '',
         direction: Direction.Long,
-        risk: typeof defaultSettings.risk === 'number' ? defaultSettings.risk : (risks.length > 0 ? risks[0] : 1),
-        rr: '1.2',
-        commission: '0',
+        entry: defaultSettings.entry || '',
+        risk: Number(defaultSettings.risk) || 1,
+        rr: 2,
+        result: Result.InProgress,
+        commission: 0,
         stoploss: defaultSettings.stoploss || '',
         takeprofit: defaultSettings.takeprofit || '',
-        result: Result.InProgress,
-        closeType: undefined,
-        analysisD1: { ...emptyAnalysis },
-        analysis1h: { ...emptyAnalysis },
-        analysis5m: { ...emptyAnalysis },
-        analysisResult: { ...emptyAnalysis },
-     };
-     
-     // FIX: Auto-select account if only one exists for a NEW trade.
-     if (!tradeToEdit && accounts.length === 1) {
-         initialTradeState.accountId = accounts[0].id;
-     }
+        entryPrice: undefined,
+        stoplossPrice: undefined,
+        takeprofitPrice: undefined,
+        closeType: '',
+        analysisD1: { image: undefined, notes: '' },
+        analysis1h: { image: undefined, notes: '' },
+        analysis5m: { image: undefined, notes: '' },
+        analysisResult: { image: undefined, notes: '' },
+        aiAnalysis: '',
+      } as Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string };
+    }, [tradeToEdit, defaultSettings, accounts]);
 
-     const stateToEdit = tradeToEdit ? {
-        ...tradeToEdit,
-        date: tradeToEdit.date ? getLocalDateTimeString(new Date(tradeToEdit.date)) : getLocalDateTimeString(new Date()),
-        rr: String(tradeToEdit.rr),
-        commission: String(tradeToEdit.commission || 0),
-     } : null;
+    const [trade, setTrade] = useState(getInitialState());
+    const [initialStateJSON, setInitialStateJSON] = useState(() => JSON.stringify(getInitialState()));
+    const isDirty = JSON.stringify(trade) !== initialStateJSON;
+    const [activeTab, setActiveTab] = useState('Details');
 
-     const { id, riskAmount, pnl, ...restOfTradeToEdit } = stateToEdit || {};
-     const finalInitialState = tradeToEdit ? { ...initialTradeState, ...restOfTradeToEdit } : initialTradeState;
-     initialTradeStateRef.current = finalInitialState;
-     return finalInitialState;
-  });
-
-  useEffect(() => {
-    const currentStateString = JSON.stringify(trade);
-    const initialStateString = JSON.stringify(initialTradeStateRef.current);
-    setIsDirty(currentStateString !== initialStateString);
-  }, [trade]);
-  
-  const [isUploading, setIsUploading] = useState(false);
-
-  const handleCloseRequest = useCallback(() => {
-    if (isDirty) {
-        if(window.confirm("You have unsaved changes. Are you sure you want to close?")) {
+    useEffect(() => {
+        const tradeFormWrapper = document.getElementById('trade-form-wrapper');
+        const handleCloseRequest = () => {
+          if (isDirty) {
+            if (window.confirm("You have unsaved changes. Are you sure you want to close?")) {
+              onClose();
+            }
+          } else {
             onClose();
-        }
-    } else {
-        onClose();
-    }
-  }, [isDirty, onClose]);
+          }
+        };
 
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (wrapper) {
-      wrapper.addEventListener('closeRequest', handleCloseRequest);
-    }
-    return () => {
-      if (wrapper) {
-        wrapper.removeEventListener('closeRequest', handleCloseRequest);
+        if (tradeFormWrapper) {
+          tradeFormWrapper.addEventListener('closeRequest', handleCloseRequest);
+        }
+
+        return () => {
+          if (tradeFormWrapper) {
+            tradeFormWrapper.removeEventListener('closeRequest', handleCloseRequest);
+          }
+        };
+    }, [isDirty, onClose]);
+    
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value, type } = e.target;
+        const isNumber = type === 'number' && name !== 'date';
+        setTrade(prev => ({ ...prev, [name]: isNumber ? parseFloat(value) || 0 : value }));
+    };
+    
+    const handleAnalysisChange = (timeframeKey: keyof Trade, field: keyof Analysis, value: string | undefined) => {
+        setTrade(prev => ({
+            ...prev,
+            [timeframeKey]: {
+                ...(prev[timeframeKey] as Analysis),
+                [field]: value,
+            }
+        }));
+    };
+
+    const getResultClasses = (result: Result) => {
+      switch (result) {
+        case Result.Win: return 'bg-[#10B981]/10 text-[#10B981]';
+        case Result.Loss: return 'bg-[#EF4444]/10 text-[#EF4444]';
+        case Result.Breakeven: return 'bg-gray-500/10 text-[#8A91A8]';
+        case Result.InProgress: return 'bg-yellow-500/10 text-yellow-400';
+        case Result.Missed: return 'bg-blue-500/10 text-blue-400';
+        default: return 'bg-gray-700 text-white';
       }
     };
-  }, [handleCloseRequest]);
-
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-
-    if (errors[name]) {
-        setErrors(prev => {
-            const newErrors = { ...prev };
-            delete newErrors[name];
-            return newErrors;
-        });
-    }
-
-    if (name === 'rr' || name === 'commission') {
-        const normalizedValue = value.replace(',', '.');
-        if (normalizedValue === '' || /^[0-9]*\.?[0-9]*$/.test(normalizedValue)) {
-            setTrade(prev => ({ ...prev, [name]: normalizedValue }));
-        }
-        return;
-    }
     
-    setTrade(prev => {
-        const isNumericSelect = name === 'risk';
-        const updatedValue = isNumericSelect ? parseFloat(value) || 0 : value;
-        let newState = { ...prev, [name]: updatedValue };
-        if (name === 'result' && value === Result.InProgress) {
-            newState.closeType = undefined;
+    const handleSave = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!trade.accountId) {
+            alert("Please select an account.");
+            return;
         }
-        return newState;
-    });
-  };
-
-  const handleAnalysisChange = (sectionKey: keyof Trade, field: 'notes' | 'image', value: string | undefined) => {
-      setTrade(prev => ({
-          ...prev,
-          [sectionKey]: {
-              ...(prev[sectionKey] as Analysis),
-              [field]: value
-          }
-      }));
-  };
-
-  const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
-      const currentImagePath = (trade[sectionKey] as Analysis).image;
-
-      // Delete old image if it exists in Supabase
-      if (currentImagePath && currentUser) {
-          try {
-              await supabase.storage.from('trade-attachments').remove([currentImagePath]);
-          } catch (e) {
-              console.error("Failed to delete old image from Supabase Storage", e);
-          }
-      }
-
-      // If a new file is provided, upload it
-      if (file && currentUser) {
-          setIsUploading(true);
-          try {
-              // FIX: Removed image compression to fix mobile upload errors.
-              const fileToUpload = file;
-              const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${fileToUpload.name}`;
-              
-              const { error: uploadError } = await supabase.storage
-                  .from('trade-attachments')
-                  .upload(storagePath, fileToUpload);
-
-              if (uploadError) {
-                  throw uploadError;
-              }
-              
-              handleAnalysisChange(sectionKey, 'image', storagePath);
-              
-          } catch (error) {
-              console.error("Error uploading image to Supabase:", error);
-              const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
-              dispatch({ type: 'SHOW_TOAST', payload: { message: `Upload failed: ${errorMessage}`, type: 'error' } });
-              handleAnalysisChange(sectionKey, 'image', undefined); // Clear on failure
-          } finally {
-              setIsUploading(false);
-          }
-      } else {
-          // Handle file removal by clearing the path
-          handleAnalysisChange(sectionKey, 'image', undefined);
-      }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+        if (!trade.pair) {
+            alert("Please select or enter a pair.");
+            return;
+        }
+        
+        const { id, riskAmount, pnl, ...tradeToSave } = trade as Trade;
+        onSave(tradeToEdit ? { ...tradeToSave, id: tradeToEdit.id } : tradeToSave);
+    };
     
-    const newErrors: Record<string, string> = {};
-    if (!trade.accountId) {
-        newErrors.accountId = "An account must be selected.";
-    }
-    if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.')) {
-        newErrors.rr = "This field is required and must be a valid number.";
-    }
-    if (trade.commission.trim() === '' || isNaN(parseFloat(trade.commission)) || trade.commission.trim().endsWith('.')) {
-        newErrors.commission = "This field is required and must be a valid number.";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-        setErrors(newErrors);
-
-        const firstErrorField = Object.keys(newErrors)[0];
-        const fieldRef = firstErrorField === 'accountId'
-            ? accountSelectRef.current
-            : firstErrorField === 'rr' 
-            ? rrInputRef.current 
-            : commissionInputRef.current;
-
-        if (fieldRef) {
-            fieldRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Use classes to indicate error instead of direct style manipulation
-            // The classes will be picked up by the JSX for consistent styling.
-        }
-        return;
-    }
-
-    if (!trade.pair) {
-      alert("Please select a pair.");
-      return;
-    }
-
-    const { riskAmount, pnl, ...tradeData } = trade as any;
-    onSave({
-        ...tradeData,
-        id: tradeToEdit?.id,
-        date: new Date(trade.date).toISOString(),
-        rr: parseFloat(trade.rr),
-        commission: parseFloat(trade.commission)
-    });
-  };
-  
-  const isClosedTrade = trade.result !== Result.InProgress;
-
-  return (
-    <div ref={wrapperRef} id="trade-form-wrapper">
-        <form onSubmit={handleSubmit} className="space-y-6 text-gray-200">
-            {/* --- Section 1: Setup --- */}
-            <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
-                <h3 className="text-xl font-semibold text-white">Trade Setup</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                    <FormField label="Date">
-                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={`${textInputClasses} min-w-0 text-left`} />
-                    </FormField>
-                    <FormField label="Account">
-                        <select 
-                            ref={accountSelectRef}
-                            name="accountId" 
-                            value={trade.accountId} 
-                            onChange={handleChange} 
-                            className={`${selectClasses} ${errors.accountId ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
-                        >
-                            <option value="">Select Account</option>
-                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                        </select>
-                        {errors.accountId && <p className="text-red-500 text-xs mt-1">{errors.accountId}</p>}
-                    </FormField>
-                    <FormField label="Pair">
-                        <select name="pair" value={trade.pair} onChange={handleChange} required className={selectClasses}>
-                            <option value="">Select Pair</option>
-                            {pairs.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                    </FormField>
-                    <FormField label="Direction">
-                        <select name="direction" value={trade.direction} onChange={handleChange} required className={selectClasses}>
-                            <option value={Direction.Long}>Long</option>
-                            <option value={Direction.Short}>Short</option>
-                        </select>
-                    </FormField>
-                </div>
+    const renderDetails = () => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Column 1 */}
+            <div className="space-y-4">
+                <FormField label="Date & Time">
+                    <input 
+                        type="datetime-local" 
+                        name="date" 
+                        value={trade.date ? new Date(trade.date).toISOString().slice(0, 16) : ''}
+                        onChange={(e) => setTrade(prev => ({ ...prev, date: new Date(e.target.value).toISOString() }))} 
+                        className={textInputClasses} 
+                    />
+                </FormField>
+                <FormField label="Account">
+                    <select name="accountId" value={trade.accountId} onChange={handleChange} className={selectClasses}>
+                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                    </select>
+                </FormField>
+                <FormField label="Pair">
+                    <input list="pairs" name="pair" value={trade.pair} onChange={handleChange} className={textInputClasses} />
+                    <datalist id="pairs">
+                        {pairs.map(p => <option key={p} value={p} />)}
+                    </datalist>
+                </FormField>
+                <FormField label="Direction">
+                    <select name="direction" value={trade.direction} onChange={handleChange} className={selectClasses}>
+                        {Object.values(Direction).map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                </FormField>
             </div>
-
-            {/* --- Section 2: Management --- */}
-            <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
-                <h3 className="text-xl font-semibold text-white">Risk & Management</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
-                    {/* --- Top Row --- */}
-                    <FormField label="SL Type">
-                        <select name="stoploss" value={trade.stoploss} onChange={handleChange} className={selectClasses}>
-                            <option value="">Select SL</option>
-                            {stoplosses.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </FormField>
-                    <FormField label="TP Type">
-                        <select name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={selectClasses}>
-                            <option value="">Select TP</option>
-                            {takeprofits.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </FormField>
-                    <FormField label="Entry Type">
-                        <select name="entry" value={trade.entry} onChange={handleChange} className={selectClasses}>
-                            <option value="">Select Entry</option>
-                            {entries.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </FormField>
+            {/* Column 2 */}
+            <div className="space-y-4">
+                <FormField label="Entry Type">
+                    <input list="entries" name="entry" value={trade.entry} onChange={handleChange} className={textInputClasses} />
+                    <datalist id="entries">
+                        {entries.map(e => <option key={e} value={e} />)}
+                    </datalist>
+                </FormField>
+                <FormField label="Risk (%)">
+                    <select name="risk" value={trade.risk} onChange={handleChange} className={selectClasses}>
+                        {risks.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                </FormField>
+                 <FormField label="R:R Ratio">
+                    <input type="number" name="rr" value={trade.rr} onChange={handleChange} className={numberInputClasses} step="0.1" />
+                </FormField>
+                <FormField label="Commission ($)">
+                    <input type="number" name="commission" value={trade.commission || ''} onChange={handleChange} className={numberInputClasses} step="0.01" />
+                </FormField>
+            </div>
+            {/* Column 3 */}
+            <div className="space-y-4">
+                <FormField label="Stoploss Type">
+                    <input list="stoplosses" name="stoploss" value={trade.stoploss} onChange={handleChange} className={textInputClasses} />
+                    <datalist id="stoplosses">
+                        {stoplosses.map(s => <option key={s} value={s} />)}
+                    </datalist>
+                </FormField>
+                <FormField label="Takeprofit Type">
+                    <input list="takeprofits" name="takeprofit" value={trade.takeprofit} onChange={handleChange} className={textInputClasses} />
+                    <datalist id="takeprofits">
+                        {takeprofits.map(t => <option key={t} value={t} />)}
+                    </datalist>
+                </FormField>
+                <FormField label="Result">
+                    <CustomSelect
+                        value={trade.result}
+                        options={Object.values(Result)}
+                        onChange={(value) => setTrade(prev => ({ ...prev, result: value }))}
+                        getDisplayClasses={getResultClasses}
+                    />
+                </FormField>
+                {trade.result !== Result.InProgress && trade.result !== Result.Missed && (
                     <FormField label="Close Type">
-                        <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
-                            <option value="">Select Type</option>
-                            {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                        <select name="closeType" value={trade.closeType} onChange={handleChange} className={selectClasses}>
+                            <option value="">Select...</option>
+                            {closeTypes.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                     </FormField>
-                    
-                    {/* --- Bottom Row --- */}
-                    <FormField label="Risk (%)">
-                        <select name="risk" value={trade.risk} onChange={handleChange} className={selectClasses}>
-                            {risks.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                    </FormField>
-                    <FormField label="R:R Ratio">
-                        <input 
-                            ref={rrInputRef}
-                            type="text"
-                            inputMode="decimal"
-                            name="rr"
-                            value={trade.rr}
-                            onChange={handleChange}
-                            className={`${numberInputClasses} ${errors.rr ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
-                        />
-                        {errors.rr && <p className="text-red-500 text-xs mt-1">{errors.rr}</p>}
-                    </FormField>
-                    <FormField label="Commission">
-                        <input
-                            ref={commissionInputRef}
-                            type="text"
-                            inputMode="decimal"
-                            name="commission"
-                            value={trade.commission}
-                            onChange={handleChange}
-                            className={`${numberInputClasses} ${errors.commission ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
-                        />
-                        {errors.commission && <p className="text-red-500 text-xs mt-1">{errors.commission}</p>}
-                    </FormField>
-                    <FormField label="Result">
-                        <select name="result" value={trade.result} onChange={handleChange} required className={selectClasses}>
-                            {Object.values(Result).map(res => <option key={res} value={res}>{res}</option>)}
-                        </select>
-                    </FormField>
-                </div>
+                )}
             </div>
+        </div>
+    );
+    
+    const renderAnalysis = () => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {(analysisTimeframes || Object.keys(timeframeMap)).map(tfKey => {
+                const map = timeframeMap[tfKey];
+                if (!map) return null;
+                const analysis = trade[map.key as keyof Trade] as Analysis;
 
-            {/* --- Section 3: Analysis --- */}
-            <div className="space-y-4 p-4 bg-[#232733] rounded-lg border border-gray-700/50">
-                <h3 className="text-xl font-semibold text-white">Analysis Breakdown</h3>
-                <div className="space-y-4">
-                    {(analysisTimeframes || []).map(tf => {
-                       const map = timeframeMap[tf];
-                       if (!map) return null;
-                       const analysisKey = map.key;
-                       const analysisData = trade[analysisKey] as Analysis;
-                       return (
-                           <AnalysisSection 
-                                key={tf}
-                                title={map.title} 
-                                analysis={analysisData} 
-                                onFileChange={(file) => handleFileChange(analysisKey, file)} 
-                                onNotesChange={(notes) => handleAnalysisChange(analysisKey, 'notes', notes)} 
-                           />
-                       )
-                    })}
-                </div>
+                return (
+                    <div key={map.key}>
+                        <h3 className="text-lg font-semibold text-white mb-2">{map.title}</h3>
+                        <div className="space-y-3">
+                            <ImageUploader 
+                                storagePath={analysis?.image}
+                                onUpload={(path) => handleAnalysisChange(map.key as keyof Trade, 'image', path)}
+                                onRemove={() => handleAnalysisChange(map.key as keyof Trade, 'image', undefined)}
+                            />
+                             <textarea
+                                value={analysis?.notes || ''}
+                                onChange={(e) => handleAnalysisChange(map.key as keyof Trade, 'notes', e.target.value)}
+                                placeholder="Add notes for this timeframe..."
+                                className={`${textInputClasses} h-24`}
+                            />
+                        </div>
+                    </div>
+                )
+            })}
+        </div>
+    );
+
+    return (
+        <form onSubmit={handleSave} id="trade-form-wrapper">
+            <div className="mb-6 border-b border-gray-700">
+                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                    {['Details', 'Analysis'].map(tab => (
+                        <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setActiveTab(tab)}
+                            className={`${
+                                activeTab === tab
+                                    ? 'border-blue-500 text-blue-400'
+                                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                            } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors focus:outline-none`}
+                        >
+                            {tab}
+                        </button>
+                    ))}
+                </nav>
             </div>
             
-            {/* --- Actions --- */}
-            <div className="flex justify-end gap-3 pt-4">
-                <button 
-                    type="button" 
-                    onClick={handleCloseRequest} 
-                    className="px-4 py-2 bg-transparent border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors text-sm font-medium"
-                >
-                    Cancel
-                </button>
-                <button 
-                    type="submit" 
-                    disabled={isUploading} 
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-sm font-medium"
-                >
-                    {isUploading ? 'Uploading...' : (tradeToEdit ? 'Update Trade' : 'Add Trade')}
-                </button>
+            <div className="min-h-[400px]">
+                {activeTab === 'Details' && renderDetails()}
+                {activeTab === 'Analysis' && renderAnalysis()}
+            </div>
+
+            <div className="flex justify-end gap-4 pt-6 mt-6 border-t border-gray-700/50">
+                <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition-colors">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors">{tradeToEdit ? 'Update Trade' : 'Save Trade'}</button>
             </div>
         </form>
-    </div>
-  );
+    );
 };
 
 export default TradeForm;
