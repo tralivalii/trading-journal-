@@ -116,13 +116,14 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const [isDirty, setIsDirty] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const accountSelectRef = useRef<HTMLSelectElement>(null);
   const rrInputRef = useRef<HTMLInputElement>(null);
   const commissionInputRef = useRef<HTMLInputElement>(null);
 
   const [trade, setTrade] = useState(() => {
      const initialTradeState = {
         date: getLocalDateTimeString(new Date()),
-        accountId: defaultSettings.accountId || (accounts.length > 0 ? accounts[0].id : ''),
+        accountId: accounts.length === 1 ? accounts[0].id : (defaultSettings.accountId || ''),
         pair: defaultSettings.pair || (pairs.length > 0 ? pairs[0] : ''),
         entry: defaultSettings.entry || '',
         direction: Direction.Long,
@@ -271,6 +272,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     e.preventDefault();
     
     const newErrors: Record<string, string> = {};
+    if (!trade.accountId) {
+        newErrors.accountId = "An account must be selected.";
+    }
     if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.')) {
         newErrors.rr = "This field is required and must be a valid number.";
     }
@@ -282,7 +286,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         setErrors(newErrors);
 
         const firstErrorField = Object.keys(newErrors)[0];
-        const fieldRef = firstErrorField === 'rr' 
+        const fieldRef = firstErrorField === 'accountId'
+            ? accountSelectRef.current
+            : firstErrorField === 'rr' 
             ? rrInputRef.current 
             : commissionInputRef.current;
 
@@ -296,8 +302,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         return;
     }
 
-    if (!trade.accountId || !trade.pair) {
-      alert("Please select an account and a pair.");
+    if (!trade.pair) {
+      alert("Please select a pair.");
       return;
     }
 
@@ -324,10 +330,17 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                         <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
                     </FormField>
                     <FormField label="Account">
-                        <select name="accountId" value={trade.accountId} onChange={handleChange} required className={selectClasses}>
+                        <select 
+                            ref={accountSelectRef}
+                            name="accountId" 
+                            value={trade.accountId} 
+                            onChange={handleChange} 
+                            className={`${selectClasses} ${errors.accountId ? 'border-red-500 focus:ring-red-500' : ''}`}
+                        >
                             <option value="">Select Account</option>
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                         </select>
+                        {errors.accountId && <p className="text-red-500 text-xs mt-1">{errors.accountId}</p>}
                     </FormField>
                     <FormField label="Pair">
                         <select name="pair" value={trade.pair} onChange={handleChange} required className={selectClasses}>
