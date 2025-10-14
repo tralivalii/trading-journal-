@@ -608,8 +608,12 @@ function AppContent() {
   const handleSaveFirstAccount = async (accountData: Omit<Account, 'id'>) => {
     await saveAccountAction(dispatch, state, accountData, false);
     setFirstAccountModalOpen(false);
+    // Directly open the trade form after a short delay for the first modal to close.
+    // This avoids a race condition where `handleAddTrade` might check for accounts
+    // before the state has been updated.
     setTimeout(() => {
-        handleAddTrade();
+        setTradeToEdit(null);
+        setFormModalOpen(true);
     }, 150);
   };
 
