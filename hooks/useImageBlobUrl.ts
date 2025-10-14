@@ -9,7 +9,7 @@ interface ImageState {
 
 /**
  * A hook to get a public URL for an image from Supabase Storage.
- * This assumes the 'trade-attachments' bucket is public.
+ * This assumes the 'screenshots' bucket is public.
  * @param storagePath The path to the file in the storage bucket (e.g., "user-id/image.png").
  * @returns An object with the public URL, loading state, and error state.
  */
@@ -25,7 +25,7 @@ const useImageBlobUrl = (storagePath: string | undefined | null): ImageState => 
             // This hook now assumes all images are stored in Supabase Storage and the bucket is public.
             // Remnants of blob URL logic for offline mode have been removed.
             const { data } = supabase.storage
-                .from('trade-attachments')
+                .from('screenshots')
                 .getPublicUrl(storagePath);
             
             setImageState({ url: data.publicUrl, isLoading: false, error: false });
