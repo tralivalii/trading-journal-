@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Note } from '../types';
 import { useAppContext } from '../services/appState';
-import { supabase } from '../services/supabase';
+import { uploadImage } from '../services/storageService';
 import { ICONS } from '../constants';
 import NoteEditorToolbar from './ui/NoteEditorToolbar';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import useSupabaseImage from '../hooks/useSupabaseImage';
 
 declare const DOMPurify: any;
 declare const marked: any;
@@ -66,7 +66,7 @@ const NoteImage: React.FC<{
         return match ? match[1] : null;
     }, [imageUrl]);
 
-    const { url, isLoading, error } = useImageBlobUrl(storagePath);
+    const { url, isLoading, error } = useSupabaseImage(storagePath);
 
     if (isLoading) {
         return (
@@ -214,13 +214,7 @@ const NoteDetail: React.FC<NoteDetailProps> = ({ note, isEditMode, onSetEditMode
         setContent(newContent);
 
         try {
-            const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${file.name}`;
-            const { error: uploadError } = await supabase.storage
-                .from('screenshots')
-                .upload(storagePath, file);
-
-            if (uploadError) throw uploadError;
-
+            const storagePath = await uploadImage(file, currentUser.id);
             const finalMarkdown = `\n![${file.name}](storage://${storagePath})\n`;
             setContent(currentContent => currentContent.replace(placeholder, finalMarkdown));
             dispatch({ type: 'SHOW_TOAST', payload: { message: 'Image uploaded.', type: 'success' } });

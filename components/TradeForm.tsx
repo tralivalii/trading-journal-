@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trade, Account, Direction, Result, Analysis } from '../types';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import useSupabaseImage from '../hooks/useSupabaseImage';
 import { useAppContext } from '../services/appState';
-import { supabase } from '../services/supabase';
+import { uploadImage, deleteImage } from '../services/storageService';
 import { ICONS } from '../constants';
 
 interface TradeFormProps {
@@ -41,7 +41,7 @@ const AnalysisSection: React.FC<{
     onFileChange: (file: File | null) => void;
     onNotesChange: (notes: string) => void;
 }> = ({ title, analysis, onFileChange, onNotesChange }) => {
-    const { url: imageUrl, isLoading } = useImageBlobUrl(analysis.image);
+    const { url: imageUrl, isLoading, error: imageError } = useSupabaseImage(analysis.image);
 
     const handleImageRemove = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -76,7 +76,8 @@ const AnalysisSection: React.FC<{
                         />
                     </FormField>
                     {isLoading && <div className="mt-3 text-sm text-gray-400 animate-pulse">Loading preview...</div>}
-                    {imageUrl && (
+                    {imageError && <div className="mt-3 text-sm text-red-500">Error loading image</div>}
+                    {imageUrl && !imageError && (
                         <div className="mt-3 relative inline-block">
                            <img src={imageUrl} alt={`${title} preview`} className="rounded-md h-40 w-auto border border-gray-700 object-contain" />
                            <button onClick={handleImageRemove} className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-500 transition-colors text-lg leading-none" aria-label="Remove image">&times;</button>
@@ -107,61 +108,6 @@ const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
     'Result': { key: 'analysisResult', title: 'Result Analysis' },
 };
 
-/**
- * Processes an image file by resizing and compressing it using a canvas.
- * @param file The original image file.
- * @returns A promise that resolves with the processed image file (as a JPEG).
- */
-const processImageForUpload = (file: File): Promise<File> => {
-    return new Promise((resolve, reject) => {
-        const MAX_WIDTH = 1920;
-        const MAX_HEIGHT = 1080;
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            if (!event.target?.result) {
-                return reject(new Error("FileReader did not return a result."));
-            }
-            const img = new Image();
-            img.src = event.target.result as string;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let { width, height } = img;
-
-                if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
-                } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
-                    }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    return reject(new Error('Failed to get canvas context'));
-                }
-                ctx.drawImage(img, 0, 0, width, height);
-                canvas.toBlob((blob) => {
-                    if (!blob) {
-                        return reject(new Error('Canvas to Blob conversion failed'));
-                    }
-                    const newFileName = (file.name.split('.').slice(0, -1).join('.') || 'image') + '.jpeg';
-                    const newFile = new File([blob], newFileName, { type: 'image/jpeg', lastModified: Date.now() });
-                    resolve(newFile);
-                }, 'image/jpeg', 0.85); // 85% quality JPEG
-            };
-            img.onerror = (err) => reject(err);
-        };
-        reader.onerror = (err) => reject(err);
-    });
-};
-
-
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
   const { state, dispatch } = useAppContext();
   const { userData, currentUser } = state;
@@ -171,14 +117,13 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const [isDirty, setIsDirty] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const accountSelectRef = useRef<HTMLSelectElement>(null);
   const rrInputRef = useRef<HTMLInputElement>(null);
   const commissionInputRef = useRef<HTMLInputElement>(null);
 
   const [trade, setTrade] = useState(() => {
      const initialTradeState = {
         date: getLocalDateTimeString(new Date()),
-        accountId: defaultSettings.accountId || '',
+        accountId: defaultSettings.accountId || (accounts.length > 0 ? accounts[0].id : ''),
         pair: defaultSettings.pair || (pairs.length > 0 ? pairs[0] : ''),
         entry: defaultSettings.entry || '',
         direction: Direction.Long,
@@ -194,10 +139,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         analysis5m: { ...emptyAnalysis },
         analysisResult: { ...emptyAnalysis },
      };
-     
-     if (!tradeToEdit && accounts.length === 1) {
-         initialTradeState.accountId = accounts[0].id;
-     }
 
      const stateToEdit = tradeToEdit ? {
         ...tradeToEdit,
@@ -286,42 +227,26 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
       const currentImagePath = (trade[sectionKey] as Analysis).image;
 
-      if (currentImagePath && currentUser) {
-          try {
-              await supabase.storage.from('screenshots').remove([currentImagePath]);
-          } catch (e) {
-              console.error("Failed to delete old image from Supabase Storage", e);
-          }
+      // Delete old image if it exists
+      if (currentImagePath) {
+          await deleteImage(currentImagePath);
       }
 
       if (file && currentUser) {
           setIsUploading(true);
           try {
-              const fileToUpload = await processImageForUpload(file);
-              const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${fileToUpload.name}`;
-              
-              const { error: uploadError } = await supabase.storage
-                  .from('screenshots')
-                  .upload(storagePath, fileToUpload, {
-                      contentType: 'image/jpeg',
-                      upsert: true
-                  });
-
-              if (uploadError) {
-                  throw uploadError;
-              }
-              
+              const storagePath = await uploadImage(file, currentUser.id);
               handleAnalysisChange(sectionKey, 'image', storagePath);
-              
           } catch (error) {
-              console.error("Error uploading image to Supabase:", error);
+              console.error("Error during image upload:", error);
               const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
               dispatch({ type: 'SHOW_TOAST', payload: { message: `Upload failed: ${errorMessage}`, type: 'error' } });
-              handleAnalysisChange(sectionKey, 'image', undefined);
+              handleAnalysisChange(sectionKey, 'image', undefined); // Clear image path on failure
           } finally {
               setIsUploading(false);
           }
       } else {
+          // This handles the case where the "Remove" button is clicked
           handleAnalysisChange(sectionKey, 'image', undefined);
       }
   };
@@ -330,9 +255,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
     e.preventDefault();
     
     const newErrors: Record<string, string> = {};
-    if (!trade.accountId) {
-        newErrors.accountId = "An account must be selected.";
-    }
     if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.')) {
         newErrors.rr = "This field is required and must be a valid number.";
     }
@@ -344,20 +266,22 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         setErrors(newErrors);
 
         const firstErrorField = Object.keys(newErrors)[0];
-        const fieldRef = firstErrorField === 'accountId'
-            ? accountSelectRef.current
-            : firstErrorField === 'rr' 
+        const fieldRef = firstErrorField === 'rr' 
             ? rrInputRef.current 
             : commissionInputRef.current;
 
         if (fieldRef) {
             fieldRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            fieldRef.classList.add('ring-2', 'ring-red-500');
+            setTimeout(() => {
+                fieldRef.classList.remove('ring-2', 'ring-red-500');
+            }, 1000);
         }
         return;
     }
 
-    if (!trade.pair) {
-      alert("Please select a pair.");
+    if (!trade.accountId || !trade.pair) {
+      alert("Please select an account and a pair.");
       return;
     }
 
@@ -381,20 +305,13 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                 <h3 className="text-xl font-semibold text-white">Trade Setup</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                     <FormField label="Date">
-                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={`${textInputClasses} min-w-0 text-left appearance-none`} />
+                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={textInputClasses} />
                     </FormField>
                     <FormField label="Account">
-                        <select 
-                            ref={accountSelectRef}
-                            name="accountId" 
-                            value={trade.accountId} 
-                            onChange={handleChange} 
-                            className={`${selectClasses} ${errors.accountId ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
-                        >
+                        <select name="accountId" value={trade.accountId} onChange={handleChange} required className={selectClasses}>
                             <option value="">Select Account</option>
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                         </select>
-                        {errors.accountId && <p className="text-red-500 text-xs mt-1">{errors.accountId}</p>}
                     </FormField>
                     <FormField label="Pair">
                         <select name="pair" value={trade.pair} onChange={handleChange} required className={selectClasses}>
@@ -455,7 +372,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                             name="rr"
                             value={trade.rr}
                             onChange={handleChange}
-                            className={`${numberInputClasses} ${errors.rr ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
+                            className={`${numberInputClasses} ${errors.rr ? 'border-red-500 focus:ring-red-500' : ''}`}
                         />
                         {errors.rr && <p className="text-red-500 text-xs mt-1">{errors.rr}</p>}
                     </FormField>
@@ -467,7 +384,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                             name="commission"
                             value={trade.commission}
                             onChange={handleChange}
-                            className={`${numberInputClasses} ${errors.commission ? 'border-red-500 ring-2 ring-red-500/50' : ''}`}
+                            className={`${numberInputClasses} ${errors.commission ? 'border-red-500 focus:ring-red-500' : ''}`}
                         />
                         {errors.commission && <p className="text-red-500 text-xs mt-1">{errors.commission}</p>}
                     </FormField>

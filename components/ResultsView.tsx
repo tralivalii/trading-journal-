@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useAppContext } from '../services/appState';
 import { Result, Trade } from '../types';
 import { filterTradesByPeriod } from '../services/statisticsService';
-import useImageBlobUrl from '../hooks/useImageBlobUrl';
+import useSupabaseImage from '../hooks/useSupabaseImage';
 import Skeleton from './ui/Skeleton';
 import { ICONS } from '../constants';
 
@@ -34,7 +34,7 @@ const ResultCard: React.FC<{
     onViewTrade: (trade: Trade) => void;
     onImageClick: (src: string) => void;
 }> = ({ trade, onViewTrade, onImageClick }) => {
-    const { url: imageUrl, isLoading, error } = useImageBlobUrl(trade.analysisResult.image);
+    const { url: imageUrl, isLoading, error } = useSupabaseImage(trade.analysisResult.image);
 
     return (
         <div className="bg-[#232733] rounded-lg border border-gray-700/50 overflow-hidden group transition-all duration-300 hover:shadow-lg hover:border-blue-600/50">

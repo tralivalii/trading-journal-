@@ -4,6 +4,7 @@ import React, { createContext, useReducer, useContext, useEffect, Dispatch } fro
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { Account, Note, Result, Trade, UserData } from '../types';
 import { supabase } from './supabase';
+import { deleteImage } from './storageService';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -240,17 +241,26 @@ export const saveTradeAction = async (
     const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
     const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
     
-    const { accountId, closeType, analysisD1, analysis1h, analysis5m, analysisResult, aiAnalysis, ...rest } = finalTrade;
+    const {
+        accountId, riskAmount: risk_amount, closeType,
+        analysisD1, analysis1h, analysis5m, analysisResult,
+        aiAnalysis, entryPrice, stoplossPrice, takeprofitPrice,
+        ...rest
+    } = finalTrade;
     const supabasePayload = {
         ...rest,
         user_id: currentUser.id,
+        risk_amount,
         account_id: accountId,
         close_type: closeType,
         analysis_d1: analysisD1,
         analysis_1h: analysis1h,
         analysis_5m: analysis5m,
         analysis_result: analysisResult,
-        ai_analysis: aiAnalysis
+        ai_analysis: aiAnalysis,
+        entry_price: entryPrice,
+        stoploss_price: stoplossPrice,
+        takeprofit_price: takeprofitPrice,
     };
 
     const { error } = await supabase.from('trades').upsert(supabasePayload);
@@ -285,12 +295,11 @@ export const deleteTradeAction = async (
             tradeToDelete.analysisResult.image
         ].filter(Boolean) as string[];
 
+        // Asynchronously delete all associated images from storage.
+        // This is non-blocking for the UI.
         if (imagePaths.length > 0) {
-            const { error: storageError } = await supabase.storage.from('screenshots').remove(imagePaths);
-            if (storageError) {
-                console.error("Failed to delete images from storage:", storageError);
-                // Non-blocking error, we still want to delete the trade record.
-            }
+            Promise.all(imagePaths.map(path => deleteImage(path)))
+                .catch(err => console.error("One or more images failed to delete from storage:", err));
         }
     }
 
