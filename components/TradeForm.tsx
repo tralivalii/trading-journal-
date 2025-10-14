@@ -107,6 +107,61 @@ const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
     'Result': { key: 'analysisResult', title: 'Result Analysis' },
 };
 
+/**
+ * Processes an image file by resizing and compressing it using a canvas.
+ * @param file The original image file.
+ * @returns A promise that resolves with the processed image file (as a JPEG).
+ */
+const processImageForUpload = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const MAX_WIDTH = 1920;
+        const MAX_HEIGHT = 1080;
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            if (!event.target?.result) {
+                return reject(new Error("FileReader did not return a result."));
+            }
+            const img = new Image();
+            img.src = event.target.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let { width, height } = img;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    return reject(new Error('Failed to get canvas context'));
+                }
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                        return reject(new Error('Canvas to Blob conversion failed'));
+                    }
+                    const newFileName = (file.name.split('.').slice(0, -1).join('.') || 'image') + '.jpeg';
+                    const newFile = new File([blob], newFileName, { type: 'image/jpeg', lastModified: Date.now() });
+                    resolve(newFile);
+                }, 'image/jpeg', 0.85); // 85% quality JPEG
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+};
+
+
 const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
   const { state, dispatch } = useAppContext();
   const { userData, currentUser } = state;
@@ -140,7 +195,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
         analysisResult: { ...emptyAnalysis },
      };
      
-     // FIX: Auto-select account if only one exists for a NEW trade.
      if (!tradeToEdit && accounts.length === 1) {
          initialTradeState.accountId = accounts[0].id;
      }
@@ -232,7 +286,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const handleFileChange = async (sectionKey: keyof Trade, file: File | null) => {
       const currentImagePath = (trade[sectionKey] as Analysis).image;
 
-      // Delete old image if it exists in Supabase
       if (currentImagePath && currentUser) {
           try {
               await supabase.storage.from('trade-attachments').remove([currentImagePath]);
@@ -241,17 +294,18 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
           }
       }
 
-      // If a new file is provided, upload it
       if (file && currentUser) {
           setIsUploading(true);
           try {
-              // FIX: Removed image compression to fix mobile upload errors.
-              const fileToUpload = file;
+              const fileToUpload = await processImageForUpload(file);
               const storagePath = `${currentUser.id}/${crypto.randomUUID()}-${fileToUpload.name}`;
               
               const { error: uploadError } = await supabase.storage
                   .from('trade-attachments')
-                  .upload(storagePath, fileToUpload);
+                  .upload(storagePath, fileToUpload, {
+                      contentType: 'image/jpeg',
+                      upsert: true
+                  });
 
               if (uploadError) {
                   throw uploadError;
@@ -263,12 +317,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
               console.error("Error uploading image to Supabase:", error);
               const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
               dispatch({ type: 'SHOW_TOAST', payload: { message: `Upload failed: ${errorMessage}`, type: 'error' } });
-              handleAnalysisChange(sectionKey, 'image', undefined); // Clear on failure
+              handleAnalysisChange(sectionKey, 'image', undefined);
           } finally {
               setIsUploading(false);
           }
       } else {
-          // Handle file removal by clearing the path
           handleAnalysisChange(sectionKey, 'image', undefined);
       }
   };
@@ -299,8 +352,6 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
 
         if (fieldRef) {
             fieldRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Use classes to indicate error instead of direct style manipulation
-            // The classes will be picked up by the JSX for consistent styling.
         }
         return;
     }
@@ -330,7 +381,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                 <h3 className="text-xl font-semibold text-white">Trade Setup</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                     <FormField label="Date">
-                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={`${textInputClasses} min-w-0`} />
+                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={`${textInputClasses} min-w-0 text-left appearance-none`} />
                     </FormField>
                     <FormField label="Account">
                         <select 
