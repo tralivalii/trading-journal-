@@ -332,6 +332,16 @@ const NotesView: React.FC<NotesViewProps> = () => {
         return titles;
     }, [filteredNotes, notes]);
     
+    const listTitle = useMemo(() => {
+        if (activeTag) {
+            return `Notes tagged #${activeTag}`;
+        }
+        if (searchQuery) {
+            return `Tags matching "${searchQuery}"`;
+        }
+        return 'All Notes';
+    }, [activeTag, searchQuery]);
+
     if (notes.length === 0 && !isCreatingNewNote) {
         return <NotesEmptyState onNewNote={handleInitiateNewNote} />;
     }
@@ -341,7 +351,7 @@ const NotesView: React.FC<NotesViewProps> = () => {
             <div className="lg:hidden flex justify-between items-center mb-4">
                 { !selectedNote && !isCreatingNewNote ? (
                     <>
-                        <h2 className="text-xl font-semibold text-white">All Notes ({filteredNotes.length})</h2>
+                        <h2 className="text-xl font-semibold text-white">{listTitle} ({filteredNotes.length})</h2>
                         <button onClick={() => setIsSearchModalOpen(true)} className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>
                             Tags
@@ -358,7 +368,7 @@ const NotesView: React.FC<NotesViewProps> = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className={`lg:col-span-3 flex-col ${selectedNote || isCreatingNewNote ? 'hidden' : 'flex'} lg:flex`}>
                     <div className="p-4 flex-shrink-0">
-                        <h2 className="text-xl font-semibold text-white">All Notes ({filteredNotes.length})</h2>
+                        <h2 className="text-xl font-semibold text-white">{listTitle} ({filteredNotes.length})</h2>
                     </div>
                      <div className="bg-[#232733] rounded-lg border border-gray-700/50 flex flex-col flex-grow min-h-[65vh]">
                         <div className="p-4 border-b border-gray-700/50 flex-shrink-0">
