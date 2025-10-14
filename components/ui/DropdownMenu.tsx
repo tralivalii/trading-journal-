@@ -38,6 +38,20 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, children }) => {
     setIsOpen(prev => !prev);
   };
 
+  const handleMenuContentInteraction = (e: React.MouseEvent | React.PointerEvent) => {
+    // This is the fix. By stopping propagation here, we prevent the event
+    // from bubbling up to parent components like the MobileTradeCard,
+    // which would incorrectly trigger navigation. We stop both click and pointerup
+    // for robustness.
+    e.stopPropagation();
+    
+    // We also want the menu to close after an action is performed.
+    // This will be triggered by the `click` event.
+    if (e.type === 'click') {
+        setIsOpen(false);
+    }
+  };
+
   return (
     <div className="relative" ref={menuRef}>
       <div onClick={handleTriggerClick} className="cursor-pointer">
@@ -46,7 +60,8 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, children }) => {
       {isOpen && (
         <div 
           className={`absolute right-0 w-56 bg-[#2A2F3B] rounded-md shadow-lg border border-gray-700/50 z-20 ${positionClass}`}
-          onClick={() => setIsOpen(false)} // Close menu on item click
+          onClick={handleMenuContentInteraction}
+          onPointerUp={handleMenuContentInteraction}
         >
           {children}
         </div>
