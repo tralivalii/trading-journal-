@@ -330,7 +330,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
                 <h3 className="text-xl font-semibold text-white">Trade Setup</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                     <FormField label="Date">
-                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={`${textInputClasses} min-w-0`} />
+                        <input type="datetime-local" name="date" value={trade.date} onChange={handleChange} required className={`${textInputClasses} min-w-0 text-left`} />
                     </FormField>
                     <FormField label="Account">
                         <select 
