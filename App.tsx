@@ -599,21 +599,14 @@ function AppContent() {
     setTradeIdToDelete(null);
   };
 
-  const handleSaveAndCloseTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => {
-    await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeDataFromForm.id);
+  const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => {
+    await saveTradeAction(dispatch, state, tradeDataFromForm, false);
     setFormModalOpen(false);
     setTradeToEdit(null);
   };
 
   const handleAutoSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }): Promise<string | undefined> => {
-    const isEditing = !!tradeDataFromForm.id;
-    const savedTrade = await saveTradeAction(dispatch, state, tradeDataFromForm, isEditing);
-
-    if (!isEditing && savedTrade) {
-        // If it was a new trade, we need to update the `tradeToEdit` state
-        // to ensure subsequent auto-saves update the same trade.
-        setTradeToEdit(savedTrade);
-    }
+    const savedTrade = await saveTradeAction(dispatch, state, tradeDataFromForm, true);
     return savedTrade?.id;
   };
   
@@ -778,7 +771,7 @@ function AppContent() {
         title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} 
         size="4xl"
       >
-        <TradeForm onSaveAndClose={handleSaveAndCloseTrade} onAutoSave={handleAutoSaveTrade} onClose={handleFormClose} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
+        <TradeForm onSaveAndClose={handleSaveTrade} onAutoSave={handleAutoSaveTrade} onClose={handleFormClose} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
       </Modal>
       
       <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">

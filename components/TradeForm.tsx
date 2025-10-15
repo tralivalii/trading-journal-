@@ -170,7 +170,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
 
   useEffect(() => {
     const performAutoSave = async () => {
-        if (!isDirty || !onAutoSave || isSaving) return;
+        // Only auto-save if we are editing an existing trade
+        if (!tradeToEdit || !isDirty || !onAutoSave || isSaving) return;
 
         // Validation for autosave
         if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.') ||
@@ -178,34 +179,15 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
             return;
         }
 
-        // For new trades, check if at least one meaningful field is filled
-        if (isFirstSave) {
-            const isAnyFieldSet = Object.values(trade).some(value => {
-                if (typeof value === 'string') return value.trim() !== '';
-                if (typeof value === 'number') return true;
-                return false;
-            });
-            const isDefault = JSON.stringify(trade) === JSON.stringify(initialTradeStateRef.current);
-            if (isDefault || !isAnyFieldSet) {
-                // Do not save if it's a new trade and it's empty/default
-                return;
-            }
-        }
-
         setIsSaving(true);
         const { riskAmount, pnl, ...tradeData } = trade;
-        const newId = await onAutoSave({
+        await onAutoSave({
             ...tradeData,
             id: currentTradeId,
             date: new Date(trade.date).toISOString(),
             rr: parseFloat(trade.rr),
             commission: parseFloat(trade.commission)
         });
-
-        if (newId && isFirstSave) {
-            setCurrentTradeId(newId);
-            setIsFirstSave(false);
-        }
 
         // After save, reset the "dirty" state by updating the initial state reference
         initialTradeStateRef.current = trade;
@@ -215,7 +197,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
     };
 
     performAutoSave();
-  }, [debouncedTrade, onAutoSave, isDirty, isFirstSave, currentTradeId]);
+  }, [debouncedTrade, onAutoSave, isDirty, currentTradeId, tradeToEdit, isSaving]);
   
   const [isUploading, setIsUploading] = useState(false);
 
@@ -312,6 +294,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // This function is now only for creating new trades.
+    if (tradeToEdit) return;
+
     const newErrors: Record<string, string> = {};
     if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.')) {
         newErrors.rr = "This field is required and must be a valid number.";
@@ -479,13 +464,14 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
             {/* --- Actions --- */}
             <div className="flex justify-between items-center gap-3 pt-4">
                 <div className="text-sm text-gray-500 transition-opacity duration-300">
-                    {isSaving ? (
+                    {tradeToEdit && isSaving && (
                         <span className="flex items-center gap-2 animate-pulse">
                             <svg className="animate-spin h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                             Saving...
                         </span>
-                    ) : (
-                        !isFirstSave && !isDirty && <span className="flex items-center gap-2 opacity-70">✓ Saved</span>
+                    )}
+                    {tradeToEdit && !isSaving && !isDirty && (
+                        <span className="flex items-center gap-2 opacity-70">✓ Saved</span>
                     )}
                 </div>
                 <div className="flex justify-end gap-3">
@@ -494,15 +480,17 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
                         onClick={handleCloseRequest}
                         className="px-4 py-2 bg-transparent border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors text-sm font-medium"
                     >
-                        Close
+                        {tradeToEdit ? 'Close' : 'Cancel'}
                     </button>
-                    <button
-                        type="submit"
-                        disabled={isUploading || isSaving}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-sm font-medium"
-                    >
-                        {isUploading ? 'Uploading...' : (tradeToEdit ? 'Save & Close' : 'Add & Close')}
-                    </button>
+                    {!tradeToEdit && (
+                        <button
+                            type="submit"
+                            disabled={isUploading || isSaving}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-sm font-medium"
+                        >
+                            {isUploading ? 'Uploading...' : 'Add Trade'}
+                        </button>
+                    )}
                 </div>
             </div>
         </form>
