@@ -600,9 +600,14 @@ function AppContent() {
   };
 
   const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => {
-    await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
+    await saveTradeAction(dispatch, state, tradeDataFromForm, false);
     setFormModalOpen(false);
     setTradeToEdit(null);
+  };
+
+  const handleAutoSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }): Promise<string | undefined> => {
+    const savedTrade = await saveTradeAction(dispatch, state, tradeDataFromForm, true);
+    return savedTrade?.id;
   };
   
   const handleSaveFirstAccount = async (accountData: Omit<Account, 'id'>) => {
@@ -757,7 +762,6 @@ function AppContent() {
         isOpen={isFormModalOpen} 
         onClose={handleFormClose}
         onCloseRequest={() => {
-            // This logic is now simpler as we don't need to check complex sync states
             const tradeForm = document.getElementById('trade-form-wrapper');
             if (tradeForm) {
                  const event = new CustomEvent('closeRequest');
@@ -767,7 +771,7 @@ function AppContent() {
         title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} 
         size="4xl"
       >
-        <TradeForm onSave={handleSaveTrade} onClose={handleFormClose} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
+        <TradeForm onSaveAndClose={handleSaveTrade} onAutoSave={handleAutoSaveTrade} onClose={handleFormClose} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
       </Modal>
       
       <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">

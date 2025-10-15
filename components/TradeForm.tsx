@@ -4,9 +4,11 @@ import useSupabaseImage from '../hooks/useSupabaseImage';
 import { useAppContext } from '../services/appState';
 import { uploadImage, deleteImage } from '../services/storageService';
 import { ICONS } from '../constants';
+import useDebounce from '../hooks/useDebounce';
 
 interface TradeFormProps {
-  onSave: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
+  onSaveAndClose: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => void;
+  onAutoSave?: (trade: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => Promise<string | undefined>;
   onClose: () => void;
   tradeToEdit?: Trade | null;
   accounts: Account[];
@@ -108,7 +110,7 @@ const timeframeMap: Record<string, { key: keyof Trade, title: string }> = {
     'Result': { key: 'analysisResult', title: 'Result Analysis' },
 };
 
-const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, accounts }) => {
+const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClose, tradeToEdit, accounts }) => {
   const { state, dispatch } = useAppContext();
   const { userData, currentUser } = state;
   const { pairs, entries, risks, defaultSettings, stoplosses, takeprofits, closeTypes, analysisTimeframes } = userData!;
@@ -119,6 +121,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const [errors, setErrors] = useState<Record<string, string>>({});
   const rrInputRef = useRef<HTMLInputElement>(null);
   const commissionInputRef = useRef<HTMLInputElement>(null);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [isFirstSave, setIsFirstSave] = useState(!tradeToEdit);
+  const [currentTradeId, setCurrentTradeId] = useState<string | undefined>(tradeToEdit?.id);
 
   const [trade, setTrade] = useState(() => {
      const initialTradeState = {
@@ -153,11 +159,45 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
      return finalInitialState;
   });
 
+  const debouncedTrade = useDebounce(trade, 1000);
+
   useEffect(() => {
     const currentStateString = JSON.stringify(trade);
     const initialStateString = JSON.stringify(initialTradeStateRef.current);
-    setIsDirty(currentStateString !== initialStateString);
+    const dirty = currentStateString !== initialStateString;
+    setIsDirty(dirty);
   }, [trade]);
+
+  useEffect(() => {
+    const performAutoSave = async () => {
+        // Only auto-save if we are editing an existing trade
+        if (!tradeToEdit || !isDirty || !onAutoSave || isSaving) return;
+
+        // Validation for autosave
+        if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.') ||
+            trade.commission.trim() === '' || isNaN(parseFloat(trade.commission)) || trade.commission.trim().endsWith('.')) {
+            return;
+        }
+
+        setIsSaving(true);
+        const { riskAmount, pnl, ...tradeData } = trade;
+        await onAutoSave({
+            ...tradeData,
+            id: currentTradeId,
+            date: new Date(trade.date).toISOString(),
+            rr: parseFloat(trade.rr),
+            commission: parseFloat(trade.commission)
+        });
+
+        // After save, reset the "dirty" state by updating the initial state reference
+        initialTradeStateRef.current = trade;
+        setIsDirty(false);
+
+        setIsSaving(false);
+    };
+
+    performAutoSave();
+  }, [debouncedTrade, onAutoSave, isDirty, currentTradeId, tradeToEdit, isSaving]);
   
   const [isUploading, setIsUploading] = useState(false);
 
@@ -254,6 +294,9 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // This function is now only for creating new trades.
+    if (tradeToEdit) return;
+
     const newErrors: Record<string, string> = {};
     if (trade.rr.trim() === '' || isNaN(parseFloat(trade.rr)) || trade.rr.trim().endsWith('.')) {
         newErrors.rr = "This field is required and must be a valid number.";
@@ -285,10 +328,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
       return;
     }
 
-    const { riskAmount, pnl, ...tradeData } = trade as any;
-    onSave({
+    const { riskAmount, pnl, ...tradeData } = trade;
+    onSaveAndClose({
         ...tradeData,
-        id: tradeToEdit?.id,
+        id: currentTradeId,
         date: new Date(trade.date).toISOString(),
         rr: parseFloat(trade.rr),
         commission: parseFloat(trade.commission)
@@ -419,21 +462,36 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSave, onClose, tradeToEdit, acc
             </div>
             
             {/* --- Actions --- */}
-            <div className="flex justify-end gap-3 pt-4">
-                <button 
-                    type="button" 
-                    onClick={handleCloseRequest} 
-                    className="px-4 py-2 bg-transparent border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors text-sm font-medium"
-                >
-                    Cancel
-                </button>
-                <button 
-                    type="submit" 
-                    disabled={isUploading} 
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-sm font-medium"
-                >
-                    {isUploading ? 'Uploading...' : (tradeToEdit ? 'Update Trade' : 'Add Trade')}
-                </button>
+            <div className="flex justify-between items-center gap-3 pt-4">
+                <div className="text-sm text-gray-500 transition-opacity duration-300">
+                    {tradeToEdit && isSaving && (
+                        <span className="flex items-center gap-2 animate-pulse">
+                            <svg className="animate-spin h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            Saving...
+                        </span>
+                    )}
+                    {tradeToEdit && !isSaving && !isDirty && (
+                        <span className="flex items-center gap-2 opacity-70">✓ Saved</span>
+                    )}
+                </div>
+                <div className="flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={handleCloseRequest}
+                        className="px-4 py-2 bg-transparent border border-gray-600 text-gray-300 rounded-lg hover:bg-gray-700 hover:text-white transition-colors text-sm font-medium"
+                    >
+                        {tradeToEdit ? 'Close' : 'Cancel'}
+                    </button>
+                    {!tradeToEdit && (
+                        <button
+                            type="submit"
+                            disabled={isUploading || isSaving}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-sm font-medium"
+                        >
+                            {isUploading ? 'Uploading...' : 'Add Trade'}
+                        </button>
+                    )}
+                </div>
             </div>
         </form>
     </div>
