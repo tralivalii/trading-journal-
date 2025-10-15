@@ -599,10 +599,22 @@ function AppContent() {
     setTradeIdToDelete(null);
   };
 
-  const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => {
-    await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
+  const handleSaveAndCloseTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => {
+    await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeDataFromForm.id);
     setFormModalOpen(false);
     setTradeToEdit(null);
+  };
+
+  const handleAutoSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }): Promise<string | undefined> => {
+    const isEditing = !!tradeDataFromForm.id;
+    const savedTrade = await saveTradeAction(dispatch, state, tradeDataFromForm, isEditing);
+
+    if (!isEditing && savedTrade) {
+        // If it was a new trade, we need to update the `tradeToEdit` state
+        // to ensure subsequent auto-saves update the same trade.
+        setTradeToEdit(savedTrade);
+    }
+    return savedTrade?.id;
   };
   
   const handleSaveFirstAccount = async (accountData: Omit<Account, 'id'>) => {
@@ -757,7 +769,6 @@ function AppContent() {
         isOpen={isFormModalOpen} 
         onClose={handleFormClose}
         onCloseRequest={() => {
-            // This logic is now simpler as we don't need to check complex sync states
             const tradeForm = document.getElementById('trade-form-wrapper');
             if (tradeForm) {
                  const event = new CustomEvent('closeRequest');
@@ -767,7 +778,7 @@ function AppContent() {
         title={tradeToEdit ? 'Edit Trade' : 'Add New Trade'} 
         size="4xl"
       >
-        <TradeForm onSave={handleSaveTrade} onClose={handleFormClose} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
+        <TradeForm onSaveAndClose={handleSaveAndCloseTrade} onAutoSave={handleAutoSaveTrade} onClose={handleFormClose} tradeToEdit={tradeToEdit} accounts={activeAccounts} />
       </Modal>
       
       <Modal isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} title="Trade Details" size="4xl">
