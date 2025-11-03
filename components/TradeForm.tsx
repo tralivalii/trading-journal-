@@ -247,8 +247,12 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
         const isNumericSelect = name === 'risk';
         const updatedValue = isNumericSelect ? parseFloat(value) || 0 : value;
         let newState = { ...prev, [name]: updatedValue };
-        if (name === 'result' && value === Result.InProgress) {
-            newState.closeType = undefined;
+        if (name === 'result') {
+            if (value === Result.Win) {
+                newState.closeType = 'TP hit';
+            } else if (value === Result.Loss) {
+                newState.closeType = 'SL hit';
+            }
         }
         return newState;
     });
