@@ -402,6 +402,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
                         <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
                             <option value="">Select Type</option>
                             {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                            {trade.closeType && !closeTypes.includes(trade.closeType) && (
+                                <option key={trade.closeType} value={trade.closeType}>
+                                    {trade.closeType}
+                                </option>
+                            )}
                         </select>
                     </FormField>
                     
