@@ -113,12 +113,15 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
         const accountFiltered = trades.filter(trade => selectedAccountId === 'all' || trade.accountId === selectedAccountId);
         const pairFiltered = accountFiltered.filter(trade => selectedPair === 'all' || trade.pair === selectedPair);
         const periodFiltered = filterTradesByPeriod(pairFiltered, period);
-        const results = periodFiltered
+        return periodFiltered
             .filter(trade => trade.result === selectedResult && trade.analysisResult?.image)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setPage(1); // Reset page when filters change
-        return results;
     }, [trades, selectedAccountId, selectedPair, period, selectedResult]);
+
+    // Reset page to 1 whenever filters change
+    useEffect(() => {
+        setPage(1);
+    }, [selectedAccountId, selectedPair, period, selectedResult]);
 
     const displayedTrades = useMemo(() => {
         return filteredTrades.slice(0, page * PAGE_SIZE);
