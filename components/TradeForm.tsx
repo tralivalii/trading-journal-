@@ -252,6 +252,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
                 newState.closeType = 'TP hit';
             } else if (value === Result.Loss) {
                 newState.closeType = 'SL hit';
+            } else if (value === Result.InProgress) {
+                newState.closeType = undefined;
             }
         }
         return newState;

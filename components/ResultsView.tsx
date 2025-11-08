@@ -200,7 +200,7 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
                        {availableResults.map(r => <ResultButton key={r} r={r} />)}
                     </div>
                     <div className="flex justify-start md:justify-end">
-                        <div className="flex items-center">
+                        <div className="flex items-center mr-4">
                             <label htmlFor="pairFilterResults" className="text-sm text-[#8A91A8] mr-2">Pair:</label>
                             <select
                                 id="pairFilterResults"
