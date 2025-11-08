@@ -247,8 +247,14 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
         const isNumericSelect = name === 'risk';
         const updatedValue = isNumericSelect ? parseFloat(value) || 0 : value;
         let newState = { ...prev, [name]: updatedValue };
-        if (name === 'result' && value === Result.InProgress) {
-            newState.closeType = undefined;
+        if (name === 'result') {
+            if (value === Result.Win) {
+                newState.closeType = 'TP hit';
+            } else if (value === Result.Loss) {
+                newState.closeType = 'SL hit';
+            } else if (value === Result.InProgress) {
+                newState.closeType = undefined;
+            }
         }
         return newState;
     });
@@ -398,6 +404,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
                         <select name="closeType" value={trade.closeType || ''} onChange={handleChange} className={selectClasses} disabled={!isClosedTrade}>
                             <option value="">Select Type</option>
                             {closeTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
+                            {trade.closeType && !closeTypes.includes(trade.closeType) && (
+                                <option key={trade.closeType} value={trade.closeType}>
+                                    {trade.closeType}
+                                </option>
+                            )}
                         </select>
                     </FormField>
                     

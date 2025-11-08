@@ -96,6 +96,7 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
     
     const [period, setPeriod] = useState<Period>('this-month');
     const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+    const [selectedPair, setSelectedPair] = useState<string>('all');
     const [selectedResult, setSelectedResult] = useState<Result>(Result.Loss);
     const [fullscreenSrc, setFullscreenSrc] = useState<string | null>(null);
     const [page, setPage] = useState(1);
@@ -103,15 +104,24 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
     
     const activeAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
 
+    const uniquePairs = useMemo(() => {
+        const pairs = trades.map(t => t.pair);
+        return [...new Set(pairs)].sort();
+    }, [trades]);
+
     const filteredTrades = useMemo(() => {
         const accountFiltered = trades.filter(trade => selectedAccountId === 'all' || trade.accountId === selectedAccountId);
-        const periodFiltered = filterTradesByPeriod(accountFiltered, period);
-        const results = periodFiltered
+        const pairFiltered = accountFiltered.filter(trade => selectedPair === 'all' || trade.pair === selectedPair);
+        const periodFiltered = filterTradesByPeriod(pairFiltered, period);
+        return periodFiltered
             .filter(trade => trade.result === selectedResult && trade.analysisResult?.image)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setPage(1); // Reset page when filters change
-        return results;
-    }, [trades, selectedAccountId, period, selectedResult]);
+    }, [trades, selectedAccountId, selectedPair, period, selectedResult]);
+
+    // Reset page to 1 whenever filters change
+    useEffect(() => {
+        setPage(1);
+    }, [selectedAccountId, selectedPair, period, selectedResult]);
 
     const displayedTrades = useMemo(() => {
         return filteredTrades.slice(0, page * PAGE_SIZE);
@@ -190,6 +200,20 @@ const ResultsView: React.FC<{ onViewTrade: (trade: Trade) => void }> = ({ onView
                        {availableResults.map(r => <ResultButton key={r} r={r} />)}
                     </div>
                     <div className="flex justify-start md:justify-end">
+                        <div className="flex items-center mr-4">
+                            <label htmlFor="pairFilterResults" className="text-sm text-[#8A91A8] mr-2">Pair:</label>
+                            <select
+                                id="pairFilterResults"
+                                value={selectedPair}
+                                onChange={(e) => setSelectedPair(e.target.value)}
+                                className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                            >
+                                <option value="all">All Pairs</option>
+                                {uniquePairs.map(pair => (
+                                    <option key={pair} value={pair}>{pair}</option>
+                                ))}
+                            </select>
+                        </div>
                         <div className="flex items-center">
                             <label htmlFor="accountFilterResults" className="text-sm text-[#8A91A8] mr-2">Account:</label>
                             <select 
