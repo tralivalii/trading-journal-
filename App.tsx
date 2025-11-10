@@ -501,7 +501,7 @@ function AppContent() {
               supabase.from('accounts').select('*').eq('user_id', currentUser.id),
               supabase.from('trades').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }),
               supabase.from('notes').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }).range(0, NOTES_PAGE_SIZE - 1),
-              supabase.from('user_data').select('data').eq('user_id', currentUser.id).single()
+              supabase.from('user_data').select('data').eq('user_id', currentUser.id).maybeSingle()
             ]);
             
             if (accountsError || tradesError || notesError || settingsError) {
