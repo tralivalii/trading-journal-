@@ -134,7 +134,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onSaveAndClose, onAutoSave, onClo
         entry: defaultSettings.entry || '',
         direction: Direction.Long,
         risk: typeof defaultSettings.risk === 'number' ? defaultSettings.risk : (risks.length > 0 ? risks[0] : 1),
-        rr: '1.2',
+        rr: '2',
         commission: '0',
         stoploss: defaultSettings.stoploss || '',
         takeprofit: defaultSettings.takeprofit || '',
