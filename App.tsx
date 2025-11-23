@@ -600,7 +600,7 @@ function AppContent() {
   };
 
   const handleSaveTrade = async (tradeDataFromForm: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string }) => {
-    await saveTradeAction(dispatch, state, tradeDataFromForm, false);
+    await saveTradeAction(dispatch, state, tradeDataFromForm, !!tradeToEdit);
     setFormModalOpen(false);
     setTradeToEdit(null);
   };
