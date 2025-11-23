@@ -5,6 +5,8 @@ import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { Account, Note, Result, Trade, UserData } from '../types';
 import { supabase } from './supabase';
 import { deleteImage } from './storageService';
+import { demoData } from './demoData';
+import { v4 as uuidv4 } from 'uuid';
 
 // --- STATE AND ACTION TYPES ---
 
@@ -24,10 +26,12 @@ interface AppState {
   hasMoreNotes: boolean;
   isFetchingMoreNotes: boolean;
   toasts: Toast[];
+  isGuestMode: boolean;
 }
 
 type Action =
   | { type: 'SET_SESSION'; payload: Session | null }
+  | { type: 'SET_GUEST_MODE' }
   | { type: 'SET_USER_DATA'; payload: UserData | null }
   | { type: 'SET_IS_LOADING'; payload: boolean }
   | { type: 'UPDATE_TRADES'; payload: Trade[] }
@@ -55,6 +59,7 @@ const initialState: AppState = {
   hasMoreNotes: false,
   isFetchingMoreNotes: false,
   toasts: [],
+  isGuestMode: false,
 };
 
 const appReducer = (state: AppState, action: Action): AppState => {
@@ -64,7 +69,17 @@ const appReducer = (state: AppState, action: Action): AppState => {
         ...state,
         session: action.payload,
         currentUser: action.payload?.user ?? null,
+        isGuestMode: false,
       };
+    case 'SET_GUEST_MODE':
+        return {
+            ...state,
+            isGuestMode: true,
+            session: null,
+            currentUser: null,
+            userData: demoData,
+            isLoading: false,
+        };
     case 'SET_USER_DATA':
       const userData = action.payload;
       if (userData) {
@@ -226,9 +241,10 @@ export const saveTradeAction = async (
   tradeData: Omit<Trade, 'id' | 'riskAmount' | 'pnl'> & { id?: string },
   isEditing: boolean
 ): Promise<Trade> => {
-    const { userData, currentUser } = state;
-    if (!userData || !currentUser) throw new Error('User data not available');
-    
+    const { userData, currentUser, isGuestMode } = state;
+    if (!userData) throw new Error('User data not available');
+     if (!isGuestMode && !currentUser) throw new Error('Current user not available');
+
     const account = userData.accounts.find(acc => acc.id === tradeData.accountId);
     if (!account) throw new Error("Account not found");
 
@@ -238,8 +254,17 @@ export const saveTradeAction = async (
     if(tradeData.result === Result.Loss) pnl = -riskAmount;
     pnl -= (tradeData.commission || 0);
 
-    const tradeId = isEditing ? tradeData.id! : crypto.randomUUID();
+    const tradeId = isEditing ? tradeData.id! : uuidv4();
     const finalTrade: Trade = { ...tradeData, id: tradeId, pnl, riskAmount };
+
+    if (isGuestMode) {
+        const updatedTrades = isEditing
+            ? userData.trades.map(t => t.id === tradeId ? finalTrade : t)
+            : [finalTrade, ...userData.trades];
+        dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Trade ${isEditing ? 'updated' : 'added'}.`, type: 'success' } });
+        return finalTrade;
+    }
     
     const {
         accountId, riskAmount: risk_amount, closeType,
@@ -283,8 +308,15 @@ export const deleteTradeAction = async (
   state: AppState,
   tradeId: string
 ) => {
-    const { userData } = state;
+    const { userData, isGuestMode } = state;
     if (!userData) throw new Error('User data not available');
+
+    if (isGuestMode) {
+        const updatedTrades = userData.trades.filter(t => t.id !== tradeId);
+        dispatch({ type: 'UPDATE_TRADES', payload: updatedTrades });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Trade deleted.', type: 'success' } });
+        return;
+    }
     
     const tradeToDelete = userData.trades.find(t => t.id === tradeId);
     if (tradeToDelete) {
@@ -343,11 +375,21 @@ export const saveAccountAction = async (
     accountData: Omit<Account, 'id'> & { id?: string },
     isEditing: boolean
 ) => {
-    const { userData, currentUser } = state;
-    if (!userData || !currentUser) throw new Error('User data not available');
+    const { userData, currentUser, isGuestMode } = state;
+    if (!userData) throw new Error('User data not available');
+    if (!isGuestMode && !currentUser) throw new Error('Current user not available');
 
-    const accountId = isEditing ? accountData.id! : crypto.randomUUID();
+    const accountId = isEditing ? accountData.id! : uuidv4();
     const finalAccount: Account = { ...accountData, id: accountId };
+
+    if (isGuestMode) {
+        const updatedAccounts = isEditing
+            ? userData.accounts.map(a => a.id === accountId ? finalAccount : a)
+            : [...userData.accounts, finalAccount];
+        dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Account ${isEditing ? 'updated' : 'saved'}.`, type: 'success' } });
+        return;
+    }
     
     const { initialBalance, isArchived, ...rest } = finalAccount;
     const supabasePayload = { ...rest, user_id: currentUser.id, initial_balance: initialBalance, is_archived: isArchived };
@@ -371,8 +413,15 @@ export const deleteAccountAction = async (
     state: AppState,
     accountId: string
 ) => {
-    const { userData } = state;
+    const { userData, isGuestMode } = state;
     if (!userData) throw new Error('User data not available');
+
+    if (isGuestMode) {
+        const updatedAccounts = userData.accounts.filter(a => a.id !== accountId);
+        dispatch({ type: 'UPDATE_ACCOUNTS', payload: updatedAccounts });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Account deleted.', type: 'success' } });
+        return;
+    }
 
     const { error } = await supabase.from('accounts').delete().eq('id', accountId);
 
@@ -392,11 +441,21 @@ export const saveNoteAction = async (
     noteData: Omit<Note, 'id'> & { id?: string },
     isEditing: boolean
 ): Promise<Note> => {
-    const { userData, currentUser } = state;
-    if (!userData || !currentUser) throw new Error('User data not available');
+    const { userData, currentUser, isGuestMode } = state;
+    if (!userData) throw new Error('User data not available');
+    if (!isGuestMode && !currentUser) throw new Error('Current user not available');
 
-    const noteId = isEditing ? noteData.id! : crypto.randomUUID();
+    const noteId = isEditing ? noteData.id! : uuidv4();
     const finalNote: Note = { ...noteData, id: noteId };
+
+    if (isGuestMode) {
+        const updatedNotes = isEditing
+            ? userData.notes.map(n => n.id === noteId ? finalNote : n)
+            : [finalNote, ...userData.notes];
+        dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: `Note ${isEditing ? 'updated' : 'saved'}.`, type: 'success' } });
+        return finalNote;
+    }
 
     const supabasePayload = { ...finalNote, user_id: currentUser.id };
     const { error } = await supabase.from('notes').upsert(supabasePayload);
@@ -420,8 +479,15 @@ export const deleteNoteAction = async (
     state: AppState,
     noteId: string
 ) => {
-    const { userData } = state;
+    const { userData, isGuestMode } = state;
     if (!userData) throw new Error('User data not available');
+
+    if (isGuestMode) {
+        const updatedNotes = userData.notes.filter(n => n.id !== noteId);
+        dispatch({ type: 'UPDATE_NOTES', payload: updatedNotes });
+        dispatch({ type: 'SHOW_TOAST', payload: { message: 'Note deleted.', type: 'success' } });
+        return;
+    }
     
     const { error } = await supabase.from('notes').delete().eq('id', noteId);
 
