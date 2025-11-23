@@ -466,7 +466,7 @@ const ToastComponent: React.FC<{
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { session, currentUser, userData, isLoading, hasMoreTrades, isFetchingMore, toasts } = state;
+  const { session, currentUser, userData, isLoading, hasMoreTrades, isFetchingMore, toasts, isGuestMode } = state;
 
   const [isFormModalOpen, setFormModalOpen] = useState(false);
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
@@ -487,7 +487,7 @@ function AppContent() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (currentUser && !userData) {
+    if (currentUser && !userData && !isGuestMode) {
       const fetchInitialUserData = async () => {
         dispatch({ type: 'SET_IS_LOADING', payload: true });
         
@@ -530,16 +530,16 @@ function AppContent() {
       };
       
       fetchInitialUserData();
-    } else if (!currentUser) {
+    } else if (!currentUser && !isGuestMode) {
        dispatch({ type: 'SET_USER_DATA', payload: null });
     }
-  }, [currentUser, userData, dispatch]);
+  }, [currentUser, userData, dispatch, isGuestMode]);
   
   const handleLoadMore = useCallback(async () => {
-    if (!currentUser || !userData || isFetchingMore) return;
+    if (isGuestMode || !currentUser || !userData || isFetchingMore) return;
     dispatch({ type: 'FETCH_MORE_TRADES_START' });
     // This function remains online-only
-  }, [currentUser, userData, dispatch, isFetchingMore]);
+  }, [currentUser, userData, dispatch, isFetchingMore, isGuestMode]);
 
 
   const controlFabVisibility = useCallback(() => {
@@ -623,6 +623,10 @@ function AppContent() {
   };
 
   const handleLogout = () => {
+    if (isGuestMode) {
+        window.location.reload();
+        return;
+    }
     setLogoutConfirmModalOpen(true);
   };
 
@@ -675,7 +679,7 @@ function AppContent() {
     );
   }
   
-  if (!session) {
+  if (!session && !isGuestMode) {
     return <Auth />;
   }
   
@@ -709,21 +713,29 @@ function AppContent() {
                     }
                 >
                     <div className="p-2">
-                        <div className="px-2 py-1 text-sm text-gray-400 truncate">
-                            {currentUser?.email}
-                        </div>
-                        <button 
-                            onClick={() => setActiveView('data')} 
-                            className="w-full text-left px-2 py-1.5 text-sm text-gray-200 hover:bg-gray-700 rounded-md transition-colors"
-                        >
-                           Settings
-                        </button>
+                        {isGuestMode ? (
+                             <div className="px-2 py-1 text-sm text-gray-400">
+                                Guest Mode
+                            </div>
+                        ) : (
+                            <>
+                                <div className="px-2 py-1 text-sm text-gray-400 truncate">
+                                    {currentUser?.email}
+                                </div>
+                                <button
+                                    onClick={() => setActiveView('data')}
+                                    className="w-full text-left px-2 py-1.5 text-sm text-gray-200 hover:bg-gray-700 rounded-md transition-colors"
+                                >
+                                Settings
+                                </button>
+                            </>
+                        )}
                         <div className="my-1 border-t border-gray-700/50"></div>
                         <button 
                             onClick={handleLogout} 
                             className="w-full text-left px-2 py-1.5 text-sm text-red-400 hover:bg-gray-700 rounded-md transition-colors"
                         >
-                           Logout
+                           {isGuestMode ? 'Exit Guest Mode' : 'Logout'}
                         </button>
                     </div>
                 </DropdownMenu>
@@ -736,7 +748,7 @@ function AppContent() {
           {activeView === 'analysis' && <AnalysisView />}
           {activeView === 'results' && <ResultsView onViewTrade={handleViewTrade} />}
           {activeView === 'notes' && <NotesView />}
-          {activeView === 'data' && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} />}
+          {activeView === 'data' && !isGuestMode && <DataView onInitiateDeleteAccount={() => setDeleteConfirmModalOpen(true)} />}
         </main>
       </div>
 
